@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+	--sdp-navy: #0b315b;
+	--sdp-blue: #22779f;
+	--sdp-lt-green: #3aab48;
+	--sdp-gold: #ffaa30;
+	--sdp-lt-blue: #47aad8;
+	--sdp-sky-blue: #6dcff6;
+	--sdp-bg: #f3f5f7;
+	--sdp-panel: #ffffff;
+	--sdp-muted: #5b6b7e;
+}
+
+body {
+	background: var(--sdp-bg);
+	color: var(--sdp-navy);
+}
+
+.font-display {
+	font-family: var(--font-barlow), "Arial Narrow", sans-serif;
+	letter-spacing: 0.01em;
+}

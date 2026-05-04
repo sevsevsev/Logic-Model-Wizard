@@ -1,0 +1,44 @@
+{
+  "drafts": [
+    {
+      "id": "d2c02aef-dadb-4364-a6a6-69817a9deccf",
+      "userId": "demo-user",
+      "schemaVersion": 1,
+      "savedAt": "2026-05-04T12:00:00.000Z",
+      "draft": {
+        "model": {
+          "intended_impact": {
+            "population": "disconnected youth",
+            "geography": "South Chicago",
+            "long_term_goal": "economic mobility",
+            "compiled_statement": ""
+          },
+          "implementation": {
+            "resources": {
+              "human": [],
+              "material": [],
+              "financial": [],
+              "knowledge": []
+            },
+            "activities": []
+          },
+          "outcomes": {
+            "short_term": [],
+            "medium_term": [],
+            "long_term": []
+          }
+        },
+        "messages": [
+          {
+            "id": "welcome",
+            "role": "assistant",
+            "content": "Tell me about your program - what does it do, and who does it serve?",
+            "timestamp": 0
+          }
+        ]
+      },
+      "createdAt": "2026-05-04T14:09:57.243Z",
+      "updatedAt": "2026-05-04T14:09:57.243Z"
+    }
+  ]
+}

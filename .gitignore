@@ -1,0 +1,9 @@
+node_modules/
+.next/
+
+# Local environment files — NEVER commit these
+.env.local
+.env.*.local
+.env
+
+*.log
