@@ -1,242 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildSystemPrompt } from "@/lib/chat/prompt";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
 
 // ---------------------------------------------------------------------------
 // System prompt — encodes all spec rules
 // ---------------------------------------------------------------------------
-
-const SYSTEM_PROMPT = `You are a Logic Model Architect — a warm, knowledgeable coach who guides nonprofit and social-sector practitioners through building rigorous, practitioner-quality program logic models. You draw your knowledge from the Logic Model Overview Guide below. Use it as your primary reference when answering questions, coaching users, and validating their work.
-
-================================================================================
-KNOWLEDGE BASE — Logic Model Overview Guide
-================================================================================
-
-## Why Logic Models Matter
-
-"If you don't know where you're going, how are you going to know when you get there?" — Yogi Berra
-
-Evaluation efforts should be about more than collecting, analyzing, and reporting data. They should provide key stakeholders with data that can be used to inform strategic decisions, build a culture of continuous learning, and communicate with a diverse range of stakeholders about a program's impact. Logic models make this possible.
-
-A logic model provides a road map that articulates the key program activities and how they will lead to the desired results. It has multiple benefits:
-
-- **Clarifies thinking on the program model and outcomes.** A logic model serves as a planning tool to develop and refine a program's strategy. It helps organizations: build understanding of stakeholder needs and priorities; find gaps in the theory or logic of the program; strategically prioritize the most important activities; and create a common language and alignment across staff.
-- **Serves as the foundation for evaluation efforts.** A logic model helps organizations identify strategic evaluation questions, prioritize data collection aligned to strategic goals, and develop a strategy for systematizing data collection and analysis.
-- **Stimulates learning and storytelling.** A logic model provides information that can inform programmatic decisions and strategic communication. It helps organizations focus attention on key priorities, build an internal culture of data use and continuous learning, and clearly articulate the goals and impact of the program to external stakeholders.
-
----
-
-## The Three Parts of a Logic Model
-
-A logic model has three key parts:
-
-**Part 1 — Intended Impact: What's Your Why?**
-Intended impact focuses on the specific population of individuals or communities served and the long-term impact you are working to achieve and will hold yourself accountable to.
-
-**Part 2 — Implementation: What Will It Take?**
-Planned work describes what resources you think you need to implement your program and what you plan to do. This includes Resources, Activities, and Outputs.
-
-**Part 3 — Outcomes: What Will Change?**
-Outcomes capture the impact of your work over time (short-, medium-, and long-term) in service of the longer-term intended impact.
-
----
-
-## Part 1: Intended Impact
-
-The intended impact focuses on WHO your program is serving by identifying:
-- The specific **population** of individuals or communities served
-- **WHERE** you work (the geography)
-- The **long-term impact** you are working to achieve and will hold yourself accountable to
-
-The intended impact statement often follows this format:
-**"[X population] in [Y geography] will [accomplish Z outcomes]."**
-
----
-
-## Part 2: Implementation
-
-### Resources (Inputs)
-Resources are the investments made to enable the program's work and achieve its goals. They fall into four categories:
-
-- **Human Resources**: Staff, volunteers, partners, and other human resources needed to execute the program.
-- **Material Resources**: Space, technology, and other material resources needed to execute the program.
-- **Financial Resources**: Sponsorships, grants, and other financial resources needed to execute the program.
-- **Knowledge Resources**: Areas of expertise or experiences that are necessary to implement the program as designed.
-
-### Activities
-Activities describe what your program does with its resources. They include the specific actions, processes, and events that make up your work — the things your staff does to bring your program to life.
-
-When identifying activities, organize them into **categories that reflect the main strategies of your program**, rather than listing every single task. For example, you might group activities into categories such as: training and workshops, curriculum delivery, family engagement, or partnership development.
-
-A well-structured set of activities should help tell the story of how your program operates and connect clearly to the outputs and outcomes that follow.
-
-### Outputs
-Outputs are the **direct and immediate products** of your program's activities. They help you track what you deliver and who you reach — for example: the number of participants served, sessions held, materials distributed, or events conducted. Outputs demonstrate that your program is being implemented as intended.
-
-**Program Fidelity** refers to the degree to which your program is implemented as designed. Maintaining fidelity helps ensure that activities align with your program model and that services are delivered consistently. Tracking fidelity may include monitoring adherence to core components, dosage (number of sessions delivered), and participant reach.
-
-**Program Quality** focuses on how well your program is implemented and the experience of participants. Quality measures might include participant satisfaction, staff preparedness, relationship-building, or engagement levels.
-
----
-
-## Part 3: Outcomes
-
-Outcomes capture the impact of your work over time. They should be connected to your activities and build toward your intended impact. It is likely that multiple activities work together to achieve your outcomes.
-
-- **Short-Term Outcomes**: Typically capture changes in **knowledge, attitudes, or awareness**.
-- **Medium-Term Outcomes**: Typically capture changes in **skills, behaviors, and actions**.
-- **Long-Term Outcomes**: Typically capture changes in **status or condition**.
-
-### Right-Sizing Outcomes (examples from the guide)
-| Right Level | More Detailed Than Needed (at this stage) |
-|---|---|
-| Increase reading level | Percent of participants reading on grade level by 3rd grade |
-| Improved instruction | Percent of students who are making reading gains |
-
-The logic model captures the *type* of change expected, not the measurement target. Measurement targets belong in an evaluation plan.
-
----
-
-## Key Considerations: The 3 P's
-
-Use these reflection questions to validate each component of the logic model:
-
-**Purpose (WHY):**
-- Does your logic model capture what matters most?
-- Does your intended impact capture your ultimate outcome for those you serve (and not just what you do)?
-- Does the logic model identify and clearly organize the most important activities and outputs?
-- Do the short-term outcomes reflect progressive steps toward the most meaningful longer-term results?
-
-**People (WHO):**
-- Does your logic model reflect the needs and goals of those you serve?
-- Does the logic model make clear who you are serving and reflect their values, preferences, and unique circumstances?
-- Do staff have the resources and support they need to execute the activities as intended?
-
-**Process (HOW):**
-- How will you engage others in the logic model design process?
-- How are you engaging a range of stakeholders — staff, participants, partners, community members — in the design process?
-
----
-
-## Engaging Stakeholders: The ARC Method
-
-An effective logic model reflects the perspectives and priorities of the people most connected to your work. The ARC Method offers a simple framework for meaningful stakeholder engagement:
-
-**Accessible** — Meet people where they are (literally and figuratively). Create opportunities for input that are convenient, inclusive, and easy to participate in. Eliminate jargon or provide background so everyone can engage with confidence and clarity.
-
-**Reciprocal** — Make participation a two-way exchange. Consider tangible incentives (e.g., gift cards, refreshments). Communicate both the stakes and the potential benefits of the process so stakeholders understand how their input will be used and why it matters.
-
-**Creative** — Try approaches that are different or unexpected, like a gallery walk or an interactive session over a shared meal, to make the process engaging and enjoyable. Build in moments of reflection and celebration. Use the process as a way to strengthen relationships and shared understanding.
-
----
-
-## Common Mistakes to Catch and Correct
-
-1. **Intended impact describes activities, not outcomes.** The intended impact should describe the ultimate change in people or communities, not what the program does. Example error: "We provide job training." Correction: "Unemployed adults on the South Side will gain stable employment and economic self-sufficiency."
-2. **Activities stated as nouns.** Flag and reframe as verb phrases. "Mentoring program" → "Providing weekly one-on-one mentoring sessions." "Parent support" → "Facilitating bi-weekly parent support groups."
-3. **Outputs confused for outcomes.** "200 participants trained" is an output (what you delivered). An outcome is the change that resulted: "Participants increased their financial literacy knowledge."
-4. **Outcomes that skip levels.** A short-term outcome cannot be "youth are employed." Employment is long-term; knowledge/awareness comes first, then behavior change, then condition change.
-5. **Vague populations.** "At-risk youth" is too vague. Probe for age range, geography, and specific risk factor or circumstance.
-6. **Unmeasurable outcomes.** "Youth will be better off" cannot be evaluated. Push for specificity about what will be different.
-7. **Too many activities.** A focused logic model typically has 3–6 activity categories. More often signals scope creep.
-8. **Broken causal logic.** If you cannot explain WHY an activity leads to an outcome, the logic is broken. Every arrow in the chain should be defensible.
-
----
-
-## Guiding Questions by Section
-
-**Intended Impact:**
-- "Who, specifically, does your program exist to serve? What makes this group distinct?"
-- "If your program succeeded completely in 10 years, what would be different about their lives?"
-- "Where does your program operate — city, county, neighborhood?"
-
-**Resources:**
-- "Who are the key people that make this program run — staff, volunteers, partners?"
-- "What physical spaces, technology, or equipment does the program rely on?"
-- "What funding makes this work possible?"
-- "Is there a specific curriculum, research base, or methodology you use?"
-
-**Activities:**
-- "Walk me through a typical week of programming. What does your team actually do?"
-- "What specific actions happen inside this type of work?"
-- "If you completed this activity perfectly, what would you have produced at the end?"
-
-**Outputs:**
-- "How would you count whether this activity happened? What's the unit of measure?"
-- "How many participants, sessions, or materials do you expect to reach or distribute?"
-
-**Outcomes:**
-- "After someone completes this program, what should they know that they didn't before?"
-- "Six months later, what should they be doing differently?"
-- "In five years, if this works, what will their life look like?"
-- "What's the smallest, most believable first change you'd expect to see?"
-
-================================================================================
-YOUR RESPONSIBILITIES
-================================================================================
-
-1. **Chat Response (coaching)**: Reply conversationally in the voice of a warm, expert coach. Answer clarifying questions directly and thoroughly using the knowledge base above. Ask one focused guiding question at a time to advance the model-building process. Apply the following rules consistently:
-   - **Action-Verb Injection**: If the user provides a noun-based activity, reframe it as a verb-based category and explain why verb phrases are important.
-   - **Outcome Leveling**: Ensure short-term = Knowledge/Awareness, medium-term = Skills/Behaviors, long-term = Condition/Status. Gently correct if misleveled.
-   - **Resource Buckets**: Categorize resources as Human, Material, Financial, or Knowledge.
-   - **The 3 P's**: Validate entries against Purpose, People, and Process.
-   - **ARC Method**: Flag jargon or vague language and suggest plain-language alternatives.
-   - **Common mistakes**: Proactively catch and correct the common mistakes listed above.
-
-2. **JSON Update (hidden)**: After your coaching reply, output a JSON block enclosed in <model_patch>...</model_patch> tags containing ONLY the fields that changed. Use this exact schema shape:
-{
-  "stakeholders": [{ "id": "...", "label": "...", "type": "..." }],
-  "intended_impact": { "population": "...", "geography": "...", "long_term_goal": "...", "compiled_statement": "..." },
-  "implementation": {
-    "resources": { "human": [], "material": [], "financial": [], "knowledge": [] },
-    "activities": [{ "item": "...", "category": "...", "actions": [], "outputs": [{ "text": "...", "category": "..." }], "stakeholderLabels": [] }]
-  },
-  "outcomes": {
-    "short_term": [{ "statement": "...", "stakeholderLabels": [] }],
-    "medium_term": [{ "statement": "...", "stakeholderLabels": [] }],
-    "long_term": [{ "statement": "...", "stakeholderLabels": [] }]
-  }
-}
-Omit any fields that have not changed. Only include populated arrays/strings.
-
-Always respond with a coaching message first, then the <model_patch> block. Never expose the tags or JSON to the user in the visible reply.
-
-================================================================================
-RESPONSE BEHAVIOR — FOLLOW THESE RULES ON EVERY TURN
-================================================================================
-
-## Length & Format
-- Routine turns (user shares information, answers a question): **75 words or fewer**.
-- Explanatory turns (user asks a concept question like "what's the difference between outputs and outcomes?"): answer clearly and completely, then return to the wizard with one question.
-- Never use markdown headers, bullet lists, or bold text in your visible reply. Plain prose only.
-- Never number your questions or steps.
-
-## Structure — every routine reply must follow this exact pattern:
-1. One sentence that acknowledges what the user just shared, specific to their words (not generic praise).
-2. One sentence of correction or reframe only if needed — skip this line entirely if their input is solid.
-3. One clarifying question to move the conversation forward — always the final sentence.
-
-## Prohibited phrases — never use these:
-- "Great!", "Great question!", "Absolutely!", "Of course!", "Certainly!"
-- "That's a wonderful...", "That's a great...", "That's fantastic..."
-- "I'd be happy to...", "I can help with that!"
-- "Let's dive in!", "Let's get started!"
-- Any variation of hollow affirmations before getting to the point.
-
-## One question per turn — always
-Ask exactly one question per response. Never ask two questions in the same turn, even if you're curious about multiple things. Choose the most important one.
-
-## Tone
-Warm but direct. Like a knowledgeable colleague, not a consultant writing a report. Assume the user is a capable practitioner — don't over-explain.
-
-## Wizard sequencing — guide the user in this order if they haven't covered it yet:
-1. Intended impact (population → geography → long-term goal)
-2. Resources
-3. Activities
-4. Outputs
-5. Outcomes (short → medium → long-term)
-
-If the user jumps ahead, capture what they've shared and gently steer back to fill any gaps.`;
+const SYSTEM_PROMPT = buildSystemPrompt();
 
 const PATCH_EXTRACTION_PROMPT = `You are a strict JSON extraction engine.
 
@@ -284,6 +54,371 @@ Rules:
 - Omit unchanged fields entirely.
 - Omit empty strings/arrays.
 - If nothing changed, return {}.`;
+
+function splitSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function dedupeStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+
+  return out;
+}
+
+function normalizeSentence(sentence: string): string {
+  return sentence
+    .replace(/^our program\s+/i, "")
+    .replace(/^we\s+/i, "")
+    .replace(/^students\s+should\s+/i, "students should ")
+    .trim();
+}
+
+function simplifyPopulation(raw: string): string {
+  return raw
+    .replace(/^the\s+/i, "")
+    .replace(/\s+in\s+.+$/i, "")
+    .replace(/\s+through\s+.+$/i, "")
+    .replace(/\s+with\s+.+$/i, "")
+    .replace(/[.,;:]+$/g, "")
+    .trim();
+}
+
+function makeStakeholder(label: string): { id: string; label: string } {
+  const clean = label.trim();
+  const id = clean
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "stakeholder";
+  return { id, label: clean };
+}
+
+function addOutcome(
+  bucket: Array<{ statement: string; stakeholderLabels?: string[] }>,
+  statement: string,
+  stakeholderLabels?: string[]
+) {
+  const clean = statement.trim().replace(/[.]+$/g, "");
+  if (!clean) return;
+  if (bucket.some((entry) => entry.statement.toLowerCase() === clean.toLowerCase())) return;
+  bucket.push({
+    statement: clean,
+    stakeholderLabels: stakeholderLabels && stakeholderLabels.length > 0 ? stakeholderLabels : [],
+  });
+}
+
+function appendOutputToMatchingActivity(
+  activities: Array<{
+    item: string;
+    category?: string;
+    actions: string[];
+    outputs: Array<{ text: string; category?: string }>;
+    stakeholderLabels?: string[];
+  }>,
+  outputText: string,
+  matcher: (activity: {
+    item: string;
+    category?: string;
+    actions: string[];
+    outputs: Array<{ text: string; category?: string }>;
+    stakeholderLabels?: string[];
+  }) => boolean
+): boolean {
+  const target = [...activities].reverse().find(matcher);
+  if (!target) return false;
+
+  if (!target.outputs.some((output) => output.text.toLowerCase() === outputText.toLowerCase())) {
+    target.outputs.push({ text: outputText });
+  }
+
+  return true;
+}
+
+function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> | null {
+  const text = userMessage.trim();
+  if (!text) return null;
+
+  const sentences = splitSentences(text);
+  if (sentences.length === 0) return null;
+
+  const populationCandidates: string[] = [];
+  const stakeholderLabels: string[] = [];
+  const activities: Array<{
+    item: string;
+    category?: string;
+    actions: string[];
+    outputs: Array<{ text: string; category?: string }>;
+    stakeholderLabels?: string[];
+  }> = [];
+  const shortOutcomes: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
+  const mediumOutcomes: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
+  const longOutcomes: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
+
+  const populationRegexes = [
+    /(?:enrolls?|serves?|supports?|targets?|works with)\s+([^.!?]+)/i,
+    /(?:for|with)\s+((?:k-?12|middle school|high school|elementary)\s+students?)/i,
+    /\b([0-9]{1,2}(?:st|nd|rd|th)\s+graders?)\b/i,
+  ];
+
+  const outputRegex = /\b(\d+\s+(?:lessons?|sessions?|classes?|participants?|students?)[^.,;]*)/i;
+
+  for (const sentence of sentences) {
+    const normalized = normalizeSentence(sentence);
+
+    for (const rx of populationRegexes) {
+      const match = normalized.match(rx);
+      if (match?.[1]) {
+        const candidate = simplifyPopulation(match[1]);
+        if (candidate.length > 2) populationCandidates.push(candidate);
+      }
+    }
+
+    if (/\bstudents?\b/i.test(normalized)) stakeholderLabels.push("Students");
+    if (/\bteachers?|educators?\b/i.test(normalized)) stakeholderLabels.push("Teachers");
+    if (/\bclass(?:es)?\b/i.test(normalized)) stakeholderLabels.push("Classrooms");
+
+    if (/(enroll|recruit|admit)/i.test(normalized)) {
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: [],
+        stakeholderLabels: ["Students"],
+      });
+    }
+
+    if (/(push into classrooms|deliver|offer|provide).*(lessons?|curriculum|sessions?)/i.test(normalized)) {
+      const outputs: Array<{ text: string }> = [];
+      const outputMatch = normalized.match(outputRegex);
+      if (outputMatch?.[1]) {
+        outputs.push({ text: outputMatch[1].trim() });
+      }
+
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs,
+        stakeholderLabels: ["Students", "Classrooms"],
+      });
+    }
+
+    if (/(\bgoal is to\b|\btarget\b).*(\d+\s+(?:lessons?|sessions?|classes?))/i.test(normalized)) {
+      const outputMatch = normalized.match(outputRegex);
+      const outputText = outputMatch?.[1]?.trim();
+
+      if (
+        outputText &&
+        appendOutputToMatchingActivity(
+          activities,
+          outputText,
+          (activity) =>
+            activity.actions.some((action) => /(lessons?|sessions?|curriculum|classrooms?)/i.test(action))
+        )
+      ) {
+        continue;
+      }
+
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: outputText ? [{ text: outputText }] : [],
+        stakeholderLabels: ["Students", "Classrooms"],
+      });
+    }
+
+    // Split compound outcome sentences at common conjunctions before classifying
+    // so "X and Y" becomes two separate clauses that can land in different levels.
+    const outcomeClauses = normalized
+      .split(/\s+and\s+(?=(?:have|ideas?|knowledge|skills?|ability|sense|plans?|steps?)\b)/i)
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+    for (const clause of outcomeClauses) {
+      // Short-term: knowledge / awareness changes
+      if (/(clearer sense|awareness|knowledge|understand|options|ideas? about)/i.test(clause)) {
+        addOutcome(shortOutcomes, clause, ["Students"]);
+        continue;
+      }
+
+      // Medium-term: behavior / planning / skill changes
+      if (/(prepare themselves|have ideas|plan|take steps|behavior|apply|develop skills)/i.test(clause)) {
+        addOutcome(mediumOutcomes, clause, ["Students"]);
+        continue;
+      }
+
+      // Long-term: condition / status changes — require employment/economic/life-condition words,
+      // not just "career" (which appears in career-awareness sentences)
+      if (/(employment|economic|self.suffic|stability|life condition|social mobility)/i.test(clause) && /(will|should)/i.test(clause)) {
+        addOutcome(longOutcomes, clause, ["Students"]);
+      }
+    }
+  }
+
+  const dedupedStakeholders = dedupeStrings(stakeholderLabels).map(makeStakeholder);
+  const dedupedActivities = activities.filter(
+    (activity, index, arr) => {
+      const key = (activity.actions[0] ?? activity.item).toLowerCase();
+      return arr.findIndex((candidate) =>
+        (candidate.actions[0] ?? candidate.item).toLowerCase() === key
+      ) === index;
+    }
+  );
+
+  const patch: Partial<LogicModel> = {};
+
+  if (populationCandidates.length > 0) {
+    const population = dedupeStrings(populationCandidates)[0];
+    patch.intended_impact = {
+      ...(patch.intended_impact ?? {}),
+      population,
+      compiled_statement: `${population} will achieve concrete long-term milestones such as high school graduation, postsecondary persistence, and stable employment.`,
+       geography: patch.intended_impact?.geography ?? "",
+       long_term_goal: patch.intended_impact?.long_term_goal ?? "",
+    };
+  }
+
+  if (dedupedStakeholders.length > 0) {
+    patch.stakeholders = dedupedStakeholders;
+  }
+
+  if (dedupedActivities.length > 0) {
+    patch.implementation = {
+      ...(patch.implementation ?? {}),
+      activities: dedupedActivities,
+       resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+    };
+  }
+
+  if (shortOutcomes.length > 0 || mediumOutcomes.length > 0 || longOutcomes.length > 0) {
+    patch.outcomes = {
+      short_term: shortOutcomes,
+      medium_term: mediumOutcomes,
+      long_term: longOutcomes,
+    };
+  }
+
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+function mergeModelPatchPreferPrimary(
+  primary: Partial<LogicModel> | null,
+  fallback: Partial<LogicModel> | null
+): Partial<LogicModel> | null {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+
+  const merged: Partial<LogicModel> = { ...primary };
+
+  if (fallback.intended_impact) {
+    merged.intended_impact = {
+      ...(fallback.intended_impact ?? {}),
+      ...(merged.intended_impact ?? {}),
+    };
+  }
+
+  if ((merged.stakeholders?.length ?? 0) === 0 && (fallback.stakeholders?.length ?? 0) > 0) {
+    merged.stakeholders = fallback.stakeholders;
+  }
+
+  if (fallback.implementation) {
+    merged.implementation ??= {} as LogicModel["implementation"];
+    if (
+      (merged.implementation.activities?.length ?? 0) === 0 &&
+      (fallback.implementation.activities?.length ?? 0) > 0
+    ) {
+      merged.implementation.activities = fallback.implementation.activities;
+    }
+  }
+
+  if (fallback.outcomes) {
+    merged.outcomes ??= { short_term: [], medium_term: [], long_term: [] };
+
+    if ((merged.outcomes.short_term?.length ?? 0) === 0 && fallback.outcomes.short_term?.length) {
+      merged.outcomes.short_term = fallback.outcomes.short_term;
+    }
+    if ((merged.outcomes.medium_term?.length ?? 0) === 0 && fallback.outcomes.medium_term?.length) {
+      merged.outcomes.medium_term = fallback.outcomes.medium_term;
+    }
+    if ((merged.outcomes.long_term?.length ?? 0) === 0 && fallback.outcomes.long_term?.length) {
+      merged.outcomes.long_term = fallback.outcomes.long_term;
+    }
+  }
+
+  return merged;
+}
+
+function normalizeMergedActivityPatch(
+  patch: Partial<LogicModel> | null
+): Partial<LogicModel> | null {
+  const activities = patch?.implementation?.activities;
+  if (!patch || !Array.isArray(activities) || activities.length === 0) {
+    return patch;
+  }
+
+  const dosageRegex = /\b\d+\s+(?:lessons?|sessions?|classes?|participants?|students?)[^.,;]*/i;
+  const deliveryRegex = /(push into classrooms|deliver|offer|provide).*(lessons?|curriculum|sessions?)|(lessons? throughout the year)/i;
+  const dosageOnlyRegex = /(goal is to|target|aim is to).*(lessons?|sessions?|classes?)/i;
+
+  const normalizedActivities: NonNullable<NonNullable<Partial<LogicModel>["implementation"]>["activities"]> = [];
+
+  for (const activity of activities) {
+    const actionTexts = Array.isArray(activity.actions) ? activity.actions : [];
+    const outputs = Array.isArray(activity.outputs) ? [...activity.outputs] : [];
+    const combinedText = [activity.item, ...actionTexts]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join(" ")
+      .toLowerCase();
+
+    const explicitDosageOutput = outputs.find((output) => dosageRegex.test(output.text));
+    const inferredDosageOutput = combinedText.match(dosageRegex)?.[0]?.trim();
+    const dosageText = explicitDosageOutput?.text ?? inferredDosageOutput;
+
+    if (dosageText && dosageOnlyRegex.test(combinedText)) {
+      const deliveryActivity = [...normalizedActivities]
+        .reverse()
+        .find((candidate) => {
+          const candidateText = [candidate.item, ...(candidate.actions ?? [])]
+            .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+            .join(" ");
+          return deliveryRegex.test(candidateText);
+        });
+
+      if (deliveryActivity) {
+        deliveryActivity.outputs ??= [];
+        if (!deliveryActivity.outputs.some((output) => output.text.toLowerCase() === dosageText.toLowerCase())) {
+          deliveryActivity.outputs.push({ text: dosageText });
+        }
+        continue;
+      }
+    }
+
+    normalizedActivities.push({
+      ...activity,
+      outputs,
+    });
+  }
+
+  return {
+    ...patch,
+    implementation: {
+      ...patch.implementation,
+      activities: normalizedActivities,
+       resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+    },
+  };
+}
 
 async function extractModelPatchFallback({
   apiKey,
@@ -444,7 +579,7 @@ export async function POST(req: NextRequest) {
 
   // Split coaching reply from hidden JSON patch
   const patchMatch = rawText.match(/<model_patch>([\s\S]*?)<\/model_patch>/);
-  const reply = rawText.replace(/<model_patch>[\s\S]*?<\/model_patch>/g, "").trim();
+  let reply = rawText.replace(/<model_patch>[\s\S]*?<\/model_patch>/g, "").trim();
 
   let modelPatch: Partial<LogicModel> | null = null;
   if (patchMatch?.[1]) {
@@ -466,5 +601,199 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ reply, modelPatch });
+  try {
+    const heuristicPatch = buildHeuristicNarrativePatch(message.trim());
+    modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
+  } catch {
+    // Heuristic extraction failed — proceed with AI patch only
+  }
+
+  modelPatch = normalizeMergedActivityPatch(modelPatch);
+
+  if (shouldRequestImpactSpecificity(modelPatch)) {
+    if (modelPatch) {
+      const { intended_impact: _omit, ...remainingPatch } = modelPatch;
+      modelPatch = remainingPatch;
+    }
+    reply = `${reply}\n\nLet's make that impact statement more specific. What exact difference should we be able to point to in 10 years (for example: high school graduation, postsecondary persistence, stable employment, or reduced justice-system involvement)?`;
+  }
+
+  const quickReplies = detectQuickReplies(reply);
+
+  return NextResponse.json({ reply, modelPatch, quickReplies });
+}
+
+// ---------------------------------------------------------------------------
+// Quick-reply detection — maps assistant question type to suggested responses
+// ---------------------------------------------------------------------------
+
+interface QuickReply {
+  label: string;
+  value: string;
+}
+
+function shouldRequestImpactSpecificity(modelPatch: Partial<LogicModel> | null): boolean {
+  const impact = modelPatch?.intended_impact;
+  if (!impact) return false;
+
+  const candidate = `${impact.compiled_statement ?? ""} ${impact.long_term_goal ?? ""}`.trim();
+  if (!candidate) return false;
+
+  const hasConcreteMarker = /(graduate|graduation|postsecondary|college|credential|employment|job|wage|income|housing|homeless|justice|incarcer|arrest|violence|safety|health|mental health|attendance|absenteeism|reading level|grade level)/i.test(
+    candidate
+  );
+
+  const genericSignal = /(better outcomes|opportunity awareness|improved lives|better lives|positive change|thrive|successful futures|be successful|wellbeing|well-being|economic opportunities)/i.test(
+    candidate
+  );
+
+  return genericSignal && !hasConcreteMarker;
+}
+
+function detectQuickReplies(reply: string): QuickReply[] | undefined {
+  const ALWAYS_TYPE = { label: "I want to type my own answer", value: "__type__" };
+
+  // Guided step 1 — aspiration question (what do you want to be true)
+  // Must run BEFORE the general long-term check — the bot's step-1 reply
+  // also contains "10 years" and would otherwise match the wrong branch.
+  if (
+    /(what do you want to be true|isn't true today|want to be true about their lives)/i.test(reply)
+  ) {
+    return [
+      { label: "HS graduation + postsecondary", value: "In 10 years, we want more of our students to graduate high school and persist in postsecondary education." },
+      { label: "Career pathway + living-wage jobs", value: "In 10 years, we want more of our students to enter stable, living-wage career pathways." },
+      { label: "Reduced justice involvement", value: "In 10 years, we want fewer of our students to be involved in the justice system and more to have safe, stable futures." },
+      { label: "Stronger wellbeing and stability", value: "In 10 years, we want our students to have stronger wellbeing, supportive relationships, and stable life conditions." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Guided step 2 — nature of change (how they think / what they do / their circumstances)
+  if (
+    /(mainly about how they think|what they.re able to do|conditions of their life|employment.*housing.*health)/i.test(reply)
+  ) {
+    return [
+      { label: "How they think or feel", value: "It's mainly a shift in how they think or feel — mindset, confidence, sense of possibility." },
+      { label: "What they're able to do", value: "It's mainly about what they're able to do — skills, behaviors, actions they take." },
+      { label: "Their life circumstances", value: "It's mainly about their actual circumstances — employment, housing, health, safety." },
+      { label: "All of these", value: "It's a combination — mindset, behavior, and real life conditions." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Guided step 3 — specificity probe (concrete long-term difference)
+  if (
+    /(to make this specific|what exact difference|be able to point to in 10 years|graduating high school|persisting in college|reduced justice-system involvement)/i.test(reply)
+  ) {
+    return [
+      { label: "Education milestones", value: "Specifically, we expect more students to graduate high school on time and persist in college or credential programs." },
+      { label: "Workforce milestones", value: "Specifically, we expect more students to secure stable employment with upward career mobility." },
+      { label: "Safety and justice milestones", value: "Specifically, we expect lower justice-system involvement and stronger personal and community safety outcomes." },
+      { label: "Wellbeing milestones", value: "Specifically, we expect stronger mental health, stable housing, and supportive long-term relationships." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Guided step 3 — draft impact statement review
+  if (
+    /(here.s a draft|draft.*intended impact|does that capture|capture.*intent)/i.test(reply)
+  ) {
+    return [
+      { label: "That captures it", value: "Yes, that captures it." },
+      { label: "Make it more specific", value: "Can you make this impact statement more specific and concrete?" },
+      { label: "Adjust the wording", value: "Close, but I'd like to adjust the wording." },
+      { label: "Not quite", value: "Not quite — let me try to describe it differently." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Long-term goal / 10-year vision — initial prompt (walk me through it vs skip)
+  if (
+    /(10 years|ten years|long.term goal|if.*succeed|what would be different|ultimate change|working to achieve)/i.test(reply)
+  ) {
+    return [
+      { label: "Walk me through it", value: "Can you walk me through what a long-term goal looks like for a program like ours?" },
+      { label: "Skip for now", value: "Let's skip the long-term goal for now and come back to it." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Geography — require an actual question signal so summary sentences like
+  // "your program serves 6th graders citywide" don't trigger this branch
+  if (
+    /(neighborhood|part of the city|citywide|region|borough|district|where.*operate|serve.*area)/i.test(reply) &&
+    /\?/.test(reply)
+  ) {
+    return [
+      { label: "Name neighborhoods or ZIP codes", value: "We serve these neighborhoods/ZIP codes: " },
+      { label: "Philadelphia citywide", value: "We serve youth across Philadelphia citywide." },
+      { label: "Specific schools", value: "We serve students in these schools: " },
+      { label: "Not sure yet", value: "We haven't defined the geography yet." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Population subgroup
+  if (
+    /(particular subset|specific group|background|circumstance|subgroup|who (exactly|specifically) (do you|does your)|what makes this group)/i.test(reply)
+  ) {
+    return [
+      { label: "No particular subgroup", value: "We serve the general population described — no specific subgroup." },
+      { label: "Yes, a specific subgroup", value: "Yes, we focus on a specific subgroup." },
+      { label: "Not sure yet", value: "We haven't defined a specific subgroup yet." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Resources
+  if (
+    /(resource|staff|volunteer|partner|funding|curriculum|technology|equipment|materials)/i.test(reply) &&
+    /(what|who|how|tell me|describe)/i.test(reply)
+  ) {
+    return [
+      { label: "Let me describe them", value: "I'll describe our key resources." },
+      { label: "We have staff only", value: "Our main resource is paid staff." },
+      { label: "Skip for now", value: "Let's skip resources for now." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Activities — confirm drafted
+  if (
+    /(typical week|what does your team|what.*activities|walk me through)/i.test(reply)
+  ) {
+    return [
+      { label: "Let me describe them", value: "I'll walk through our main activities." },
+      { label: "Skip for now", value: "Let's skip activities for now." },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Outcomes — short/medium/long
+  if (
+    /(short.term|medium.term|what.*know|what.*doing differently|knowledge change|behavior change|condition change|what.*expect)/i.test(reply)
+  ) {
+    return [
+      { label: "Sounds right, move on", value: "The outcomes you've drafted look right — let's move on." },
+      { label: "I want to refine them", value: "I'd like to refine the outcome statements." },
+      { label: "Explain the levels", value: "Can you explain the difference between short, medium, and long-term outcomes?" },
+      ALWAYS_TYPE,
+    ];
+  }
+
+  // Specific section refinement prompt
+  if (
+    /(refine|which section|what.*next|anything.*add|look complete)/i.test(reply)
+  ) {
+    return [
+      { label: "Activities", value: "I want to refine the activities section." },
+      { label: "Outputs", value: "I want to refine the outputs section." },
+      { label: "Outcomes", value: "I want to refine the outcomes section." },
+      { label: "Resources", value: "I want to refine the resources section." },
+      { label: "Looks good", value: "The model looks good to me." },
+    ];
+  }
+
+  // No match — no suggestions, free text only
+  return undefined;
 }

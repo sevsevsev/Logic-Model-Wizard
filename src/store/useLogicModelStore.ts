@@ -92,11 +92,17 @@ interface LogicModelPatch {
 
 export type MessageRole = "user" | "assistant";
 
+export interface QuickReply {
+  label: string;
+  value: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
   timestamp: number;
+  quickReplies?: QuickReply[];
 }
 
 export interface LogicModelDraft {
@@ -127,7 +133,7 @@ interface LogicModelState {
   applyModelPatch: (patch: LogicModelPatch) => void;
 
   // Chat actions
-  addMessage: (role: MessageRole, content: string) => void;
+  addMessage: (role: MessageRole, content: string, quickReplies?: QuickReply[]) => void;
   setLoading: (loading: boolean) => void;
   getDraftSnapshot: () => LogicModelDraft;
   restoreDraft: (draft: LogicModelDraft) => void;
@@ -328,6 +334,111 @@ function normalizeActivity(
   };
 }
 
+function normalizeKey(text: string | undefined): string {
+  return (text || "").trim().toLowerCase();
+}
+
+function mergeUniqueStringValues(base: string[] = [], incoming: string[] = []): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const value of [...base, ...incoming]) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = normalizeKey(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(trimmed);
+  }
+
+  return merged;
+}
+
+function mergeUniqueOutputs(
+  base: Array<{ text: string; category?: string }> = [],
+  incoming: Array<{ text: string; category?: string }> = []
+): Array<{ text: string; category?: string }> {
+  const seen = new Set<string>();
+  const merged: Array<{ text: string; category?: string }> = [];
+
+  for (const output of [...base, ...incoming]) {
+    const text = output.text?.trim();
+    if (!text) continue;
+    const key = `${normalizeKey(text)}::${normalizeKey(output.category)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push({ text, category: output.category?.trim() || undefined });
+  }
+
+  return merged;
+}
+
+function findMatchingActivityIndex(existing: Activity[], incoming: Activity): number {
+  const incomingActionKeys = new Set(incoming.actions.map((action) => normalizeKey(action)));
+
+  return existing.findIndex((candidate) => {
+    const sameNamedGroup =
+      normalizeKey(candidate.item) === normalizeKey(incoming.item) &&
+      normalizeKey(candidate.item) !== "__ungrouped__";
+
+    const hasOverlappingAction = candidate.actions.some((action) =>
+      incomingActionKeys.has(normalizeKey(action))
+    );
+
+    return sameNamedGroup || hasOverlappingAction;
+  });
+}
+
+function mergeActivities(existing: Activity[], incoming: Activity[]): Activity[] {
+  const merged = existing.map((activity) => ({
+    ...activity,
+    actions: [...activity.actions],
+    outputs: [...activity.outputs],
+    stakeholderIds: [...(activity.stakeholderIds ?? [])],
+  }));
+
+  for (const activity of incoming) {
+    const matchIndex = findMatchingActivityIndex(merged, activity);
+    if (matchIndex === -1) {
+      merged.push({
+        ...activity,
+        actions: [...activity.actions],
+        outputs: [...activity.outputs],
+        stakeholderIds: [...(activity.stakeholderIds ?? [])],
+      });
+      continue;
+    }
+
+    const target = merged[matchIndex];
+    target.category = target.category || activity.category;
+    target.actions = mergeUniqueStringValues(target.actions, activity.actions);
+    target.outputs = mergeUniqueOutputs(target.outputs, activity.outputs);
+    target.stakeholderIds = mergeUniqueStringValues(
+      target.stakeholderIds ?? [],
+      activity.stakeholderIds ?? []
+    );
+  }
+
+  return merged;
+}
+
+function mergeOutcomes(existing: OutcomeEntry[], incoming: OutcomeEntry[]): OutcomeEntry[] {
+  const merged = new Map<string, OutcomeEntry>();
+
+  for (const outcome of [...existing, ...incoming]) {
+    const statement = outcome.statement.trim();
+    if (!statement) continue;
+    const key = normalizeKey(statement);
+    const prior = merged.get(key);
+    merged.set(key, {
+      statement,
+      stakeholderIds: mergeUniqueStringValues(prior?.stakeholderIds ?? [], outcome.stakeholderIds ?? []),
+    });
+  }
+
+  return Array.from(merged.values());
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -432,10 +543,14 @@ export const useLogicModelStore = create<LogicModelState>()(
             }
           }
           if (patch.implementation.activities) {
-            // Replace activities list when the AI returns a new set
-            state.model.implementation.activities = patch.implementation.activities
+            const incomingActivities = patch.implementation.activities
               .map((a) => normalizeActivity(state.model, a))
               .filter((a): a is Activity => Boolean(a));
+
+            state.model.implementation.activities = mergeActivities(
+              state.model.implementation.activities,
+              incomingActivities
+            );
           }
         }
         if (patch.outcomes) {
@@ -444,21 +559,29 @@ export const useLogicModelStore = create<LogicModelState>()(
             const incoming = patch.outcomes[key];
             if (!Array.isArray(incoming)) continue;
 
-            state.model.outcomes[key] = incoming
+            const normalizedIncoming = incoming
               .map((o) => normalizeOutcomeEntry(state.model, o))
               .filter((o): o is OutcomeEntry => Boolean(o));
+
+            state.model.outcomes[key] = mergeOutcomes(
+              state.model.outcomes[key],
+              normalizedIncoming
+            );
           }
         }
       }),
 
     // ---- Chat -------------------------------------------------------------
-    addMessage: (role, content) =>
+    addMessage: (role, content, quickReplies?) =>
       set((state) => {
         state.messages.push({
           id: crypto.randomUUID(),
           role,
           content,
           timestamp: Date.now(),
+          quickReplies: role === "assistant" && quickReplies && quickReplies.length > 0
+            ? quickReplies
+            : undefined,
         });
       }),
 

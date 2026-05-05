@@ -48,10 +48,10 @@ export interface BootstrapExtractionResponse {
 
 export function getNextGapQuestion(model: LogicModel): string {
   if (!model.intended_impact.population) {
-    return "Who, specifically, does your program exist to serve?";
+    return "You mentioned 6th graders — does your program focus on a particular group within that grade, like students from a specific school type or background?";
   }
   if (!model.intended_impact.geography) {
-    return "Where does your program primarily operate?";
+    return "Does your program serve a particular neighborhood or part of the city, or does it operate across the whole region?";
   }
   if (!model.intended_impact.long_term_goal) {
     return "If your program succeeds in 10 years, what will be different in participants' lives?";

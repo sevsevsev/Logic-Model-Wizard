@@ -8,7 +8,7 @@ import {
   type BootstrapExtractionResponse,
 } from "@/lib/bootstrap/types";
 import { buildPatchFromSuggestions, describeDetected, describeGaps } from "@/lib/bootstrap/patch";
-import { useLogicModelStore } from "@/store/useLogicModelStore";
+import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
 
 interface LandingSubmitPayload {
   description: string;
@@ -84,9 +84,9 @@ export default function Home() {
       });
 
       const raw = await res.text();
-      let data: { reply?: string; modelPatch?: unknown; error?: string } | null = null;
+      let data: { reply?: string; modelPatch?: unknown; quickReplies?: QuickReply[]; error?: string } | null = null;
       try {
-        data = raw ? (JSON.parse(raw) as { reply?: string; modelPatch?: unknown; error?: string }) : null;
+        data = raw ? (JSON.parse(raw) as { reply?: string; modelPatch?: unknown; quickReplies?: QuickReply[]; error?: string }) : null;
       } catch {
         const hint = !res.ok ? ` (HTTP ${res.status})` : "";
         throw new Error(`Server returned a non-JSON response${hint}.`);
@@ -95,7 +95,7 @@ export default function Home() {
       if (!res.ok) throw new Error(data?.error || `Request failed (HTTP ${res.status}).`);
       if (!data?.reply) throw new Error("Response is missing assistant reply.");
 
-      addMessage("assistant", data.reply);
+      addMessage("assistant", data.reply, data.quickReplies);
       if (data.modelPatch) applyModelPatch(data.modelPatch);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error.";
