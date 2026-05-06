@@ -19,6 +19,7 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [progressTick, setProgressTick] = useState(0);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -41,6 +42,34 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
     "Preparing your workspace",
   ];
   const activeStep = processingSteps[Math.min(Math.floor(progressTick / 2), processingSteps.length - 1)];
+
+  function openFilePicker() {
+    const input = fileInputRef.current;
+    if (!input || isSubmitting || isPickerOpen) return;
+
+    setFormError(null);
+    setIsPickerOpen(true);
+
+    // If the dialog is canceled, browsers often return focus to the window without firing change.
+    const releasePickerState = () => {
+      setTimeout(() => {
+        setIsPickerOpen(false);
+      }, 0);
+    };
+
+    window.addEventListener("focus", releasePickerState, { once: true });
+
+    // Reset input so selecting the same file again still triggers change.
+    input.value = "";
+
+    // Prefer showPicker when available, fall back to click for wider support.
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+
+    input.click();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -110,8 +139,8 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                 </label>
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSubmitting}
+                  onClick={openFilePicker}
+                  disabled={isSubmitting || isPickerOpen}
                   className="inline-flex w-full items-center justify-between rounded-xl border border-[#9fc3da] bg-[#edf3f8] px-4 py-3 text-sm text-[#0b315b] hover:bg-[#dcebf5] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <span className="truncate">
@@ -127,7 +156,10 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                   accept=".pdf,.docx,.txt,.md"
                   multiple
                   className="hidden"
-                  onChange={(e) => setSelectedFiles(e.target.files)}
+                  onChange={(e) => {
+                    setSelectedFiles(e.target.files);
+                    setIsPickerOpen(false);
+                  }}
                 />
               </div>
 
