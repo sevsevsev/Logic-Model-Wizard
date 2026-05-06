@@ -178,7 +178,11 @@ export function describeGaps(model: LogicModel): string[] {
   const gaps: string[] = [];
   if (!model.intended_impact.population) gaps.push("target population");
   if (!model.intended_impact.geography) gaps.push("geography");
-  if (!model.intended_impact.long_term_goal) gaps.push("long-term goal");
+  // If we already have a compiled impact statement from an uploaded document,
+  // do not treat long_term_goal as a missing gap in the onboarding summary.
+  if (!model.intended_impact.long_term_goal && !model.intended_impact.compiled_statement) {
+    gaps.push("long-term goal");
+  }
   const { human, material, financial, knowledge } = model.implementation.resources;
   if (human.length === 0 && material.length === 0 && financial.length === 0 && knowledge.length === 0) {
     gaps.push("resources");

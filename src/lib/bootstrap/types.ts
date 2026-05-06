@@ -53,7 +53,7 @@ export function getNextGapQuestion(model: LogicModel): string {
   if (!model.intended_impact.geography) {
     return "Does your program serve a particular neighborhood or part of the city, or does it operate across the whole region?";
   }
-  if (!model.intended_impact.long_term_goal) {
+  if (!model.intended_impact.long_term_goal && !model.intended_impact.compiled_statement) {
     return "If your program succeeds in 10 years, what will be different in participants' lives?";
   }
   if (

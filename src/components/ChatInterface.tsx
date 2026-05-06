@@ -12,6 +12,7 @@ export default function ChatInterface() {
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const setLoading = useLogicModelStore((s) => s.setLoading);
   const resetModel = useLogicModelStore((s) => s.resetModel);
+  const model = useLogicModelStore((s) => s.model);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -45,7 +46,7 @@ export default function ChatInterface() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: messages }),
+        body: JSON.stringify({ message: text, history: messages, model }),
       });
 
       const raw = await res.text();

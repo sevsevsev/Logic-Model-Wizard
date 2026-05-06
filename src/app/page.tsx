@@ -77,10 +77,11 @@ export default function Home() {
     setLoading(true);
     try {
       const history = useLogicModelStore.getState().messages;
+      const model = useLogicModelStore.getState().model;
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: description, history }),
+        body: JSON.stringify({ message: description, history, model }),
       });
 
       const raw = await res.text();
