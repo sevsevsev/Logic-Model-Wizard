@@ -40,5 +40,258 @@
       "createdAt": "2026-05-04T14:09:57.243Z",
       "updatedAt": "2026-05-04T14:09:57.243Z"
     }
+  ],
+  "feedback": [
+    {
+      "id": "f8ce8028-4eab-4900-9428-80330555329f",
+      "userId": "collab-5bf0d5fe-0108-414e-b918-f679618132c5",
+      "createdAt": "2026-05-06T00:07:49.886Z",
+      "capture": {
+        "assistantMessageId": "440295ef-3029-4118-8f24-ff1500cd1976",
+        "assistantMessage": "Thank you for that important clarification. We can certainly integrate the literacy focus into the long-term impact statement.\n\nHere is a revised draft:\n\nStudents in grades K-3 in North Philadelphia will achieve strong foundational literacy skills, leading to on-time high school graduation and persistence in college or credential programs.\n\nDoes this statement better capture the ultimate impact you are working to achieve, including the focus on literacy?",
+        "rating": "down",
+        "reason": "Not actionable",
+        "comment": "The response options do not make sense given that the chat is asking me to confirm its rewording of the impact statement. It presenetd me with two response chips \"Walk me through it\" and \"Skip for now\"",
+        "precedingUserMessage": "IT's missing that our work is focused on literacy",
+        "history": [
+          {
+            "id": "welcome",
+            "role": "assistant",
+            "content": "Tell me about your program — what does it do, and who does it serve?",
+            "timestamp": 0
+          },
+          {
+            "id": "b1e45626-d523-4cbf-a498-44866f2a222d",
+            "role": "user",
+            "content": "We help the kids read.",
+            "timestamp": 1778025890212
+          },
+          {
+            "id": "5d069c30-b1f3-4622-89a1-cb8379a66c66",
+            "role": "assistant",
+            "content": "Thanks for sharing that your program helps kids read. To start building out your logic model, let's clarify who you serve.\n\nYou mentioned \"kids\" — does your program focus on a particular subset of that group, like students from specific schools, backgrounds, or circumstances? If not, that's fine; just confirm who you reach.",
+            "timestamp": 1778025898851,
+            "quickReplies": [
+              {
+                "label": "All students in that population",
+                "value": "We serve the general student population described — no narrower focus group."
+              },
+              {
+                "label": "A particular group of students",
+                "value": "We focus especially on students who ...",
+                "action": "prefill"
+              },
+              {
+                "label": "Not sure yet",
+                "value": "We haven't defined a particular group yet."
+              },
+              {
+                "label": "I want to type my own answer",
+                "value": "__type__",
+                "action": "open-input"
+              }
+            ]
+          },
+          {
+            "id": "a7479800-02cb-468d-92a1-e945d2261daf",
+            "role": "user",
+            "content": "We focus especially on students who ...are in grades K-3 and live in North Philadelphia.",
+            "timestamp": 1778025923496
+          },
+          {
+            "id": "606f95af-94a5-4cb9-8e87-510d68a6c071",
+            "role": "assistant",
+            "content": "That's a clear focus. So, your program serves students in grades K-3 living in North Philadelphia.\n\nLet's build out the long-term goal for these students. Thinking about the students your program serves — in 10 years, what do you want to be true about their lives that isn't true today?",
+            "timestamp": 1778025925495,
+            "quickReplies": [
+              {
+                "label": "HS graduation + postsecondary",
+                "value": "In 10 years, we want more of our students to graduate high school and persist in postsecondary education."
+              },
+              {
+                "label": "Career pathway + living-wage jobs",
+                "value": "In 10 years, we want more of our students to enter stable, living-wage career pathways."
+              },
+              {
+                "label": "Reduced justice involvement",
+                "value": "In 10 years, we want fewer of our students to be involved in the justice system and more to have safe, stable futures."
+              },
+              {
+                "label": "Stronger wellbeing and stability",
+                "value": "In 10 years, we want our students to have stronger wellbeing, supportive relationships, and stable life conditions."
+              },
+              {
+                "label": "I want to type my own answer",
+                "value": "__type__",
+                "action": "open-input"
+              }
+            ]
+          },
+          {
+            "id": "3e829b3b-76f4-4a5e-b0b4-84984acc905a",
+            "role": "user",
+            "content": "In 10 years, we want more of our students to graduate high school and persist in postsecondary education.",
+            "timestamp": 1778025938414
+          },
+          {
+            "id": "cfd050e7-b7e1-43f9-9e44-53691bf6ef11",
+            "role": "assistant",
+            "content": "That's a very clear aspiration for the students.\n\nIs that change — graduating high school and persisting in postsecondary education — mainly about how they think or feel, what they're able to do, or the actual conditions of their life?",
+            "timestamp": 1778025941317,
+            "quickReplies": [
+              {
+                "label": "How they think or feel",
+                "value": "It's mainly a shift in how they think or feel — mindset, confidence, sense of possibility."
+              },
+              {
+                "label": "What they're able to do",
+                "value": "It's mainly about what they're able to do — skills, behaviors, actions they take."
+              },
+              {
+                "label": "Their life circumstances",
+                "value": "It's mainly about their actual circumstances — employment, housing, health, safety."
+              },
+              {
+                "label": "All of these",
+                "value": "It's a combination — mindset, behavior, and real life conditions."
+              },
+              {
+                "label": "I want to type my own answer",
+                "value": "__type__",
+                "action": "open-input"
+              }
+            ]
+          },
+          {
+            "id": "83db545a-e6a9-40e0-97ad-1141947411dc",
+            "role": "user",
+            "content": "We are focused on helping younger students elarn how to read because this serves as a fundamentally important foundation for whatever aspirations they have.  Our impact is more focused on them having that foundation.",
+            "timestamp": 1778025977186
+          },
+          {
+            "id": "88ed6c1b-0a61-4b47-9735-4cdfb566cc41",
+            "role": "assistant",
+            "content": "Thanks for clarifying that your program provides a foundational skill in reading. It's important to understand how that foundation connects to their long-term aspirations.\n\nTo make this specific, what exact difference related to reading proficiency should we be able to point to in 10 years for these students, that then enables their future success? For example, would they be reading at grade level, or something similar?",
+            "timestamp": 1778025982652,
+            "quickReplies": [
+              {
+                "label": "Education milestones",
+                "value": "Specifically, we expect more students to graduate high school on time and persist in college or credential programs."
+              },
+              {
+                "label": "Workforce milestones",
+                "value": "Specifically, we expect more students to secure stable employment with upward career mobility."
+              },
+              {
+                "label": "Safety and justice milestones",
+                "value": "Specifically, we expect lower justice-system involvement and stronger personal and community safety outcomes."
+              },
+              {
+                "label": "Wellbeing milestones",
+                "value": "Specifically, we expect stronger mental health, stable housing, and supportive long-term relationships."
+              },
+              {
+                "label": "I want to type my own answer",
+                "value": "__type__",
+                "action": "open-input"
+              }
+            ]
+          },
+          {
+            "id": "513537bf-eb04-4aae-b60e-1343da68cda3",
+            "role": "user",
+            "content": "Specifically, we expect more students to graduate high school on time and persist in college or credential programs.",
+            "timestamp": 1778025995135
+          },
+          {
+            "id": "dc7bcbb8-efd9-48a6-b7d3-adf61b82d460",
+            "role": "assistant",
+            "content": "Thank you for reiterating that specific long-term goal. Based on our conversation, here is a draft of your intended impact statement:\n\nStudents in grades K-3 in North Philadelphia will graduate high school on time and persist in college or credential programs.\n\nDoes this statement capture the ultimate impact you are working to achieve for those you serve?",
+            "timestamp": 1778025999369,
+            "quickReplies": [
+              {
+                "label": "That captures it",
+                "value": "Yes, that captures it."
+              },
+              {
+                "label": "Make it more specific",
+                "value": "Can you make this impact statement more specific and concrete?"
+              },
+              {
+                "label": "Adjust the wording",
+                "value": "I'd revise the impact statement this way: ",
+                "action": "prefill"
+              },
+              {
+                "label": "Not quite",
+                "value": "Not quite — here's what we're aiming for instead: ",
+                "action": "prefill"
+              },
+              {
+                "label": "I want to type my own answer",
+                "value": "__type__",
+                "action": "open-input"
+              }
+            ]
+          },
+          {
+            "id": "831a0925-0421-41b3-b8a5-1b5b71238e68",
+            "role": "user",
+            "content": "IT's missing that our work is focused on literacy",
+            "timestamp": 1778026014643
+          },
+          {
+            "id": "440295ef-3029-4118-8f24-ff1500cd1976",
+            "role": "assistant",
+            "content": "Thank you for that important clarification. We can certainly integrate the literacy focus into the long-term impact statement.\n\nHere is a revised draft:\n\nStudents in grades K-3 in North Philadelphia will achieve strong foundational literacy skills, leading to on-time high school graduation and persistence in college or credential programs.\n\nDoes this statement better capture the ultimate impact you are working to achieve, including the focus on literacy?",
+            "timestamp": 1778026020472,
+            "quickReplies": [
+              {
+                "label": "Walk me through it",
+                "value": "Can you walk me through what a long-term goal looks like for a program like ours?"
+              },
+              {
+                "label": "Skip for now",
+                "value": "Let's skip the long-term goal for now and come back to it."
+              },
+              {
+                "label": "I want to type my own answer",
+                "value": "__type__",
+                "action": "open-input"
+              }
+            ]
+          }
+        ],
+        "modelSnapshot": {
+          "intended_impact": {
+            "population": "students in grades K-3 living in North Philadelphia",
+            "geography": "North Philadelphia",
+            "long_term_goal": "more students to graduate high school on time and persist in college or credential programs",
+            "compiled_statement": "Students in grades K-3 in North Philadelphia will achieve strong foundational literacy skills, leading to on-time high school graduation and persistence in college or credential programs."
+          },
+          "stakeholders": [
+            {
+              "id": "students",
+              "label": "Students"
+            }
+          ],
+          "implementation": {
+            "resources": {
+              "human": [],
+              "material": [],
+              "financial": [],
+              "knowledge": []
+            },
+            "activities": []
+          },
+          "outcomes": {
+            "short_term": [],
+            "medium_term": [],
+            "long_term": []
+          }
+        },
+        "submittedAt": "2026-05-06T00:07:49.456Z"
+      }
+    }
   ]
 }

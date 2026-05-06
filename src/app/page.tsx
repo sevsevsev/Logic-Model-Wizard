@@ -23,6 +23,7 @@ export default function Home() {
   const addMessage = useLogicModelStore((s) => s.addMessage);
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const setLoading = useLogicModelStore((s) => s.setLoading);
+  const model = useLogicModelStore((s) => s.model);
 
   async function runDocumentBootstrap(files: FileList) {
     const formData = new FormData();

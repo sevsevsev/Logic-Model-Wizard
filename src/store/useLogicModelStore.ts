@@ -92,9 +92,12 @@ interface LogicModelPatch {
 
 export type MessageRole = "user" | "assistant";
 
+export type QuickReplyAction = "send" | "open-input" | "prefill";
+
 export interface QuickReply {
   label: string;
   value: string;
+  action?: QuickReplyAction;
 }
 
 export interface ChatMessage {

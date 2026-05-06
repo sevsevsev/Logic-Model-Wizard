@@ -6,9 +6,15 @@ import {
   type PersistedDraft,
   isValidPersistedDraft,
 } from "@/lib/drafts/types";
+import {
+  type FeedbackCapture,
+  type StoredFeedbackRecord,
+  isValidFeedbackCapture,
+} from "@/lib/feedback/types";
 
 interface CloudDraftDatabase {
   drafts: CloudDraftRecord[];
+  feedback: StoredFeedbackRecord[];
 }
 
 const DB_PATH = path.join(process.cwd(), ".data", "cloud-drafts.json");
@@ -20,7 +26,7 @@ async function ensureDbFile(): Promise<void> {
   try {
     await fs.access(DB_PATH);
   } catch {
-    const seed: CloudDraftDatabase = { drafts: [] };
+    const seed: CloudDraftDatabase = { drafts: [], feedback: [] };
     await fs.writeFile(DB_PATH, JSON.stringify(seed, null, 2), "utf8");
   }
 }
@@ -31,11 +37,14 @@ async function readDb(): Promise<CloudDraftDatabase> {
   try {
     const parsed = JSON.parse(raw) as CloudDraftDatabase;
     if (!parsed || !Array.isArray(parsed.drafts)) {
-      return { drafts: [] };
+      return { drafts: [], feedback: [] };
     }
-    return parsed;
+    return {
+      drafts: parsed.drafts,
+      feedback: Array.isArray(parsed.feedback) ? parsed.feedback : [],
+    };
   } catch {
-    return { drafts: [] };
+    return { drafts: [], feedback: [] };
   }
 }
 
@@ -110,4 +119,28 @@ export async function deleteCloudDraft(userId: string, id: string): Promise<bool
     await writeDb(db);
   }
   return changed;
+}
+
+export async function saveFeedbackForUser(
+  userId: string,
+  capture: FeedbackCapture
+): Promise<StoredFeedbackRecord> {
+  if (!isValidFeedbackCapture(capture)) {
+    throw new Error("Invalid feedback payload");
+  }
+
+  const db = await readDb();
+  const now = new Date().toISOString();
+
+  const record: StoredFeedbackRecord = {
+    id: crypto.randomUUID(),
+    userId,
+    createdAt: now,
+    capture,
+  };
+
+  db.feedback.push(record);
+  await writeDb(db);
+
+  return record;
 }

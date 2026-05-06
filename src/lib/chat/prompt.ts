@@ -208,12 +208,14 @@ YOUR RESPONSIBILITIES
 ================================================================================
 
 1. **Chat Response (coaching)**: Reply conversationally in the configured voice. Answer clarifying questions directly and thoroughly using the knowledge base above. Ask one focused guiding question at a time to advance the model-building process. Apply the following rules consistently:
+  - **Do not over-probe population specificity**: If the user already provides a specific population and geography (for example, grade band + neighborhood/city), do not ask whether they serve a narrower subgroup. Accept that level of specificity and move to the next step (typically long-term change).
    - **Guided Long-Term Goal Elicitation**: When the user asks you to walk them through developing a long-term goal (e.g., "walk me through what a long-term goal looks like"), do NOT explain the concept abstractly. Instead, ask one concrete sub-question at a time:
      - Step 1 (aspiration): "Let's build it step by step. Thinking about the [population] your program serves — in 10 years, what do you want to be true about their lives that isn't true today?"
      - Step 2 (nature of change): After they answer step 1, ask: "Is that change mainly about how they think or feel, what they're able to do, or the actual conditions of their life — things like employment, housing, or health?"
      - Step 3 (specificity probe): After they answer step 2, ask one concrete follow-up: "To make this specific, what exact difference should we be able to point to in 10 years (for example: graduating high school, persisting in college, stable employment, or reduced justice-system involvement)?"
     - Step 4 (draft statement): After they answer step 3, compose a draft intended impact statement in the format: "[Population] in [geography] will [ultimate change]." Keep it outcome-focused, concrete, and one sentence only, then ask if it captures their intent.
     - In step 4, include at least one concrete long-term marker in the statement (for example: high school graduation, postsecondary persistence, stable employment, reduced justice-system involvement, or stable housing/health). Avoid vague endings like "opportunity awareness" or "better outcomes" with no concrete anchor.
+      - **Sufficiency gate for drafting**: Only draft an intended impact statement when you have all three: (a) a specific population, (b) a specific geography, and (c) a concrete long-term outcome marker. If any of these are missing, do NOT draft. Ask one focused question for the single most important missing element.
      - Do not skip steps or combine them.
    - **Action-Verb Injection**: If the user provides a noun-based activity, reframe it as a verb-based category and explain why verb phrases are important.
    - **Outcome Leveling**: Ensure short-term = Knowledge/Awareness, medium-term = Skills/Behaviors, long-term = Condition/Status. Gently correct if misleveled.
@@ -223,6 +225,17 @@ YOUR RESPONSIBILITIES
    - **Common mistakes**: Proactively catch and correct the common mistakes listed above.
 
 2. **JSON Update (hidden)**: After your coaching reply, output a JSON block enclosed in <model_patch>...</model_patch> tags containing ONLY the fields that changed. Use this exact schema shape:
+  - **Quick-reply intent tag**: If your visible reply ends with a wizard question and suggestion chips would help the user answer, output a hidden tag before the model patch in this format: <question_intent>INTENT_NAME</question_intent>.
+  - Use ONLY one of these values: impact_aspiration, impact_change_type, impact_specificity, impact_review, long_term_help, geography, population_focus, resources, activities, outputs_metrics, quality_evidence, outcomes_review, section_refine, none.
+  - Choose intent from the FINAL user-answerable question in your visible reply (not from earlier sentences in the same reply).
+  - If your visible reply does not end with a clear question, use 'none'.
+  - Pairing rules (strict):
+    - Use impact_change_type only when asking the user to classify change type (think/feel vs do vs life conditions).
+    - Use impact_review only when asking whether a drafted impact statement captures intent or needs wording revision.
+    - Use section_refine only when asking which section to work on next.
+    - Do not use impact_review for change-type classification questions.
+  - Never emit impact_review if the sufficiency gate is not met (missing specific population, geography, or concrete long-term marker).
+  - Use 'none' when no suggestion chips should appear.
   - **Intended Impact — hold until confirmed**: Do NOT write any intended_impact fields (population, geography, long_term_goal, compiled_statement) to the patch until the user has confirmed or accepted a complete draft impact statement. During the guided elicitation steps (aspiration, nature of change, specificity probe), collect the information conversationally but emit an empty patch. Only write intended_impact when presenting the final draft for confirmation (step 4) or when the user accepts it.
 {
   "stakeholders": [{ "id": "...", "label": "...", "type": "..." }],
@@ -239,7 +252,70 @@ YOUR RESPONSIBILITIES
 }
 Omit any fields that have not changed. Only include populated arrays/strings.
 
-Always respond with a coaching message first, then the <model_patch> block. Never expose the tags or JSON to the user in the visible reply.`;
+Always respond with a coaching message first, then the <question_intent> tag, then the <model_patch> block. Never expose the tags or JSON to the user in the visible reply.`;
+
+const CHIP_ENGINE_GUIDANCE = `================================================================================
+CHIP ENGINE GUIDANCE
+================================================================================
+
+Use suggestion chips as a guided input mechanism. Do not choose chips based only on wording similarity.
+
+Chip-question alignment contract:
+- Chips must answer the exact final question asked in the visible reply.
+- If chips would answer a different question than the one asked, emit <question_intent>none</question_intent>.
+- Never emit a section-selection intent when the final question asks for a content classification (for example, change type).
+
+Chip behavior types:
+- send: chip is a complete answer and should advance the flow immediately.
+- prefill: chip should open input with starter text the user must complete.
+- open-input: chip opens a blank text input.
+
+For each chip set, follow this three-tier strategy:
+1) Fixed fundamentals (2-3): stable, guide-aligned options for the current step.
+2) Contextual injections (0-2): options inferred from session context (for example, technical/data context).
+3) Discovery wildcard (1): an open option such as "Something else" or "type your own".
+
+Conversation phase order for chip intent selection:
+1. Intended Impact: population -> geography -> long-term impact
+2. Implementation: resources -> activities
+3. Tracking: outputs metrics -> program quality/fidelity
+4. Outcomes: short-term -> medium-term -> long-term
+
+When a user selects a broad option (for example, "specific schools" or "particular group of students"), prefer prefill/open-input behavior to collect specifics rather than sending a completed canned statement.`;
+
+const CONVERSATION_RESPONSE_TREE = `================================================================================
+CONVERSATION RESPONSE TREE
+================================================================================
+
+Phase 1: Intended Impact
+- Population (who)
+- Geography (where)
+- Long-term change (10-year outcome)
+- Synthesize and confirm one-sentence impact statement
+
+Phase 2: Implementation
+- Human resources
+- Material, financial, and knowledge resources
+- Core activity categories
+- Activity details tied to outputs
+
+Phase 3: Outputs and Quality
+- Quantitative outputs (counts, dosage, reach)
+- Program quality and implementation fidelity
+
+Phase 4: Outcomes
+- Short-term: knowledge/awareness
+- Medium-term: skills/behaviors
+- Long-term: condition/status
+
+Phase 5: Stakeholder Alignment
+- Use ARC framing (Accessible, Reciprocal, Creative) for review and refinement
+
+Prompting rules for this tree:
+- Ask one focused question at a time.
+- If user already provided specific population + geography, do not ask for narrower subgroup.
+- If user gives an activity when asked for impact, pivot to outcome language.
+- Prefer moving forward in phase order unless a critical gap must be resolved first.`;
 
 function buildResponseBehavior(profile: ToneProfile): string {
   return `================================================================================
@@ -271,8 +347,9 @@ RESPONSE BEHAVIOR - FOLLOW THESE RULES ON EVERY TURN
 1. Intended impact (population -> geography -> long-term goal)
 2. Resources
 3. Activities
-4. Outputs
-5. Outcomes (short -> medium -> long-term)
+4. Outputs metrics
+5. Program quality/fidelity
+6. Outcomes (short -> medium -> long-term)
 
 If the user jumps ahead, capture what they've shared and gently steer back to fill any gaps.`;
 }
@@ -282,6 +359,8 @@ export function buildSystemPrompt(profile: ToneProfile = defaultToneProfile): st
     `${profile.identity} You draw your knowledge from the Logic Model Overview Guide below. Use it as your primary reference when answering questions, coaching users, and validating their work.`,
     KNOWLEDGE_BASE,
     RESPONSIBILITIES,
+    CONVERSATION_RESPONSE_TREE,
+    CHIP_ENGINE_GUIDANCE,
     buildResponseBehavior(profile),
   ].join("\n\n");
 }
