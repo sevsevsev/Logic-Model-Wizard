@@ -937,10 +937,30 @@ function getQuickRepliesForIntent(intent: QuestionIntent): QuickReply[] | undefi
         { label: "Outcomes", value: "I want to refine the outcomes section." },
         { label: "Resources", value: "I want to refine the resources section." },
         { label: "Looks good", value: "The model looks good to me." },
+        ALWAYS_TYPE,
       ];
     default:
       return undefined;
   }
+}
+
+function ensureTypeQuickReply(replies: QuickReply[]): QuickReply[] {
+  const hasTypeReply = replies.some(
+    (reply) => reply.value === "__type__" || reply.action === "open-input"
+  );
+
+  if (hasTypeReply) {
+    return replies;
+  }
+
+  return [
+    ...replies,
+    {
+      label: "I want to type my own answer",
+      value: "__type__",
+      action: "open-input",
+    },
+  ];
 }
 
 function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
@@ -1068,5 +1088,6 @@ function detectQuickReplies(
   if (!intent) return undefined;
   const baseReplies = getQuickRepliesForIntent(intent);
   if (!baseReplies) return undefined;
-  return injectContextualQuickReplies(intent, baseReplies, contextText);
+  const contextualReplies = injectContextualQuickReplies(intent, baseReplies, contextText);
+  return ensureTypeQuickReply(contextualReplies);
 }

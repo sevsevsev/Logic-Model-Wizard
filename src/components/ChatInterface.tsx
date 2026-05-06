@@ -386,16 +386,14 @@ export default function ChatInterface() {
                         {qr.label}
                       </button>
                     ))}
-                  {/* "Type my own" is always last, subtly styled */}
-                  {activeReplies.some((qr) => qr.value === "__type__" || qr.action === "open-input") && (
-                    <button
-                      onClick={() => handleQuickReply({ label: "I want to type my own answer", value: "__type__", action: "open-input" })}
-                      disabled={isLoading || typeInputVisible}
-                      className="px-3 py-1.5 rounded-full text-xs border border-dashed border-[#9fc3da] bg-transparent text-[#48617c] hover:text-[#0b315b] hover:border-[#47aad8] transition-colors disabled:opacity-40"
-                    >
-                      I want to type my own answer
-                    </button>
-                  )}
+                  {/* Always provide a manual typing path when chips are shown */}
+                  <button
+                    onClick={() => handleQuickReply({ label: "I want to type my own answer", value: "__type__", action: "open-input" })}
+                    disabled={isLoading || typeInputVisible}
+                    className="px-3 py-1.5 rounded-full text-xs border border-dashed border-[#9fc3da] bg-transparent text-[#48617c] hover:text-[#0b315b] hover:border-[#47aad8] transition-colors disabled:opacity-40"
+                  >
+                    I want to type my own answer
+                  </button>
                 </div>
               )}
             </div>
