@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download } from "lucide-react";
 import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
@@ -21,7 +21,6 @@ export default function ChatInterface() {
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const setLoading = useLogicModelStore((s) => s.setLoading);
   const resetModel = useLogicModelStore((s) => s.resetModel);
-  const model = useLogicModelStore((s) => s.model);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -162,6 +161,65 @@ export default function ChatInterface() {
     return generated;
   }
 
+  function exportDebugSnapshot() {
+    const store = useLogicModelStore.getState();
+    const now = new Date();
+    const safeUserId =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LOCAL_CLOUD_USER_KEY)
+        : null;
+
+    const payload = {
+      schemaVersion: "logic-model-debug-snapshot-v1",
+      exportedAtIso: now.toISOString(),
+      exportedAtUnixMs: now.getTime(),
+      app: {
+        name: "lm-chatbot",
+        runtime: "browser",
+      },
+      session: {
+        userId: safeUserId,
+        messageCount: store.messages.length,
+        assistantMessageCount: store.messages.filter((m) => m.role === "assistant").length,
+        userMessageCount: store.messages.filter((m) => m.role === "user").length,
+      },
+      browser: typeof window !== "undefined"
+        ? {
+            userAgent: window.navigator.userAgent,
+            language: window.navigator.language,
+            url: window.location.href,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          }
+        : null,
+      ui: {
+        isLoading: store.isLoading,
+        activeQuickReplies:
+          store.messages.length > 0 &&
+          store.messages[store.messages.length - 1]?.role === "assistant"
+            ? (store.messages[store.messages.length - 1]?.quickReplies ?? [])
+            : [],
+      },
+      model: store.model,
+      messages: store.messages,
+      draftSnapshot: store.getDraftSnapshot(),
+      notes: [
+        "Attach this file to your bug report chat.",
+        "Include what you expected, what happened, and which message looked wrong.",
+      ],
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `logic-model-debug-${stamp}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function submitFeedback(
     assistantMessageId: string,
     assistantMessage: string,
@@ -247,13 +305,23 @@ export default function ChatInterface() {
           <h2 className="font-display text-base font-semibold text-[#0b315b]">AI Coach</h2>
           <p className="text-xs text-[#48617c]">Logic Model Architect</p>
         </div>
-        <button
-          onClick={resetModel}
-          title="Reset model"
-          className="p-1.5 rounded-md text-[#48617c] hover:text-[#0b315b] hover:bg-[#dcebf5] transition-colors"
-        >
-          <RotateCcw size={15} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={exportDebugSnapshot}
+            title="Export debug snapshot"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[#9fc3da] bg-white px-2 py-1 text-[11px] text-[#48617c] hover:text-[#0b315b] hover:border-[#47aad8] transition-colors"
+          >
+            <Download size={13} />
+            Export state
+          </button>
+          <button
+            onClick={resetModel}
+            title="Reset model"
+            className="p-1.5 rounded-md text-[#48617c] hover:text-[#0b315b] hover:bg-[#dcebf5] transition-colors"
+          >
+            <RotateCcw size={15} />
+          </button>
+        </div>
       </div>
 
       <DocumentBootstrap />
