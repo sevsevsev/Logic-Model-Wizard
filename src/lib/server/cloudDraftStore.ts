@@ -8,13 +8,17 @@ import {
 } from "@/lib/drafts/types";
 import {
   type FeedbackCapture,
+  type DebugSnapshotCapture,
   type StoredFeedbackRecord,
+  type StoredDebugSnapshotRecord,
   isValidFeedbackCapture,
+  isValidDebugSnapshotCapture,
 } from "@/lib/feedback/types";
 
 interface CloudDraftDatabase {
   drafts: CloudDraftRecord[];
   feedback: StoredFeedbackRecord[];
+  debugSnapshots: StoredDebugSnapshotRecord[];
 }
 
 const DB_PATH = path.join(process.cwd(), ".data", "cloud-drafts.json");
@@ -26,7 +30,7 @@ async function ensureDbFile(): Promise<void> {
   try {
     await fs.access(DB_PATH);
   } catch {
-    const seed: CloudDraftDatabase = { drafts: [], feedback: [] };
+    const seed: CloudDraftDatabase = { drafts: [], feedback: [], debugSnapshots: [] };
     await fs.writeFile(DB_PATH, JSON.stringify(seed, null, 2), "utf8");
   }
 }
@@ -37,14 +41,15 @@ async function readDb(): Promise<CloudDraftDatabase> {
   try {
     const parsed = JSON.parse(raw) as CloudDraftDatabase;
     if (!parsed || !Array.isArray(parsed.drafts)) {
-      return { drafts: [], feedback: [] };
+      return { drafts: [], feedback: [], debugSnapshots: [] };
     }
     return {
       drafts: parsed.drafts,
       feedback: Array.isArray(parsed.feedback) ? parsed.feedback : [],
+      debugSnapshots: Array.isArray(parsed.debugSnapshots) ? parsed.debugSnapshots : [],
     };
   } catch {
-    return { drafts: [], feedback: [] };
+    return { drafts: [], feedback: [], debugSnapshots: [] };
   }
 }
 
@@ -143,4 +148,49 @@ export async function saveFeedbackForUser(
   await writeDb(db);
 
   return record;
+}
+
+export async function saveDebugSnapshotForUser(
+  userId: string,
+  capture: DebugSnapshotCapture
+): Promise<StoredDebugSnapshotRecord> {
+  if (!isValidDebugSnapshotCapture(capture)) {
+    throw new Error("Invalid debug snapshot payload");
+  }
+
+  const db = await readDb();
+  const now = new Date().toISOString();
+
+  const record: StoredDebugSnapshotRecord = {
+    id: crypto.randomUUID(),
+    userId,
+    createdAt: now,
+    capture,
+  };
+
+  db.debugSnapshots.push(record);
+  await writeDb(db);
+
+  return record;
+}
+
+export async function listDebugSnapshotsByUser(
+  userId: string,
+  limit = 100
+): Promise<StoredDebugSnapshotRecord[]> {
+  const db = await readDb();
+  return db.debugSnapshots
+    .filter((entry) => entry.userId === userId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, Math.max(1, limit));
+}
+
+export async function listAllDebugSnapshots(
+  limit = 200
+): Promise<StoredDebugSnapshotRecord[]> {
+  const db = await readDb();
+  return db.debugSnapshots
+    .slice()
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, Math.max(1, limit));
 }

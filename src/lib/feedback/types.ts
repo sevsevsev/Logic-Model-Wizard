@@ -21,6 +21,52 @@ export interface StoredFeedbackRecord {
   capture: FeedbackCapture;
 }
 
+export interface DebugSnapshotCapture {
+  schemaVersion: "logic-model-debug-snapshot-v1";
+  exportedAtIso: string;
+  exportedAtUnixMs: number;
+  app: {
+    name: string;
+    runtime: string;
+  };
+  session: {
+    userId: string | null;
+    messageCount: number;
+    assistantMessageCount: number;
+    userMessageCount: number;
+  };
+  browser:
+    | {
+        userAgent: string;
+        language: string;
+        url: string;
+        timeZone: string;
+      }
+    | null;
+  ui: {
+    isLoading: boolean;
+    activeQuickReplies: unknown[];
+  };
+  model: LogicModel;
+  messages: ChatMessage[];
+  draftSnapshot: {
+    model: LogicModel;
+    messages: ChatMessage[];
+  };
+  feedbackReport: {
+    description: string;
+    capturedAtIso: string;
+  };
+  notes: string[];
+}
+
+export interface StoredDebugSnapshotRecord {
+  id: string;
+  userId: string;
+  createdAt: string;
+  capture: DebugSnapshotCapture;
+}
+
 export function isChatMessageArray(value: unknown): value is ChatMessage[] {
   return (
     Array.isArray(value) &&
@@ -119,5 +165,60 @@ export function isValidFeedbackCapture(value: unknown): value is FeedbackCapture
     isChatMessageArray(v.history) &&
     isValidLogicModel(v.modelSnapshot) &&
     typeof v.submittedAt === "string"
+  );
+}
+
+export function isValidDebugSnapshotCapture(value: unknown): value is DebugSnapshotCapture {
+  if (!value || typeof value !== "object") return false;
+
+  const v = value as Record<string, unknown>;
+  const app = v.app as Record<string, unknown> | undefined;
+  const session = v.session as Record<string, unknown> | undefined;
+  const ui = v.ui as Record<string, unknown> | undefined;
+  const feedbackReport = v.feedbackReport as Record<string, unknown> | undefined;
+  const draftSnapshot = v.draftSnapshot as Record<string, unknown> | undefined;
+  const browser = v.browser;
+
+  const browserIsValid =
+    browser === null ||
+    (
+      typeof browser === "object" &&
+      browser !== null &&
+      typeof (browser as Record<string, unknown>).userAgent === "string" &&
+      typeof (browser as Record<string, unknown>).language === "string" &&
+      typeof (browser as Record<string, unknown>).url === "string" &&
+      typeof (browser as Record<string, unknown>).timeZone === "string"
+    );
+
+  const draftIsValid =
+    !!draftSnapshot &&
+    isValidLogicModel(draftSnapshot.model) &&
+    isChatMessageArray(draftSnapshot.messages);
+
+  return (
+    v.schemaVersion === "logic-model-debug-snapshot-v1" &&
+    typeof v.exportedAtIso === "string" &&
+    typeof v.exportedAtUnixMs === "number" &&
+    !!app &&
+    typeof app.name === "string" &&
+    typeof app.runtime === "string" &&
+    !!session &&
+    (session.userId === null || typeof session.userId === "string") &&
+    typeof session.messageCount === "number" &&
+    typeof session.assistantMessageCount === "number" &&
+    typeof session.userMessageCount === "number" &&
+    browserIsValid &&
+    !!ui &&
+    typeof ui.isLoading === "boolean" &&
+    Array.isArray(ui.activeQuickReplies) &&
+    isValidLogicModel(v.model) &&
+    isChatMessageArray(v.messages) &&
+    draftIsValid &&
+    !!feedbackReport &&
+    typeof feedbackReport.description === "string" &&
+    feedbackReport.description.trim().length >= 20 &&
+    typeof feedbackReport.capturedAtIso === "string" &&
+    Array.isArray(v.notes) &&
+    v.notes.every((item) => typeof item === "string")
   );
 }

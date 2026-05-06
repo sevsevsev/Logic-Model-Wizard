@@ -5,6 +5,7 @@ import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download } from "lucide
 import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
+import type { DebugSnapshotCapture } from "@/lib/feedback/types";
 
 const FEEDBACK_REASONS = [
   "Incorrect or made up",
@@ -33,6 +34,12 @@ export default function ChatInterface() {
   const [feedbackSavingId, setFeedbackSavingId] = useState<string | null>(null);
   const [feedbackSavedByMessage, setFeedbackSavedByMessage] = useState<Record<string, "up" | "down">>({});
   const [feedbackErrorByMessage, setFeedbackErrorByMessage] = useState<Record<string, string>>({});
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportBugDescription, setExportBugDescription] = useState("");
+  const [exportBugError, setExportBugError] = useState<string | null>(null);
+  const [exportSaving, setExportSaving] = useState(false);
+  const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
+  const exportDescriptionRef = useRef<HTMLTextAreaElement>(null);
 
   // Active quick replies: only when last message is an assistant message with suggestions
   const lastMsg = messages[messages.length - 1];
@@ -50,6 +57,11 @@ export default function ChatInterface() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    if (!isExportModalOpen) return;
+    setTimeout(() => exportDescriptionRef.current?.focus(), 20);
+  }, [isExportModalOpen]);
 
   // Core fetch — sends a message string to the API
   async function sendToApi(text: string) {
@@ -161,7 +173,7 @@ export default function ChatInterface() {
     return generated;
   }
 
-  function exportDebugSnapshot() {
+  function buildDebugSnapshotPayload(bugDescription: string): DebugSnapshotCapture {
     const store = useLogicModelStore.getState();
     const now = new Date();
     const safeUserId =
@@ -169,7 +181,7 @@ export default function ChatInterface() {
         ? window.localStorage.getItem(LOCAL_CLOUD_USER_KEY)
         : null;
 
-    const payload = {
+    return {
       schemaVersion: "logic-model-debug-snapshot-v1",
       exportedAtIso: now.toISOString(),
       exportedAtUnixMs: now.getTime(),
@@ -202,22 +214,71 @@ export default function ChatInterface() {
       model: store.model,
       messages: store.messages,
       draftSnapshot: store.getDraftSnapshot(),
+      feedbackReport: {
+        description: bugDescription,
+        capturedAtIso: now.toISOString(),
+      },
       notes: [
         "Attach this file to your bug report chat.",
         "Include what you expected, what happened, and which message looked wrong.",
       ],
     };
+  }
 
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `logic-model-debug-${stamp}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  function handleExportRequest() {
+    setExportBugDescription("");
+    setExportBugError(null);
+    setExportStatusMessage(null);
+    setIsExportModalOpen(true);
+  }
+
+  async function handleExportConfirm() {
+    const description = exportBugDescription.trim();
+    if (description.length < 20) {
+      setExportBugError("Please provide at least 20 characters so the export has enough debugging detail.");
+      return;
+    }
+
+    const userId = requireCollaboratorId();
+    if (!userId) {
+      setExportBugError("Could not determine user ID for saving the report.");
+      return;
+    }
+
+    setExportSaving(true);
+    setExportBugError(null);
+
+    try {
+      const capture = buildDebugSnapshotPayload(description);
+      const res = await fetch("/api/feedback/debug", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({ capture }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save debug report.");
+      }
+
+      setIsExportModalOpen(false);
+      setExportBugDescription("");
+      setExportBugError(null);
+      setExportStatusMessage("Debug report saved. You can submit another report anytime.");
+    } catch {
+      setExportBugError("Could not save the debug report. Please try again.");
+    } finally {
+      setExportSaving(false);
+    }
+  }
+
+  function handleExportCancel() {
+    setIsExportModalOpen(false);
+    setExportBugDescription("");
+    setExportBugError(null);
+    setExportSaving(false);
   }
 
   async function submitFeedback(
@@ -306,13 +367,20 @@ export default function ChatInterface() {
           <p className="text-xs text-[#48617c]">Logic Model Architect</p>
         </div>
         <div className="flex items-center gap-1.5">
+          <a
+            href="/debug-reports"
+            title="View saved debug reports"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[#9fc3da] bg-white px-2 py-1 text-[11px] text-[#48617c] hover:text-[#0b315b] hover:border-[#47aad8] transition-colors"
+          >
+            View reports
+          </a>
           <button
-            onClick={exportDebugSnapshot}
-            title="Export debug snapshot"
+            onClick={handleExportRequest}
+            title="Save debug report"
             className="inline-flex items-center gap-1.5 rounded-md border border-[#9fc3da] bg-white px-2 py-1 text-[11px] text-[#48617c] hover:text-[#0b315b] hover:border-[#47aad8] transition-colors"
           >
             <Download size={13} />
-            Export state
+            Save report
           </button>
           <button
             onClick={resetModel}
@@ -325,6 +393,12 @@ export default function ChatInterface() {
       </div>
 
       <DocumentBootstrap />
+
+      {exportStatusMessage && (
+        <div className="px-4 py-2 border-b border-[#c6deed] bg-[#eef8f0] text-xs text-[#1f6b2a]">
+          {exportStatusMessage}
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
@@ -503,6 +577,51 @@ export default function ChatInterface() {
           <p className="text-[10px] text-[#6d8096] mt-1.5 text-center">
             Shift+Enter for new line · Enter to send
           </p>
+        </div>
+      )}
+
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b315b]/35 p-4">
+          <div className="w-full max-w-xl rounded-xl border border-[#9fc3da] bg-white p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-[#0b315b]">Export debug snapshot</h3>
+            <p className="mt-1 text-xs text-[#48617c]">
+              Describe what went wrong. This report will be saved on the server so your team can review it later without sharing downloaded files.
+            </p>
+
+            <textarea
+              ref={exportDescriptionRef}
+              value={exportBugDescription}
+              onChange={(e) => {
+                setExportBugDescription(e.target.value);
+                if (exportBugError) setExportBugError(null);
+              }}
+              rows={7}
+              placeholder="Example: After I answered the geography question with specific ZIP codes, the assistant repeated a generic follow-up and the quick-reply chips were for impact drafting instead of population focus."
+              className="mt-3 w-full resize-y rounded-md border border-[#c6deed] px-3 py-2 text-sm text-[#0b315b] placeholder:text-[#6d8096] outline-none focus:border-[#47aad8]"
+            />
+
+            {exportBugError && (
+              <p className="mt-2 text-xs text-red-600">{exportBugError}</p>
+            )}
+
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                onClick={handleExportCancel}
+                disabled={exportSaving}
+                className="rounded-md border border-[#c6deed] px-3 py-1.5 text-xs text-[#48617c] hover:text-[#0b315b]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportConfirm}
+                disabled={exportSaving}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[#0b315b] px-3 py-1.5 text-xs text-white hover:bg-[#082746] disabled:opacity-50"
+              >
+                <Download size={12} />
+                {exportSaving ? "Saving..." : "Save report"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
