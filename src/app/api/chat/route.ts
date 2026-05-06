@@ -545,16 +545,24 @@ export async function POST(req: NextRequest) {
   // -------------------------------------------------------------------------
 
   // Build Gemini contents array from chat history
+  const impactDraftReadiness = inferImpactDraftReadiness(
+    modelSnapshot,
+    safeHistory,
+    message.trim()
+  );
+
   const modelContextText = modelSnapshot
     ? `\n\n[Current Logic Model Snapshot]\n${JSON.stringify(modelSnapshot)}`
     : "";
+
+  const impactReadinessText = buildImpactReadinessInstruction(impactDraftReadiness);
 
   const contents = [
     ...safeHistory.map((msg) => ({
       role: msg.role === "user" ? "user" : "model",
       parts: [{ text: msg.content }],
     })),
-    { role: "user", parts: [{ text: `${message.trim()}${modelContextText}` }] },
+    { role: "user", parts: [{ text: `${message.trim()}${modelContextText}${impactReadinessText}` }] },
   ];
 
   const geminiPayload = {
@@ -636,6 +644,16 @@ export async function POST(req: NextRequest) {
     questionIntent = "impact_aspiration";
   }
 
+  if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
+    if (modelPatch?.intended_impact) {
+      const { intended_impact: _omit, ...remainingPatch } = modelPatch;
+      modelPatch = remainingPatch;
+    }
+
+    questionIntent = impactDraftReadiness.missingIntent;
+    reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
+  }
+
   const contextText = [
     ...safeHistory.map((msg) => msg.content),
     message.trim(),
@@ -654,6 +672,7 @@ export async function POST(req: NextRequest) {
       chosenIntent: intentResolution.intent ?? null,
       source: intentResolution.source,
       quickReplyCount: quickReplies?.length ?? 0,
+      impactDraftReadiness,
     });
   }
 
@@ -805,6 +824,107 @@ function isNonEmpty(value: string | undefined | null): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+const CONCRETE_IMPACT_MARKER_REGEX =
+  /(graduate|graduation|postsecondary|college|credential|employment|job|wage|income|housing|homeless|justice|incarcer|arrest|violence|safety|health|mental health|attendance|absenteeism|reading level|grade level)/i;
+
+interface ImpactDraftReadiness {
+  ready: boolean;
+  populationKnown: boolean;
+  geographyKnown: boolean;
+  concreteOutcomeKnown: boolean;
+  missingIntent?: QuestionIntent;
+}
+
+function hasConcreteImpactMarker(text: string): boolean {
+  return CONCRETE_IMPACT_MARKER_REGEX.test(text);
+}
+
+function inferImpactDraftReadiness(
+  modelSnapshot: LogicModel | undefined,
+  safeHistory: ChatMessage[],
+  latestUserMessage: string
+): ImpactDraftReadiness {
+  const latestMessage = latestUserMessage.trim();
+  const historyUserText = safeHistory
+    .filter((msg) => msg.role === "user")
+    .map((msg) => msg.content)
+    .join("\n");
+
+  const contextText = `${historyUserText}\n${latestMessage}`;
+  const modelPopulation = modelSnapshot?.intended_impact.population ?? "";
+  const modelGeography = modelSnapshot?.intended_impact.geography ?? "";
+  const modelOutcome = `${modelSnapshot?.intended_impact.long_term_goal ?? ""} ${
+    modelSnapshot?.intended_impact.compiled_statement ?? ""
+  }`;
+
+  const populationKnown =
+    (isNonEmpty(modelPopulation) && looksSpecificPopulation(modelPopulation)) ||
+    looksSpecificPopulation(contextText);
+  const geographyKnown =
+    (isNonEmpty(modelGeography) && looksSpecificGeography(modelGeography)) ||
+    looksSpecificGeography(contextText);
+  const concreteOutcomeKnown =
+    hasConcreteImpactMarker(modelOutcome) || hasConcreteImpactMarker(contextText);
+
+  const ready = populationKnown && geographyKnown && concreteOutcomeKnown;
+
+  if (ready) {
+    return { ready, populationKnown, geographyKnown, concreteOutcomeKnown };
+  }
+
+  const missingIntent = !populationKnown
+    ? "population_focus"
+    : !geographyKnown
+      ? "geography"
+      : "impact_specificity";
+
+  return {
+    ready,
+    populationKnown,
+    geographyKnown,
+    concreteOutcomeKnown,
+    missingIntent,
+  };
+}
+
+function buildImpactReadinessInstruction(readiness: ImpactDraftReadiness): string {
+  if (readiness.ready) {
+    return `\n\n[Impact Draft Readiness]\nready: yes\nYou may propose a one-sentence draft intended impact statement, then confirm it with the user.`;
+  }
+
+  const missing = [];
+  if (!readiness.populationKnown) missing.push("specific population");
+  if (!readiness.geographyKnown) missing.push("specific geography");
+  if (!readiness.concreteOutcomeKnown) missing.push("concrete long-term marker");
+
+  return `\n\n[Impact Draft Readiness]\nready: no\nmissing: ${missing.join(", ")}\nDo NOT draft an intended impact statement yet. Ask one focused follow-up question only for the next missing item.`;
+}
+
+function shouldBlockImpactDraft(
+  reply: string,
+  questionIntent: ParsedQuestionIntent | undefined,
+  modelPatch: Partial<LogicModel> | null
+): boolean {
+  if (questionIntent === "impact_review") return true;
+  if (modelPatch?.intended_impact && Object.keys(modelPatch.intended_impact).length > 0) return true;
+
+  return /(draft\s+(?:intended\s+)?impact|does\s+that\s+capture|capture\s+your\s+intent|revise\s+the\s+impact\s+statement)/i.test(
+    reply
+  );
+}
+
+function buildImpactMissingFollowUp(missingIntent: QuestionIntent | undefined): string {
+  switch (missingIntent) {
+    case "population_focus":
+      return "Before I draft an impact statement, who exactly is the primary population you serve?";
+    case "geography":
+      return "Before I draft an impact statement, what specific geography should we anchor it to (for example, citywide, neighborhoods, or specific schools)?";
+    case "impact_specificity":
+    default:
+      return "Before I draft an impact statement, what exact long-term difference should we be able to point to in 10 years (for example: high school graduation, postsecondary persistence, stable employment, or reduced justice-system involvement)?";
+  }
+}
+
 function isLogicModelShape(value: unknown): value is LogicModel {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -887,9 +1007,7 @@ function shouldRequestImpactSpecificity(modelPatch: Partial<LogicModel> | null):
   const candidate = `${impact.compiled_statement ?? ""} ${impact.long_term_goal ?? ""}`.trim();
   if (!candidate) return false;
 
-  const hasConcreteMarker = /(graduate|graduation|postsecondary|college|credential|employment|job|wage|income|housing|homeless|justice|incarcer|arrest|violence|safety|health|mental health|attendance|absenteeism|reading level|grade level)/i.test(
-    candidate
-  );
+  const hasConcreteMarker = hasConcreteImpactMarker(candidate);
 
   const genericSignal = /(better outcomes|opportunity awareness|improved lives|better lives|positive change|thrive|successful futures|be successful|wellbeing|well-being|economic opportunities)/i.test(
     candidate
