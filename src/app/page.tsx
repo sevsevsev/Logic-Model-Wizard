@@ -23,6 +23,7 @@ export default function Home() {
   const addMessage = useLogicModelStore((s) => s.addMessage);
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const setLoading = useLogicModelStore((s) => s.setLoading);
+  const model = useLogicModelStore((s) => s.model);
 
   async function runDocumentBootstrap(files: FileList) {
     const formData = new FormData();
@@ -80,7 +81,7 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: description, history }),
+        body: JSON.stringify({ message: description, history, model }),
       });
 
       const raw = await res.text();

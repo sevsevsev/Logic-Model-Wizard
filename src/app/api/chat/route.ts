@@ -7,6 +7,7 @@ import type { ChatMessage } from "@/store/useLogicModelStore";
 // System prompt — encodes all spec rules
 // ---------------------------------------------------------------------------
 const SYSTEM_PROMPT = buildSystemPrompt();
+const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
 
 const PATCH_EXTRACTION_PROMPT = `You are a strict JSON extraction engine.
 
@@ -514,7 +515,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { message, history } = body as { message?: unknown; history?: unknown };
+  const { message, history, model } = body as { message?: unknown; history?: unknown; model?: unknown };
 
   if (typeof message !== "string" || message.trim().length === 0) {
     return NextResponse.json({ error: "message must be a non-empty string." }, { status: 400 });
@@ -529,6 +530,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "history must be an array." }, { status: 400 });
   }
 
+  const modelSnapshot = isLogicModelShape(model) ? model : undefined;
+
   // Cap history depth to prevent token-stuffing attacks
   const safeHistory = (history as ChatMessage[])
     .slice(-40)
@@ -542,12 +545,16 @@ export async function POST(req: NextRequest) {
   // -------------------------------------------------------------------------
 
   // Build Gemini contents array from chat history
+  const modelContextText = modelSnapshot
+    ? `\n\n[Current Logic Model Snapshot]\n${JSON.stringify(modelSnapshot)}`
+    : "";
+
   const contents = [
     ...safeHistory.map((msg) => ({
       role: msg.role === "user" ? "user" : "model",
       parts: [{ text: msg.content }],
     })),
-    { role: "user", parts: [{ text: message.trim() }] },
+    { role: "user", parts: [{ text: `${message.trim()}${modelContextText}` }] },
   ];
 
   const geminiPayload = {
@@ -577,9 +584,14 @@ export async function POST(req: NextRequest) {
   const rawText: string =
     geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
-  // Split coaching reply from hidden JSON patch
+  // Split coaching reply from hidden tags
+  const intentMatch = rawText.match(/<question_intent>([\s\S]*?)<\/question_intent>/);
   const patchMatch = rawText.match(/<model_patch>([\s\S]*?)<\/model_patch>/);
-  let reply = rawText.replace(/<model_patch>[\s\S]*?<\/model_patch>/g, "").trim();
+  let questionIntent = normalizeQuestionIntent(intentMatch?.[1]);
+  let reply = rawText
+    .replace(/<question_intent>[\s\S]*?<\/question_intent>/g, "")
+    .replace(/<model_patch>[\s\S]*?<\/model_patch>/g, "")
+    .trim();
 
   let modelPatch: Partial<LogicModel> | null = null;
   if (patchMatch?.[1]) {
@@ -616,9 +628,33 @@ export async function POST(req: NextRequest) {
       modelPatch = remainingPatch;
     }
     reply = `${reply}\n\nLet's make that impact statement more specific. What exact difference should we be able to point to in 10 years (for example: high school graduation, postsecondary persistence, stable employment, or reduced justice-system involvement)?`;
+    questionIntent = "impact_specificity";
   }
 
-  const quickReplies = detectQuickReplies(reply);
+  if (shouldSkipPopulationFocusProbe(reply, message.trim(), modelSnapshot)) {
+    reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for these students?";
+    questionIntent = "impact_aspiration";
+  }
+
+  const contextText = [
+    ...safeHistory.map((msg) => msg.content),
+    message.trim(),
+    reply,
+  ].join("\n");
+
+  const stateIntent = inferIntentFromModelState(modelSnapshot);
+  const intentResolution = resolveQuickReplyIntent(reply, questionIntent, stateIntent);
+  const quickReplies = detectQuickReplies(intentResolution.intent, contextText);
+
+  if (CHAT_INTENT_DEBUG) {
+    console.info("[chat-intent]", {
+      explicitIntent: questionIntent ?? null,
+      stateIntent: stateIntent ?? null,
+      fallbackIntent: intentResolution.fallbackIntent ?? null,
+      chosenIntent: intentResolution.intent ?? null,
+      quickReplyCount: quickReplies?.length ?? 0,
+    });
+  }
 
   return NextResponse.json({ reply, modelPatch, quickReplies });
 }
@@ -630,6 +666,151 @@ export async function POST(req: NextRequest) {
 interface QuickReply {
   label: string;
   value: string;
+  action?: "send" | "open-input" | "prefill";
+}
+
+type QuestionIntent =
+  | "impact_aspiration"
+  | "impact_change_type"
+  | "impact_specificity"
+  | "impact_review"
+  | "long_term_help"
+  | "geography"
+  | "population_focus"
+  | "resources"
+  | "activities"
+  | "outputs_metrics"
+  | "quality_evidence"
+  | "outcomes_review"
+  | "section_refine";
+
+function normalizeQuestionIntent(raw: string | undefined): QuestionIntent | undefined {
+  const normalized = raw?.trim().toLowerCase();
+  switch (normalized) {
+    case "impact_aspiration":
+    case "impact_change_type":
+    case "impact_specificity":
+    case "impact_review":
+    case "long_term_help":
+    case "geography":
+    case "population_focus":
+    case "resources":
+    case "activities":
+    case "outputs_metrics":
+    case "quality_evidence":
+    case "outcomes_review":
+    case "section_refine":
+      return normalized;
+    default:
+      return undefined;
+  }
+}
+
+const POPULATION_FOCUS_PROBE_REGEX =
+  /(particular subset|specific group|particular group|subgroup|specific schools|backgrounds?|circumstances?|confirm who you reach)/i;
+
+function looksSpecificPopulation(text: string): boolean {
+  return /\b(k\s*[-–]\s*\d+|\d+(?:st|nd|rd|th)\s+grad(?:e|ers?)?|elementary|middle school|high school|students?)\b/i.test(text);
+}
+
+function looksSpecificGeography(text: string): boolean {
+  return /\b(north|south|east|west|citywide|neighborhood|region|district|philadelphia|zip|borough|county)\b/i.test(text);
+}
+
+function shouldSkipPopulationFocusProbe(
+  reply: string,
+  userMessage: string,
+  modelSnapshot?: LogicModel
+): boolean {
+  if (!POPULATION_FOCUS_PROBE_REGEX.test(reply)) return false;
+
+  const userSpecific = looksSpecificPopulation(userMessage) && looksSpecificGeography(userMessage);
+  if (userSpecific) return true;
+
+  if (!modelSnapshot) return false;
+  const population = modelSnapshot.intended_impact.population ?? "";
+  const geography = modelSnapshot.intended_impact.geography ?? "";
+
+  return looksSpecificPopulation(population) && looksSpecificGeography(geography);
+}
+
+function isNonEmpty(value: string | undefined | null): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isLogicModelShape(value: unknown): value is LogicModel {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+
+  const intended = v.intended_impact as Record<string, unknown> | undefined;
+  const implementation = v.implementation as Record<string, unknown> | undefined;
+  const outcomes = v.outcomes as Record<string, unknown> | undefined;
+
+  if (!intended || !implementation || !outcomes) return false;
+  if (!Array.isArray(v.stakeholders)) return false;
+
+  const resources = implementation.resources as Record<string, unknown> | undefined;
+  const activities = implementation.activities;
+  if (!resources || !Array.isArray(activities)) return false;
+
+  return (
+    typeof intended.population === "string" &&
+    typeof intended.geography === "string" &&
+    typeof intended.long_term_goal === "string" &&
+    typeof intended.compiled_statement === "string" &&
+    Array.isArray(resources.human) &&
+    Array.isArray(resources.material) &&
+    Array.isArray(resources.financial) &&
+    Array.isArray(resources.knowledge) &&
+    Array.isArray(outcomes.short_term) &&
+    Array.isArray(outcomes.medium_term) &&
+    Array.isArray(outcomes.long_term)
+  );
+}
+
+function inferIntentFromModelState(model: LogicModel | undefined): QuestionIntent | undefined {
+  if (!model) return undefined;
+
+  const hasImpactCore =
+    isNonEmpty(model.intended_impact.population) &&
+    isNonEmpty(model.intended_impact.geography) &&
+    (isNonEmpty(model.intended_impact.long_term_goal) || isNonEmpty(model.intended_impact.compiled_statement));
+
+  if (!hasImpactCore) {
+    return "long_term_help";
+  }
+
+  const resources = model.implementation.resources;
+  const hasResources =
+    resources.human.length > 0 ||
+    resources.material.length > 0 ||
+    resources.financial.length > 0 ||
+    resources.knowledge.length > 0;
+
+  if (!hasResources) {
+    return "resources";
+  }
+
+  const activities = model.implementation.activities;
+  if (activities.length === 0) {
+    return "activities";
+  }
+
+  const hasOutputs = activities.some((activity) => Array.isArray(activity.outputs) && activity.outputs.length > 0);
+  if (!hasOutputs) {
+    return "outputs_metrics";
+  }
+
+  const hasOutcomes =
+    model.outcomes.short_term.length > 0 ||
+    model.outcomes.medium_term.length > 0 ||
+    model.outcomes.long_term.length > 0;
+
+  if (!hasOutcomes) {
+    return "outcomes_review";
+  }
+
+  return "section_refine";
 }
 
 function shouldRequestImpactSpecificity(modelPatch: Partial<LogicModel> | null): boolean {
@@ -650,150 +831,242 @@ function shouldRequestImpactSpecificity(modelPatch: Partial<LogicModel> | null):
   return genericSignal && !hasConcreteMarker;
 }
 
-function detectQuickReplies(reply: string): QuickReply[] | undefined {
-  const ALWAYS_TYPE = { label: "I want to type my own answer", value: "__type__" };
+function getQuickRepliesForIntent(intent: QuestionIntent): QuickReply[] | undefined {
+  const ALWAYS_TYPE: QuickReply = {
+    label: "I want to type my own answer",
+    value: "__type__",
+    action: "open-input",
+  };
 
-  // Guided step 1 — aspiration question (what do you want to be true)
-  // Must run BEFORE the general long-term check — the bot's step-1 reply
-  // also contains "10 years" and would otherwise match the wrong branch.
-  if (
-    /(what do you want to be true|isn't true today|want to be true about their lives)/i.test(reply)
-  ) {
-    return [
-      { label: "HS graduation + postsecondary", value: "In 10 years, we want more of our students to graduate high school and persist in postsecondary education." },
-      { label: "Career pathway + living-wage jobs", value: "In 10 years, we want more of our students to enter stable, living-wage career pathways." },
-      { label: "Reduced justice involvement", value: "In 10 years, we want fewer of our students to be involved in the justice system and more to have safe, stable futures." },
-      { label: "Stronger wellbeing and stability", value: "In 10 years, we want our students to have stronger wellbeing, supportive relationships, and stable life conditions." },
-      ALWAYS_TYPE,
-    ];
+  switch (intent) {
+    case "impact_aspiration":
+      return [
+        { label: "HS graduation + postsecondary", value: "In 10 years, we want more of our students to graduate high school and persist in postsecondary education." },
+        { label: "Career pathway + living-wage jobs", value: "In 10 years, we want more of our students to enter stable, living-wage career pathways." },
+        { label: "Reduced justice involvement", value: "In 10 years, we want fewer of our students to be involved in the justice system and more to have safe, stable futures." },
+        { label: "Stronger wellbeing and stability", value: "In 10 years, we want our students to have stronger wellbeing, supportive relationships, and stable life conditions." },
+        ALWAYS_TYPE,
+      ];
+    case "impact_change_type":
+      return [
+        { label: "How they think or feel", value: "It's mainly a shift in how they think or feel — mindset, confidence, sense of possibility." },
+        { label: "What they're able to do", value: "It's mainly about what they're able to do — skills, behaviors, actions they take." },
+        { label: "Their life circumstances", value: "It's mainly about their actual circumstances — employment, housing, health, safety." },
+        { label: "All of these", value: "It's a combination — mindset, behavior, and real life conditions." },
+        ALWAYS_TYPE,
+      ];
+    case "impact_specificity":
+      return [
+        { label: "Education milestones", value: "Specifically, we expect more students to graduate high school on time and persist in college or credential programs." },
+        { label: "Workforce milestones", value: "Specifically, we expect more students to secure stable employment with upward career mobility." },
+        { label: "Safety and justice milestones", value: "Specifically, we expect lower justice-system involvement and stronger personal and community safety outcomes." },
+        { label: "Wellbeing milestones", value: "Specifically, we expect stronger mental health, stable housing, and supportive long-term relationships." },
+        ALWAYS_TYPE,
+      ];
+    case "impact_review":
+      return [
+        { label: "That captures it", value: "Yes, that captures it." },
+        { label: "Make it more specific", value: "Can you make this impact statement more specific and concrete?" },
+        { label: "Adjust the wording", value: "I'd revise the impact statement this way: ", action: "prefill" },
+        { label: "Not quite", value: "Not quite — here's what we're aiming for instead: ", action: "prefill" },
+        ALWAYS_TYPE,
+      ];
+    case "long_term_help":
+      return [
+        { label: "Walk me through it", value: "Can you walk me through what a long-term goal looks like for a program like ours?" },
+        { label: "Skip for now", value: "Let's skip the long-term goal for now and come back to it." },
+        ALWAYS_TYPE,
+      ];
+    case "geography":
+      return [
+        { label: "Name neighborhoods or ZIP codes", value: "We serve these neighborhoods/ZIP codes: ", action: "prefill" },
+        { label: "Philadelphia citywide", value: "We serve youth across Philadelphia citywide." },
+        { label: "Specific schools", value: "We serve students in these schools: ", action: "prefill" },
+        { label: "Not sure yet", value: "We haven't defined the geography yet." },
+        ALWAYS_TYPE,
+      ];
+    case "population_focus":
+      return [
+        { label: "All students in that population", value: "We serve the general student population described — no narrower focus group." },
+        { label: "A particular group of students", value: "We focus especially on students who ...", action: "prefill" },
+        { label: "Not sure yet", value: "We haven't defined a particular group yet." },
+        ALWAYS_TYPE,
+      ];
+    case "resources":
+      return [
+        { label: "Let me describe them", value: "Our key resources include ...", action: "prefill" },
+        { label: "We have staff only", value: "Our main resource is paid staff." },
+        { label: "Skip for now", value: "Let's skip resources for now." },
+        ALWAYS_TYPE,
+      ];
+    case "activities":
+      return [
+        { label: "Let me describe them", value: "Our team mainly ...", action: "prefill" },
+        { label: "Skip for now", value: "Let's skip activities for now." },
+        ALWAYS_TYPE,
+      ];
+    case "outputs_metrics":
+      return [
+        { label: "# of Participants", value: "We will track number of participants reached." },
+        { label: "# of Sessions", value: "We will track number of sessions delivered." },
+        { label: "Attendance Rate", value: "We will track attendance rate over time." },
+        { label: "Hours of Service", value: "We will track total hours of service delivered." },
+        { label: "Add another output metric", value: "Additional output metrics to track: ", action: "prefill" },
+        ALWAYS_TYPE,
+      ];
+    case "quality_evidence":
+      return [
+        { label: "Satisfaction Surveys", value: "We will use satisfaction surveys to assess program quality." },
+        { label: "Post-program Interviews", value: "We will use post-program interviews to assess program quality." },
+        { label: "Retention Rate", value: "We will monitor retention rate as a quality signal." },
+        { label: "Implementation Fidelity", value: "We will monitor implementation fidelity to core program components." },
+        { label: "Add another quality measure", value: "Additional quality/fidelity measures: ", action: "prefill" },
+        ALWAYS_TYPE,
+      ];
+    case "outcomes_review":
+      return [
+        { label: "Sounds right, move on", value: "The outcomes you've drafted look right — let's move on." },
+        { label: "I want to refine them", value: "I'd like to refine these outcomes: ", action: "prefill" },
+        { label: "Explain the levels", value: "Can you explain the difference between short, medium, and long-term outcomes?" },
+        ALWAYS_TYPE,
+      ];
+    case "section_refine":
+      return [
+        { label: "Activities", value: "I want to refine the activities section." },
+        { label: "Outputs", value: "I want to refine the outputs section." },
+        { label: "Outcomes", value: "I want to refine the outcomes section." },
+        { label: "Resources", value: "I want to refine the resources section." },
+        { label: "Looks good", value: "The model looks good to me." },
+      ];
+    default:
+      return undefined;
+  }
+}
+
+function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
+  if (/(what do you want to be true|isn't true today|want to be true about their lives)/i.test(reply)) {
+    return "impact_aspiration";
   }
 
-  // Guided step 2 — nature of change (how they think / what they do / their circumstances)
-  if (
-    /(mainly about how they think|what they.re able to do|conditions of their life|employment.*housing.*health)/i.test(reply)
-  ) {
-    return [
-      { label: "How they think or feel", value: "It's mainly a shift in how they think or feel — mindset, confidence, sense of possibility." },
-      { label: "What they're able to do", value: "It's mainly about what they're able to do — skills, behaviors, actions they take." },
-      { label: "Their life circumstances", value: "It's mainly about their actual circumstances — employment, housing, health, safety." },
-      { label: "All of these", value: "It's a combination — mindset, behavior, and real life conditions." },
-      ALWAYS_TYPE,
-    ];
+  if (/(mainly about how they think|what they.re able to do|conditions of their life|employment.*housing.*health)/i.test(reply)) {
+    return "impact_change_type";
   }
 
-  // Guided step 3 — specificity probe (concrete long-term difference)
-  if (
-    /(to make this specific|what exact difference|be able to point to in 10 years|graduating high school|persisting in college|reduced justice-system involvement)/i.test(reply)
-  ) {
-    return [
-      { label: "Education milestones", value: "Specifically, we expect more students to graduate high school on time and persist in college or credential programs." },
-      { label: "Workforce milestones", value: "Specifically, we expect more students to secure stable employment with upward career mobility." },
-      { label: "Safety and justice milestones", value: "Specifically, we expect lower justice-system involvement and stronger personal and community safety outcomes." },
-      { label: "Wellbeing milestones", value: "Specifically, we expect stronger mental health, stable housing, and supportive long-term relationships." },
-      ALWAYS_TYPE,
-    ];
+  if (/(to make this specific|what exact difference|be able to point to in 10 years|graduating high school|persisting in college|reduced justice-system involvement)/i.test(reply)) {
+    return "impact_specificity";
   }
 
-  // Guided step 3 — draft impact statement review
-  if (
-    /(here.s a draft|draft.*intended impact|does that capture|capture.*intent)/i.test(reply)
-  ) {
-    return [
-      { label: "That captures it", value: "Yes, that captures it." },
-      { label: "Make it more specific", value: "Can you make this impact statement more specific and concrete?" },
-      { label: "Adjust the wording", value: "Close, but I'd like to adjust the wording." },
-      { label: "Not quite", value: "Not quite — let me try to describe it differently." },
-      ALWAYS_TYPE,
-    ];
+  if (/(here.s a draft|draft.*intended impact|does that capture|capture.*intent)/i.test(reply)) {
+    return "impact_review";
   }
 
-  // Long-term goal / 10-year vision — initial prompt (walk me through it vs skip)
-  if (
-    /(10 years|ten years|long.term goal|if.*succeed|what would be different|ultimate change|working to achieve)/i.test(reply)
-  ) {
-    return [
-      { label: "Walk me through it", value: "Can you walk me through what a long-term goal looks like for a program like ours?" },
-      { label: "Skip for now", value: "Let's skip the long-term goal for now and come back to it." },
-      ALWAYS_TYPE,
-    ];
+  if (/(10 years|ten years|long.term goal|if.*succeed|what would be different|ultimate change|working to achieve)/i.test(reply)) {
+    return "long_term_help";
   }
 
-  // Geography — require an actual question signal so summary sentences like
-  // "your program serves 6th graders citywide" don't trigger this branch
-  if (
-    /(neighborhood|part of the city|citywide|region|borough|district|where.*operate|serve.*area)/i.test(reply) &&
-    /\?/.test(reply)
-  ) {
-    return [
-      { label: "Name neighborhoods or ZIP codes", value: "We serve these neighborhoods/ZIP codes: " },
-      { label: "Philadelphia citywide", value: "We serve youth across Philadelphia citywide." },
-      { label: "Specific schools", value: "We serve students in these schools: " },
-      { label: "Not sure yet", value: "We haven't defined the geography yet." },
-      ALWAYS_TYPE,
-    ];
+  if (/(neighborhood|part of the city|citywide|region|borough|district|where.*operate|serve.*area)/i.test(reply) && /\?/.test(reply)) {
+    return "geography";
   }
 
-  // Population subgroup
-  if (
-    /(particular subset|specific group|background|circumstance|subgroup|who (exactly|specifically) (do you|does your)|what makes this group)/i.test(reply)
-  ) {
-    return [
-      { label: "No particular subgroup", value: "We serve the general population described — no specific subgroup." },
-      { label: "Yes, a specific subgroup", value: "Yes, we focus on a specific subgroup." },
-      { label: "Not sure yet", value: "We haven't defined a specific subgroup yet." },
-      ALWAYS_TYPE,
-    ];
+  if (/(particular subset|specific group|particular group|background|circumstance|subgroup|who (exactly|specifically) (do you|does your)|what makes this group)/i.test(reply) && /\?/.test(reply)) {
+    return "population_focus";
   }
 
-  // Resources
-  if (
-    /(resource|staff|volunteer|partner|funding|curriculum|technology|equipment|materials)/i.test(reply) &&
-    /(what|who|how|tell me|describe)/i.test(reply)
-  ) {
-    return [
-      { label: "Let me describe them", value: "I'll describe our key resources." },
-      { label: "We have staff only", value: "Our main resource is paid staff." },
-      { label: "Skip for now", value: "Let's skip resources for now." },
-      ALWAYS_TYPE,
-    ];
+  if (/(typical week|what does your team|what.*activities|walk me through)/i.test(reply)) {
+    return "activities";
   }
 
-  // Activities — confirm drafted
-  if (
-    /(typical week|what does your team|what.*activities|walk me through)/i.test(reply)
-  ) {
-    return [
-      { label: "Let me describe them", value: "I'll walk through our main activities." },
-      { label: "Skip for now", value: "Let's skip activities for now." },
-      ALWAYS_TYPE,
-    ];
+  if (/(how would you count|unit of measure|participants|sessions|materials|outputs?|track.*deliver|attendance|hours of service)/i.test(reply)) {
+    return "outputs_metrics";
   }
 
-  // Outcomes — short/medium/long
-  if (
-    /(short.term|medium.term|what.*know|what.*doing differently|knowledge change|behavior change|condition change|what.*expect)/i.test(reply)
-  ) {
-    return [
-      { label: "Sounds right, move on", value: "The outcomes you've drafted look right — let's move on." },
-      { label: "I want to refine them", value: "I'd like to refine the outcome statements." },
-      { label: "Explain the levels", value: "Can you explain the difference between short, medium, and long-term outcomes?" },
-      ALWAYS_TYPE,
-    ];
+  if (/(program quality|fidelity|satisfaction|interviews?|retention|how well implemented|quality measures)/i.test(reply)) {
+    return "quality_evidence";
   }
 
-  // Specific section refinement prompt
-  if (
-    /(refine|which section|what.*next|anything.*add|look complete)/i.test(reply)
-  ) {
-    return [
-      { label: "Activities", value: "I want to refine the activities section." },
-      { label: "Outputs", value: "I want to refine the outputs section." },
-      { label: "Outcomes", value: "I want to refine the outcomes section." },
-      { label: "Resources", value: "I want to refine the resources section." },
-      { label: "Looks good", value: "The model looks good to me." },
-    ];
+  if (/(resource|staff|volunteer|partner|funding|curriculum|technology|equipment|inputs?)/i.test(reply) && /(what|who|how|tell me|describe)/i.test(reply)) {
+    return "resources";
   }
 
-  // No match — no suggestions, free text only
+  if (/(short.term|medium.term|what.*know|what.*doing differently|knowledge change|behavior change|condition change|what.*expect)/i.test(reply)) {
+    return "outcomes_review";
+  }
+
+  if (/(refine|which section|what.*next|anything.*add|look complete)/i.test(reply)) {
+    return "section_refine";
+  }
+
   return undefined;
+}
+
+function injectContextualQuickReplies(
+  intent: QuestionIntent,
+  baseReplies: QuickReply[],
+  contextText: string
+): QuickReply[] {
+  const context = contextText.toLowerCase();
+  const injected: QuickReply[] = [];
+
+  if (intent === "geography") {
+    if (/(geocod|parcel|site|land development|watershed)/i.test(context)) {
+      injected.push({ label: "Site-specific", value: "Our program is site-specific." });
+      injected.push({ label: "Regional watershed", value: "Our program operates across a regional watershed." });
+    }
+  }
+
+  if (intent === "resources") {
+    if (/(contractor|consultant)/i.test(context)) {
+      injected.push({ label: "External consultants", value: "We rely on external consultants." });
+    }
+    if (/(ai|llm|api|python|etl|data pipeline|dashboard|technical)/i.test(context)) {
+      injected.push({ label: "Technical leads", value: "Technical leads are a key human resource." });
+      injected.push({ label: "API credits", value: "API credits are a required material/financial resource." });
+    }
+  }
+
+  if (intent === "outputs_metrics" && /(dashboard|analytics|engagement|product usage)/i.test(context)) {
+    injected.push({ label: "User engagement metrics", value: "We will track user engagement metrics." });
+    injected.push({ label: "Data refresh frequency", value: "We will track data refresh frequency." });
+  }
+
+  if (intent === "quality_evidence" && /(logic model|framework fidelity|implementation model)/i.test(context)) {
+    injected.push({ label: "Framework fidelity", value: "We will monitor fidelity to our logic model framework." });
+  }
+
+  if (injected.length === 0) {
+    return baseReplies;
+  }
+
+  const seen = new Set(baseReplies.map((item) => item.label.toLowerCase()));
+  const merged = [...baseReplies];
+  for (const item of injected) {
+    const key = item.label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.splice(Math.max(merged.length - 1, 0), 0, item);
+  }
+
+  return merged;
+}
+
+function resolveQuickReplyIntent(
+  reply: string,
+  explicitIntent?: QuestionIntent,
+  stateIntent?: QuestionIntent
+): { intent?: QuestionIntent; fallbackIntent?: QuestionIntent } {
+  const fallbackIntent = detectQuickReplyIntent(reply);
+  return {
+    intent: explicitIntent ?? stateIntent ?? fallbackIntent,
+    fallbackIntent,
+  };
+}
+
+function detectQuickReplies(
+  intent: QuestionIntent | undefined,
+  contextText: string
+): QuickReply[] | undefined {
+  if (!intent) return undefined;
+  const baseReplies = getQuickRepliesForIntent(intent);
+  if (!baseReplies) return undefined;
+  return injectContextualQuickReplies(intent, baseReplies, contextText);
 }

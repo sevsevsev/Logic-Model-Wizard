@@ -1,12 +1,21 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { Send, RotateCcw, Loader2 } from "lucide-react";
+import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
+import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
+
+const FEEDBACK_REASONS = [
+  "Incorrect or made up",
+  "Missed my context",
+  "Not actionable",
+  "Unclear wording",
+];
 
 export default function ChatInterface() {
   const messages = useLogicModelStore((s) => s.messages);
+  const model = useLogicModelStore((s) => s.model);
   const isLoading = useLogicModelStore((s) => s.isLoading);
   const addMessage = useLogicModelStore((s) => s.addMessage);
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
@@ -18,6 +27,12 @@ export default function ChatInterface() {
 
   // Show text input when there are no active quick replies, or user chose to type
   const [typeInputVisible, setTypeInputVisible] = useState(false);
+  const [feedbackTargetId, setFeedbackTargetId] = useState<string | null>(null);
+  const [feedbackReason, setFeedbackReason] = useState("");
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSavingId, setFeedbackSavingId] = useState<string | null>(null);
+  const [feedbackSavedByMessage, setFeedbackSavedByMessage] = useState<Record<string, "up" | "down">>({});
+  const [feedbackErrorByMessage, setFeedbackErrorByMessage] = useState<Record<string, string>>({});
 
   // Active quick replies: only when last message is an assistant message with suggestions
   const lastMsg = messages[messages.length - 1];
@@ -45,7 +60,7 @@ export default function ChatInterface() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: messages }),
+        body: JSON.stringify({ message: text, history: messages, model }),
       });
 
       const raw = await res.text();
@@ -84,10 +99,43 @@ export default function ChatInterface() {
 
   async function handleQuickReply(qr: QuickReply) {
     if (isLoading) return;
-    if (qr.value === "__type__") {
+    if (qr.action === "open-input" || qr.value === "__type__") {
       setTypeInputVisible(true);
       // Focus the textarea after state update
       setTimeout(() => inputRef.current?.focus(), 50);
+      return;
+    }
+    if (qr.action === "prefill") {
+      setTypeInputVisible(true);
+      setTimeout(() => {
+        if (!inputRef.current) return;
+        inputRef.current.focus();
+        inputRef.current.value = qr.value;
+        const end = inputRef.current.value.length;
+        inputRef.current.setSelectionRange(end, end);
+      }, 50);
+      return;
+    }
+    if (qr.value === "__population_focus__") {
+      setTypeInputVisible(true);
+      setTimeout(() => {
+        if (!inputRef.current) return;
+        inputRef.current.focus();
+        if (!inputRef.current.value.trim()) {
+          inputRef.current.value = "We focus especially on students who ...";
+        }
+      }, 50);
+      return;
+    }
+    if (/:\s*$/.test(qr.value)) {
+      setTypeInputVisible(true);
+      setTimeout(() => {
+        if (!inputRef.current) return;
+        inputRef.current.focus();
+        inputRef.current.value = qr.value;
+        const end = inputRef.current.value.length;
+        inputRef.current.setSelectionRange(end, end);
+      }, 50);
       return;
     }
     await sendToApi(qr.value);
@@ -97,6 +145,94 @@ export default function ChatInterface() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  }
+
+  function requireCollaboratorId(): string | null {
+    if (typeof window === "undefined") return null;
+    const existing = window.localStorage.getItem(LOCAL_CLOUD_USER_KEY);
+    if (existing) return existing;
+
+    const generated =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? `collab-${crypto.randomUUID()}`
+        : `collab-${Date.now()}`;
+    window.localStorage.setItem(LOCAL_CLOUD_USER_KEY, generated);
+    return generated;
+  }
+
+  async function submitFeedback(
+    assistantMessageId: string,
+    assistantMessage: string,
+    assistantIndex: number,
+    rating: "up" | "down"
+  ) {
+    if (feedbackSavingId) return;
+
+    const userId = requireCollaboratorId();
+    if (!userId) return;
+
+    const reason = feedbackReason.trim();
+    const comment = feedbackComment.trim();
+
+    if (rating === "down" && !reason && !comment) {
+      setFeedbackErrorByMessage((prev) => ({
+        ...prev,
+        [assistantMessageId]: "Select a reason or add a note.",
+      }));
+      return;
+    }
+
+    const historyStart = Math.max(0, assistantIndex - 20);
+    const history = messages.slice(historyStart, assistantIndex + 1);
+    const precedingUserMessage = [...messages.slice(0, assistantIndex)]
+      .reverse()
+      .find((msg) => msg.role === "user")?.content;
+
+    setFeedbackSavingId(assistantMessageId);
+    setFeedbackErrorByMessage((prev) => {
+      const next = { ...prev };
+      delete next[assistantMessageId];
+      return next;
+    });
+
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          capture: {
+            assistantMessageId,
+            assistantMessage,
+            rating,
+            reason: reason || undefined,
+            comment: comment || undefined,
+            precedingUserMessage,
+            history,
+            modelSnapshot: model,
+            submittedAt: new Date().toISOString(),
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Could not save feedback.");
+      }
+
+      setFeedbackSavedByMessage((prev) => ({ ...prev, [assistantMessageId]: rating }));
+      setFeedbackTargetId((current) => (current === assistantMessageId ? null : current));
+      setFeedbackReason("");
+      setFeedbackComment("");
+    } catch {
+      setFeedbackErrorByMessage((prev) => ({
+        ...prev,
+        [assistantMessageId]: "Could not save feedback. Please try again.",
+      }));
+    } finally {
+      setFeedbackSavingId(null);
     }
   }
 
@@ -145,6 +281,96 @@ export default function ChatInterface() {
                 </div>
               </div>
 
+              {msg.role === "assistant" && (
+                <div className="mt-1 ml-1">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => submitFeedback(msg.id, msg.content, idx, "up")}
+                      disabled={Boolean(feedbackSavedByMessage[msg.id]) || feedbackSavingId === msg.id}
+                      className="inline-flex items-center gap-1 rounded-md border border-[#c6deed] bg-white px-2 py-1 text-[11px] text-[#48617c] hover:text-[#0b315b] hover:border-[#9fc3da] disabled:opacity-50"
+                    >
+                      <ThumbsUp size={12} /> Helpful
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFeedbackTargetId((current) => (current === msg.id ? null : msg.id));
+                        setFeedbackReason("");
+                        setFeedbackComment("");
+                        setFeedbackErrorByMessage((prev) => {
+                          const next = { ...prev };
+                          delete next[msg.id];
+                          return next;
+                        });
+                      }}
+                      disabled={Boolean(feedbackSavedByMessage[msg.id]) || feedbackSavingId === msg.id}
+                      className="inline-flex items-center gap-1 rounded-md border border-[#c6deed] bg-white px-2 py-1 text-[11px] text-[#48617c] hover:text-[#0b315b] hover:border-[#9fc3da] disabled:opacity-50"
+                    >
+                      <ThumbsDown size={12} /> Needs work
+                    </button>
+                    {feedbackSavedByMessage[msg.id] && (
+                      <span className="text-[11px] text-[#48617c]">Feedback saved</span>
+                    )}
+                  </div>
+
+                  {feedbackTargetId === msg.id && !feedbackSavedByMessage[msg.id] && (
+                    <div className="mt-2 rounded-lg border border-[#c6deed] bg-white p-2.5">
+                      <p className="text-[11px] text-[#48617c] mb-2">What was the issue?</p>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {FEEDBACK_REASONS.map((reason) => {
+                          const selected = feedbackReason === reason;
+                          return (
+                            <button
+                              key={reason}
+                              onClick={() => setFeedbackReason(reason)}
+                              className={`px-2 py-1 rounded-full text-[11px] border ${
+                                selected
+                                  ? "border-[#47aad8] bg-[#d0ebf8] text-[#0b315b]"
+                                  : "border-[#c6deed] bg-white text-[#48617c] hover:border-[#9fc3da]"
+                              }`}
+                            >
+                              {reason}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <textarea
+                        value={feedbackComment}
+                        onChange={(e) => setFeedbackComment(e.target.value)}
+                        rows={2}
+                        placeholder="Optional note"
+                        className="w-full resize-none rounded-md border border-[#c6deed] px-2 py-1.5 text-xs text-[#0b315b] placeholder:text-[#6d8096] outline-none focus:border-[#47aad8]"
+                      />
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => {
+                            setFeedbackTargetId(null);
+                            setFeedbackReason("");
+                            setFeedbackComment("");
+                          }}
+                          className="text-[11px] text-[#48617c] hover:text-[#0b315b]"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => submitFeedback(msg.id, msg.content, idx, "down")}
+                          disabled={feedbackSavingId === msg.id}
+                          className="inline-flex items-center rounded-md bg-[#0b315b] px-2.5 py-1 text-[11px] text-white hover:bg-[#082746] disabled:opacity-50"
+                        >
+                          {feedbackSavingId === msg.id ? "Saving..." : "Submit feedback"}
+                        </button>
+                      </div>
+                      {feedbackErrorByMessage[msg.id] && (
+                        <p className="mt-1 text-[11px] text-red-600">{feedbackErrorByMessage[msg.id]}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {feedbackErrorByMessage[msg.id] && feedbackTargetId !== msg.id && (
+                    <p className="mt-1 text-[11px] text-red-600">{feedbackErrorByMessage[msg.id]}</p>
+                  )}
+                </div>
+              )}
+
               {/* Quick-reply pills below the latest assistant bubble */}
               {showPills && (
                 <div className="flex flex-wrap gap-2 mt-2 ml-1">
@@ -161,9 +387,9 @@ export default function ChatInterface() {
                       </button>
                     ))}
                   {/* "Type my own" is always last, subtly styled */}
-                  {activeReplies.some((qr) => qr.value === "__type__") && (
+                  {activeReplies.some((qr) => qr.value === "__type__" || qr.action === "open-input") && (
                     <button
-                      onClick={() => handleQuickReply({ label: "I want to type my own answer", value: "__type__" })}
+                      onClick={() => handleQuickReply({ label: "I want to type my own answer", value: "__type__", action: "open-input" })}
                       disabled={isLoading || typeInputVisible}
                       className="px-3 py-1.5 rounded-full text-xs border border-dashed border-[#9fc3da] bg-transparent text-[#48617c] hover:text-[#0b315b] hover:border-[#47aad8] transition-colors disabled:opacity-40"
                     >
