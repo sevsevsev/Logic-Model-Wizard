@@ -51,6 +51,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid debug snapshot payload." }, { status: 400 });
   }
 
-  const saved = await saveDebugSnapshotForUser(userId, capture);
-  return NextResponse.json({ snapshot: saved }, { status: 201 });
+  try {
+    const saved = await saveDebugSnapshotForUser(userId, capture);
+    return NextResponse.json({ snapshot: saved }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to save debug snapshot.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

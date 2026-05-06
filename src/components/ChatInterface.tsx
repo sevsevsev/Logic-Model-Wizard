@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from "react";
 import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download } from "lucide-react";
-import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
+import { useLogicModelStore, QuickReply, ChatMessage } from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
 import type { DebugSnapshotCapture } from "@/lib/feedback/types";
@@ -13,6 +13,23 @@ const FEEDBACK_REASONS = [
   "Not actionable",
   "Unclear wording",
 ];
+
+const DEBUG_SNAPSHOT_MESSAGE_LIMIT = 80;
+const DEBUG_SNAPSHOT_CONTENT_CHAR_LIMIT = 4000;
+
+function truncateMessageContent(content: string): string {
+  if (content.length <= DEBUG_SNAPSHOT_CONTENT_CHAR_LIMIT) return content;
+  return `${content.slice(0, DEBUG_SNAPSHOT_CONTENT_CHAR_LIMIT)}\n\n[truncated for debug report size]`;
+}
+
+function limitMessagesForSnapshot(messages: ChatMessage[]): ChatMessage[] {
+  return messages
+    .slice(-DEBUG_SNAPSHOT_MESSAGE_LIMIT)
+    .map((message) => ({
+      ...message,
+      content: truncateMessageContent(message.content),
+    }));
+}
 
 export default function ChatInterface() {
   const messages = useLogicModelStore((s) => s.messages);
@@ -176,6 +193,11 @@ export default function ChatInterface() {
   function buildDebugSnapshotPayload(bugDescription: string): DebugSnapshotCapture {
     const store = useLogicModelStore.getState();
     const now = new Date();
+    const limitedMessages = limitMessagesForSnapshot(store.messages);
+    const draftSnapshot = store.getDraftSnapshot();
+    const limitedDraftMessages = limitMessagesForSnapshot(draftSnapshot.messages);
+    const wasMainHistoryTruncated = limitedMessages.length < store.messages.length;
+    const wasDraftHistoryTruncated = limitedDraftMessages.length < draftSnapshot.messages.length;
     const safeUserId =
       typeof window !== "undefined"
         ? window.localStorage.getItem(LOCAL_CLOUD_USER_KEY)
@@ -212,8 +234,11 @@ export default function ChatInterface() {
             : [],
       },
       model: store.model,
-      messages: store.messages,
-      draftSnapshot: store.getDraftSnapshot(),
+      messages: limitedMessages,
+      draftSnapshot: {
+        ...draftSnapshot,
+        messages: limitedDraftMessages,
+      },
       feedbackReport: {
         description: bugDescription,
         capturedAtIso: now.toISOString(),
@@ -221,6 +246,11 @@ export default function ChatInterface() {
       notes: [
         "Attach this file to your bug report chat.",
         "Include what you expected, what happened, and which message looked wrong.",
+        ...(wasMainHistoryTruncated || wasDraftHistoryTruncated
+          ? [
+              `Chat history was truncated to the latest ${DEBUG_SNAPSHOT_MESSAGE_LIMIT} messages to keep the report saveable.`,
+            ]
+          : []),
       ],
     };
   }
@@ -260,15 +290,25 @@ export default function ChatInterface() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to save debug report.");
+        let message = "Failed to save debug report.";
+        try {
+          const payload = (await res.json()) as { error?: unknown };
+          if (typeof payload?.error === "string" && payload.error.trim().length > 0) {
+            message = payload.error;
+          }
+        } catch {
+          // Ignore JSON parse failures and keep the default message.
+        }
+        throw new Error(message);
       }
 
       setIsExportModalOpen(false);
       setExportBugDescription("");
       setExportBugError(null);
       setExportStatusMessage("Debug report saved. You can submit another report anytime.");
-    } catch {
-      setExportBugError("Could not save the debug report. Please try again.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not save the debug report. Please try again.";
+      setExportBugError(message);
     } finally {
       setExportSaving(false);
     }
