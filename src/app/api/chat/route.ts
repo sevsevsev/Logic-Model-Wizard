@@ -652,6 +652,7 @@ export async function POST(req: NextRequest) {
       stateIntent: stateIntent ?? null,
       fallbackIntent: intentResolution.fallbackIntent ?? null,
       chosenIntent: intentResolution.intent ?? null,
+      source: intentResolution.source,
       quickReplyCount: quickReplies?.length ?? 0,
     });
   }
@@ -684,7 +685,9 @@ type QuestionIntent =
   | "outcomes_review"
   | "section_refine";
 
-function normalizeQuestionIntent(raw: string | undefined): QuestionIntent | undefined {
+type ParsedQuestionIntent = QuestionIntent | "none";
+
+function normalizeQuestionIntent(raw: string | undefined): ParsedQuestionIntent | undefined {
   const normalized = raw?.trim().toLowerCase();
   switch (normalized) {
     case "impact_aspiration":
@@ -700,10 +703,26 @@ function normalizeQuestionIntent(raw: string | undefined): QuestionIntent | unde
     case "quality_evidence":
     case "outcomes_review":
     case "section_refine":
+    case "none":
       return normalized;
     default:
       return undefined;
   }
+}
+
+function getQuestionFocusText(reply: string): { text: string; hasQuestion: boolean } {
+  const normalized = reply.replace(/\s+/g, " ").trim();
+  if (!normalized) return { text: "", hasQuestion: false };
+
+  const questionMatches = normalized.match(/[^?]*\?/g);
+  if (questionMatches && questionMatches.length > 0) {
+    return {
+      text: questionMatches[questionMatches.length - 1].trim(),
+      hasQuestion: true,
+    };
+  }
+
+  return { text: normalized, hasQuestion: false };
 }
 
 const POPULATION_FOCUS_PROBE_REGEX =
@@ -964,6 +983,10 @@ function ensureTypeQuickReply(replies: QuickReply[]): QuickReply[] {
 }
 
 function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
+  if (/(work on|refine|improve|tighten).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|specific|concrete)/i.test(reply)) {
+    return "impact_review";
+  }
+
   if (/(what do you want to be true|isn't true today|want to be true about their lives)/i.test(reply)) {
     return "impact_aspiration";
   }
@@ -1071,13 +1094,36 @@ function injectContextualQuickReplies(
 
 function resolveQuickReplyIntent(
   reply: string,
-  explicitIntent?: QuestionIntent,
+  explicitIntent?: ParsedQuestionIntent,
   stateIntent?: QuestionIntent
-): { intent?: QuestionIntent; fallbackIntent?: QuestionIntent } {
-  const fallbackIntent = detectQuickReplyIntent(reply);
+): {
+  intent?: QuestionIntent;
+  fallbackIntent?: QuestionIntent;
+  source: "explicit" | "explicit-none" | "fallback" | "state" | "none";
+} {
+  if (explicitIntent === "none") {
+    return { intent: undefined, fallbackIntent: undefined, source: "explicit-none" };
+  }
+
+  const questionFocus = getQuestionFocusText(reply);
+  const fallbackIntent = detectQuickReplyIntent(questionFocus.text);
+
+  if (explicitIntent) {
+    return { intent: explicitIntent, fallbackIntent, source: "explicit" };
+  }
+
+  if (fallbackIntent) {
+    return { intent: fallbackIntent, fallbackIntent, source: "fallback" };
+  }
+
+  if (questionFocus.hasQuestion && stateIntent) {
+    return { intent: stateIntent, fallbackIntent, source: "state" };
+  }
+
   return {
-    intent: explicitIntent ?? stateIntent ?? fallbackIntent,
+    intent: undefined,
     fallbackIntent,
+    source: "none",
   };
 }
 
