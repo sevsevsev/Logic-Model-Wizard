@@ -725,6 +725,54 @@ function getQuestionFocusText(reply: string): { text: string; hasQuestion: boole
   return { text: normalized, hasQuestion: false };
 }
 
+const INTENT_QUESTION_PATTERNS: Record<QuestionIntent, RegExp[]> = {
+  impact_aspiration: [
+    /(in\s+10\s+years|ten\s+years|want\s+to\s+be\s+true|ultimate\s+change|what\s+would\s+be\s+different)/i,
+  ],
+  impact_change_type: [
+    /(mainly\s+about\s+how\s+they\s+think|think\s+or\s+feel|what\s+they(?:'|’)re\s+able\s+to\s+do|actual\s+conditions\s+of\s+their\s+life|employment,?\s+housing,?\s+or\s+health)/i,
+  ],
+  impact_specificity: [
+    /(to\s+make\s+this\s+specific|what\s+exact\s+difference|point\s+to\s+in\s+10\s+years|graduat|persist|stable\s+employment|justice-system)/i,
+  ],
+  impact_review: [
+    /(does\s+that\s+capture|does\s+this\s+capture|capture\s+your\s+intent|is\s+this\s+right|revise\s+the\s+impact\s+statement|adjust\s+the\s+wording)/i,
+  ],
+  long_term_help: [
+    /(walk\s+me\s+through|what\s+a\s+long-term\s+goal\s+looks\s+like|help\s+me\s+develop\s+.*long-term)/i,
+  ],
+  geography: [
+    /(where\s+do\s+you\s+serve|which\s+neighborhood|citywide|zip\s+codes?|geograph)/i,
+  ],
+  population_focus: [
+    /(particular\s+subset|specific\s+group|who\s+exactly\s+do\s+you\s+serve|which\s+students\s+specifically)/i,
+  ],
+  resources: [
+    /(key\s+resources|staff,?\s+volunteers?,?\s+partners?|funding|technology|equipment|inputs)/i,
+  ],
+  activities: [
+    /(typical\s+week|what\s+does\s+your\s+team\s+actually\s+do|core\s+activities)/i,
+  ],
+  outputs_metrics: [
+    /(how\s+would\s+you\s+count|unit\s+of\s+measure|participants|sessions|attendance|hours\s+of\s+service|outputs?)/i,
+  ],
+  quality_evidence: [
+    /(quality|fidelity|satisfaction|retention|how\s+well\s+implemented)/i,
+  ],
+  outcomes_review: [
+    /(short-term|medium-term|long-term|what\s+should\s+they\s+know|doing\s+differently|condition\s+change)/i,
+  ],
+  section_refine: [
+    /(which\s+section\s+.*work\s+on|what\s+should\s+we\s+work\s+on\s+next|which\s+part\s+to\s+refine|look\s+complete)/i,
+  ],
+};
+
+function isIntentCompatibleWithQuestion(intent: QuestionIntent, questionText: string): boolean {
+  const patterns = INTENT_QUESTION_PATTERNS[intent];
+  if (!patterns || patterns.length === 0) return false;
+  return patterns.some((pattern) => pattern.test(questionText));
+}
+
 const POPULATION_FOCUS_PROBE_REGEX =
   /(particular subset|specific group|particular group|subgroup|specific schools|backgrounds?|circumstances?|confirm who you reach)/i;
 
@@ -983,7 +1031,7 @@ function ensureTypeQuickReply(replies: QuickReply[]): QuickReply[] {
 }
 
 function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
-  if (/(work on|refine|improve|tighten).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|specific|concrete)/i.test(reply)) {
+  if (/(work on|refine|improve|tighten|revise|edit).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|tighten|revise|edit|wording)/i.test(reply)) {
     return "impact_review";
   }
 
@@ -1099,7 +1147,14 @@ function resolveQuickReplyIntent(
 ): {
   intent?: QuestionIntent;
   fallbackIntent?: QuestionIntent;
-  source: "explicit" | "explicit-none" | "fallback" | "state" | "none";
+  source:
+    | "explicit"
+    | "explicit-none"
+    | "fallback"
+    | "fallback-overrode-explicit"
+    | "state"
+    | "suppressed-mismatch"
+    | "none";
 } {
   if (explicitIntent === "none") {
     return { intent: undefined, fallbackIntent: undefined, source: "explicit-none" };
@@ -1108,15 +1163,43 @@ function resolveQuickReplyIntent(
   const questionFocus = getQuestionFocusText(reply);
   const fallbackIntent = detectQuickReplyIntent(questionFocus.text);
 
-  if (explicitIntent) {
+  if (!questionFocus.hasQuestion) {
+    return {
+      intent: undefined,
+      fallbackIntent,
+      source: "none",
+    };
+  }
+
+  const explicitCompatible = explicitIntent
+    ? isIntentCompatibleWithQuestion(explicitIntent, questionFocus.text)
+    : false;
+
+  if (explicitIntent && explicitCompatible) {
     return { intent: explicitIntent, fallbackIntent, source: "explicit" };
   }
 
-  if (fallbackIntent) {
+  if (explicitIntent && !explicitCompatible) {
+    if (fallbackIntent && isIntentCompatibleWithQuestion(fallbackIntent, questionFocus.text)) {
+      return {
+        intent: fallbackIntent,
+        fallbackIntent,
+        source: "fallback-overrode-explicit",
+      };
+    }
+
+    return {
+      intent: undefined,
+      fallbackIntent,
+      source: "suppressed-mismatch",
+    };
+  }
+
+  if (fallbackIntent && isIntentCompatibleWithQuestion(fallbackIntent, questionFocus.text)) {
     return { intent: fallbackIntent, fallbackIntent, source: "fallback" };
   }
 
-  if (questionFocus.hasQuestion && stateIntent) {
+  if (stateIntent && isIntentCompatibleWithQuestion(stateIntent, questionFocus.text)) {
     return { intent: stateIntent, fallbackIntent, source: "state" };
   }
 
