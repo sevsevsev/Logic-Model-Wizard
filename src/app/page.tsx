@@ -7,7 +7,28 @@ import {
   getNextGapQuestion,
   type BootstrapExtractionResponse,
 } from "@/lib/bootstrap/types";
-import { buildPatchFromSuggestions, describeDetected, describeGaps } from "@/lib/bootstrap/patch";
+import { buildPatchFromSuggestions, describeGaps } from "@/lib/bootstrap/patch";
+import type { LogicModel } from "@/store/useLogicModelStore";
+
+function buildQualityNote(patch: Partial<LogicModel>): string | null {
+  const acts = patch.implementation?.activities ?? [];
+  const hasActivities = acts.length > 0;
+  const hasOutputs = hasActivities && acts.some((a) => (a.outputs?.length ?? 0) > 0);
+  const outcomes = patch.outcomes;
+  const missingOutcomeTier =
+    outcomes &&
+    (outcomes.short_term?.length === 0 ||
+      outcomes.medium_term?.length === 0 ||
+      outcomes.long_term?.length === 0);
+
+  if (hasActivities && !hasOutputs) {
+    return "The activities section could use more detail on outputs — what does each activity actually produce?";
+  }
+  if (missingOutcomeTier) {
+    return "The outcomes section is missing one or more time horizons (short-, medium-, or long-term).";
+  }
+  return null;
+}
 import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
 
 const MAX_BOOTSTRAP_FILE_BYTES = 4 * 1024 * 1024;
@@ -80,20 +101,23 @@ export default function Home() {
     applyModelPatch(patch);
 
     const model = useLogicModelStore.getState().model;
-    const detected = describeDetected(patch);
     const gaps = describeGaps(model);
-    const nextQuestion = getNextGapQuestion(model);
 
-    let message = "I reviewed your document and pre-filled your logic model";
-    if (detected.length > 0) message += ` with **${detected.join(", ")}**`;
-    message += ".";
-    if (gaps.length > 0) {
-      message += ` I'll ask follow-up questions to fill in what's still missing: ${gaps.join(", ")}.`;
+    if (gaps.length === 0) {
+      // Model is fully populated — offer a quality pass.
+      const qualityNote = buildQualityNote(patch);
+      const message = qualityNote
+        ? `I reviewed your document and filled in your logic model. ${qualityNote}\n\nWant to take a closer look at that section, or does everything look good?`
+        : "I reviewed your document and filled in your logic model. Take a look and let me know if anything needs adjusting.";
+      addMessage("assistant", message, [
+        { label: "Looks good", value: "Looks good — let's proceed." },
+        { label: "Let me review it", value: "I'd like to review and refine the logic model." },
+      ]);
     } else {
-      message += " Your logic model looks complete — nice work!";
+      // Model has gaps — ask the next question without enumerating every missing field.
+      const nextQuestion = getNextGapQuestion(model);
+      addMessage("assistant", `I reviewed your document and filled in what I could find.\n\n${nextQuestion}`);
     }
-    message += `\n\n${nextQuestion}`;
-    addMessage("assistant", message);
   }
 
   async function runDescriptionKickoff(description: string) {
