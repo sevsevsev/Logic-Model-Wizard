@@ -662,7 +662,7 @@ export async function POST(req: NextRequest) {
 
   const stateIntent = inferIntentFromModelState(modelSnapshot);
   const intentResolution = resolveQuickReplyIntent(reply, questionIntent);
-  const quickReplies = detectQuickReplies(intentResolution.intent, contextText);
+  const quickReplies = detectQuickReplies(intentResolution.intent, contextText, message.trim());
 
   if (CHAT_INTENT_DEBUG) {
     console.info("[chat-intent]", {
@@ -1220,16 +1220,93 @@ function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
   return undefined;
 }
 
+function inferPopulationStage(
+  contextText: string
+): "elementary" | "secondary" | "adult" | undefined {
+  if (/(k\s*[-–]?\s*(?:5|5th)|k\s*(?:through|to)\s*5|k-5th\s+grade|elementary|grades?\s*k\s*[-–]?\s*5|5-11\s+years?\s+old|children|kids)/i.test(contextText)) {
+    return "elementary";
+  }
+
+  if (/(middle\s+school|high\s+school|teen|teens|adolescent|grades?\s*6\s*[-–]?\s*12|young\s+adults?)/i.test(contextText)) {
+    return "secondary";
+  }
+
+  if (/(adult|adults|parents|caregivers|families|workers|employees)/i.test(contextText)) {
+    return "adult";
+  }
+
+  return undefined;
+}
+
+function hasLiteracyCue(contextText: string): boolean {
+  return /(literacy|reading|read\s+on\s+grade\s+level|grade-level\s+literacy|reading\s+on\s+grade\s+level|stay\s+on\s+track\s+in\s+school)/i.test(
+    contextText
+  );
+}
+
+function mergeQuickReplySets(baseReplies: QuickReply[], injected: QuickReply[]): QuickReply[] {
+  if (injected.length === 0) {
+    return baseReplies;
+  }
+
+  const typeReplies = baseReplies.filter(
+    (reply) => reply.value === "__type__" || reply.action === "open-input"
+  );
+  const standardReplies = baseReplies.filter(
+    (reply) => reply.value !== "__type__" && reply.action !== "open-input"
+  );
+
+  const seen = new Set<string>();
+  const merged: QuickReply[] = [];
+
+  for (const reply of [...injected, ...standardReplies]) {
+    const key = `${reply.label}::${reply.value}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(reply);
+  }
+
+  return [...merged, ...typeReplies];
+}
+
 function injectContextualQuickReplies(
   intent: QuestionIntent,
   baseReplies: QuickReply[],
-  contextText: string
+  contextText: string,
+  latestUserMessage: string
 ): QuickReply[] {
   const context = contextText.toLowerCase();
+  const stage = inferPopulationStage(contextText);
+  const latestUser = latestUserMessage.toLowerCase();
   const injected: QuickReply[] = [];
 
+  if (intent === "impact_aspiration") {
+    if (hasLiteracyCue(contextText)) {
+      injected.push(
+        {
+          label: "Read on grade level",
+          value: "In 10 years, we want more of our students to read on grade level and stay on track academically.",
+        },
+        {
+          label: "Stay on track through school",
+          value: "In 10 years, we want more of our students to stay on track through school and remain positioned to graduate.",
+        }
+      );
+    }
+
+    if (
+      stage === "elementary" &&
+      !/(career|workforce|employment|job|jobs|living-wage|wage)/i.test(latestUser)
+    ) {
+      const filtered = baseReplies.filter(
+        (reply) => reply.label !== "Career pathway + living-wage jobs"
+      );
+      return mergeQuickReplySets(filtered, injected);
+    }
+  }
+
   if (intent === "impact_specificity") {
-    if (/(elementary|children|kids|ages?\s*5|ages?\s*6|young artists?\s*5-18)/i.test(context)) {
+    if (stage === "elementary") {
       injected.push(
         {
           label: "Reading/math at grade level",
@@ -1240,7 +1317,7 @@ function injectContextualQuickReplies(
           value: "Specifically, we expect more students to attend school regularly and stay engaged in class.",
         }
       );
-    } else if (/(high school|teen|teens|adolescent|young adults?|postsecondary|college|career|workforce)/i.test(context)) {
+    } else if (stage === "secondary" || /(postsecondary|college|career|workforce)/i.test(context)) {
       injected.push(
         {
           label: "HS graduation",
@@ -1284,20 +1361,7 @@ function injectContextualQuickReplies(
     injected.push({ label: "Framework fidelity", value: "We will monitor fidelity to our logic model framework." });
   }
 
-  if (injected.length === 0) {
-    return baseReplies;
-  }
-
-  const seen = new Set(baseReplies.map((item) => item.label.toLowerCase()));
-  const merged = [...baseReplies];
-  for (const item of injected) {
-    const key = item.label.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.splice(Math.max(merged.length - 1, 0), 0, item);
-  }
-
-  return merged;
+  return mergeQuickReplySets(baseReplies, injected);
 }
 
 function resolveQuickReplyIntent(
@@ -1375,11 +1439,17 @@ function resolveQuickReplyIntent(
 
 function detectQuickReplies(
   intent: QuestionIntent | undefined,
-  contextText: string
+  contextText: string,
+  latestUserMessage: string
 ): QuickReply[] | undefined {
   if (!intent) return undefined;
   const baseReplies = getQuickRepliesForIntent(intent);
   if (!baseReplies) return undefined;
-  const contextualReplies = injectContextualQuickReplies(intent, baseReplies, contextText);
+  const contextualReplies = injectContextualQuickReplies(
+    intent,
+    baseReplies,
+    contextText,
+    latestUserMessage
+  );
   return ensureTypeQuickReply(contextualReplies);
 }
