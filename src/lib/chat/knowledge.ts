@@ -33,8 +33,10 @@ const GLOSSARY: GlossaryEntry[] = [
       'Unemployed adults on the South Side will gain stable employment and economic self-sufficiency.',
     ],
     commonConfusions: [
-      'Activities are not intended impact.',
-      'An intended impact should not be a measurement target or KPI.',
+      'Activities are not intended impact. Wrong form: "We provide after-school tutoring." Corrected form: "K-5 students in Philadelphia will read on grade level."',
+      'An intended impact should not be a measurement target or KPI. Wrong form: "80% of participants will read on grade level by third grade." That belongs in an evaluation plan.',
+      'Do not stack multiple milestones as the intended impact. Pick the single most meaningful long-term change for the population and geography.',
+      'The intended impact is not the same as the theory of change. The intended impact is one sentence; the theory of change is the reasoning behind why the program will produce it.',
     ],
   },
   {
@@ -152,6 +154,10 @@ const GLOSSARY: GlossaryEntry[] = [
       'Sessions delivered at the intended dosage',
       'Facilitators followed the core curriculum sequence',
     ],
+    commonConfusions: [
+      'Fidelity answers whether the program happened as designed. Quality answers how well it was experienced. Both matter, but they are distinct.',
+      'A program can have high fidelity (all sessions delivered on schedule) but low quality (participants felt disengaged or the facilitator was unprepared).',
+    ],
   },
   {
     term: 'Program quality',
@@ -165,6 +171,10 @@ const GLOSSARY: GlossaryEntry[] = [
       'Participant satisfaction',
       'Staff preparedness',
       'Engagement and relationship quality',
+    ],
+    commonConfusions: [
+      'Quality is not the same as fidelity. A session can be delivered on schedule (high fidelity) but feel rushed or disconnected to participants (low quality).',
+      'Quality indicators often come from participant and staff experience data, not just administrative records.',
     ],
   },
   {
@@ -213,6 +223,112 @@ const GLOSSARY: GlossaryEntry[] = [
       'Long-term outcomes are not the same as activities or output counts.',
     ],
   },
+  {
+    term: 'Theory of change',
+    aliases: ['ToC', 'program theory', 'change theory'],
+    definition:
+      'The narrative explanation of why a program\'s activities are expected to produce its intended outcomes — the underlying assumptions and causal reasoning behind the logic model.',
+    useWhen: [
+      'Explaining why the program approach was chosen.',
+      'Articulating the assumptions that must hold for activities to produce outcomes.',
+    ],
+    avoidWhen: [
+      'Describing the logic model structure itself.',
+    ],
+    commonConfusions: [
+      'A theory of change is the reasoning behind the model; the logic model is the structured visual representation of that reasoning.',
+      'They are related but not interchangeable terms. A program can have a logic model without a fully articulated theory of change.',
+    ],
+  },
+  {
+    term: 'Stakeholders',
+    aliases: ['stakeholder groups', 'partners', 'community partners'],
+    definition:
+      'People or groups with a meaningful interest in or connection to the program — including participants, families, funders, community partners, and staff. In the logic model, stakeholders are named so activities and outcomes can be attributed to the groups who experience or enable them.',
+    useWhen: [
+      'Identifying whose lives the program affects.',
+      'Linking activities or outcomes to the groups who experience or deliver them.',
+      'Populating the stakeholders array in the JSON model.',
+    ],
+    goodExamples: [
+      'Participants (students, youth, adults served)',
+      'Families and caregivers',
+      'School or community partners',
+      'Funders and grantmakers',
+      'Program staff',
+    ],
+    commonConfusions: [
+      'Stakeholders are not just funders — they include everyone whose outcomes the program tracks or who plays a role in delivery.',
+      'A stakeholder type in the model helps distinguish participants (people served) from partners (organizations enabling delivery) and funders (organizations providing resources).',
+    ],
+  },
+  {
+    term: 'Dosage',
+    aliases: ['program dose', 'intensity', 'frequency and duration'],
+    definition:
+      'The frequency, duration, and total amount of program participation a person receives. Adequate dosage is often a prerequisite for behavior or condition-level outcomes.',
+    useWhen: [
+      'Defining what a full participant experience looks like.',
+      'Distinguishing between partial and full program participants when tracking outcomes.',
+      'Describing implementation fidelity for a session-based program.',
+    ],
+    goodExamples: [
+      '20 hours of tutoring delivered over 10 weeks',
+      'Two 90-minute sessions per week across a full school year',
+      'A 12-week cohort with a minimum attendance threshold of 8 sessions',
+    ],
+    commonConfusions: [
+      'Dosage is about the individual participant\'s experience, not the program\'s total output volume.',
+      'Aggregate counts (sessions delivered) are outputs; dosage is the per-participant intensity.',
+    ],
+  },
+  {
+    term: 'Causal chain',
+    aliases: ['causal logic', 'if-then logic', 'program logic', 'logical sequence'],
+    definition:
+      'The defensible if-then sequence connecting resources → activities → outputs → short-term outcomes → medium-term outcomes → long-term outcomes. Each link represents a plausible, evidence-informed mechanism of change.',
+    useWhen: [
+      'Checking whether each step in the model follows logically from the prior step.',
+      'Identifying where the chain is missing a middle link.',
+    ],
+    avoidWhen: [
+      'Jumping from activities directly to long-term status outcomes without knowledge and behavior steps in between.',
+    ],
+    goodExamples: [
+      'Tutoring sessions → increased reading practice → improved reading confidence (short-term) → stronger independent reading habits (medium-term) → reading on grade level (long-term).',
+    ],
+    commonConfusions: [
+      'A broken causal chain names the start and end but skips the middle. Example of broken chain: job training activities (activity) → stable employment (short-term outcome). The knowledge and behavior steps are missing.',
+      'Long-term outcomes are not directly caused by activities — they are the result of the full outcome progression.',
+    ],
+  },
+];
+
+const POPULATION_STAGE_TAXONOMY = [
+  'Early childhood (PreK, ages 0–5): plausible long-term markers include school readiness, kindergarten entry skills, language and vocabulary development, and family engagement in early learning.',
+  'Elementary (K–5, ages 5–11): plausible long-term markers include reading on grade level, math proficiency, chronic absenteeism reduction, and social-emotional skill development.',
+  'Middle school (grades 6–8, ages 11–14): plausible long-term markers include academic recovery and engagement, belonging and connectedness, transition readiness, and reduced chronic absenteeism.',
+  'High school (grades 9–12, ages 14–18): plausible long-term markers include credit accumulation, on-track graduation status, postsecondary planning, and high school diploma attainment.',
+  'Young adult / transition age (18–24): plausible long-term markers include postsecondary enrollment and persistence, credential attainment, early workforce entry, and stable housing.',
+  'Adult / workforce (25+): plausible long-term markers include employment retention, wage growth, credential or certification completion, economic self-sufficiency, and family stability.',
+  'Use population stage to determine which downstream outcome markers are plausible. Do not suggest graduation, employment, or workforce markers for elementary or early childhood populations unless the program explicitly bridges to those outcomes over a very long time horizon.',
+  'When the population spans multiple stages (e.g., K–12), anchor the intended impact to the latest plausible stage within the program\'s scope, and note that earlier stages contribute to that progression.',
+];
+
+const OUTCOME_SEQUENCING_RULES = [
+  'Short-term outcomes must represent knowledge, awareness, or attitude change — what participants newly know, believe, or understand.',
+  'Medium-term outcomes must represent behavior or skill change — what participants now do differently as a result of that knowledge.',
+  'Long-term outcomes must represent condition or status change — durable changes in life circumstances that emerge over time.',
+  'The chain must not skip from knowledge change to condition change without a behavioral link.',
+  'Example of a broken outcome chain: "Participants learn about healthy eating (short-term) → participants have improved health outcomes (long-term)." Missing: a behavior change in food choices and preparation (medium-term).',
+  'Each level must be plausibly produced by the prior level and defensibly connected to the program\'s activities and dosage.',
+];
+
+const IMPACT_STATEMENT_RULES = [
+  'long_term_goal: the raw elicited aspiration or marker in the user\'s own words, filled in progressively as the change type or concrete marker is clarified.',
+  'compiled_statement: the final formatted impact sentence in the form "[Population] in [geography] will [long-term change]." This field should only be written when all three components are known and the user has accepted or confirmed a draft.',
+  'Do not write compiled_statement until population, geography, and a confirmed long-term marker are all known and the user has explicitly accepted the drafted statement.',
+  'If population or geography is still uncertain, continue eliciting those before finalizing compiled_statement.',
 ];
 
 const RIGHT_SIZING_NOTES = [
@@ -354,6 +470,10 @@ export function buildKnowledgeBase(): string {
     '',
     formatSection('Right-Sizing Notes', RIGHT_SIZING_NOTES),
     '',
+    formatSection('Population Stage Taxonomy', POPULATION_STAGE_TAXONOMY),
+    '',
+    formatSection('Outcome Sequencing Rules', OUTCOME_SEQUENCING_RULES),
+    '',
     formatSection('Common Mistakes to Catch and Correct', COMMON_MISTAKES),
     '',
     Object.entries(GUIDING_QUESTIONS)
@@ -373,6 +493,9 @@ export function buildResponsibilities(): string {
     '',
     '2. JSON update and hidden tags:',
     formatBulletList(JSON_UPDATE_RULES),
+    '',
+    '3. Impact statement field rules:',
+    formatBulletList(IMPACT_STATEMENT_RULES),
     '',
     'JSON schema:',
     '{',
