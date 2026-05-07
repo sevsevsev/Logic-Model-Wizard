@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import crypto from "crypto";
+import { Pool } from "pg";
 import {
   type CloudDraftRecord,
   type PersistedDraft,
@@ -21,7 +22,343 @@ interface CloudDraftDatabase {
   debugSnapshots: StoredDebugSnapshotRecord[];
 }
 
-const DB_PATH = path.join(process.cwd(), ".data", "cloud-drafts.json");
+const DATABASE_URL = process.env.DATABASE_URL?.trim();
+const USE_POSTGRES = Boolean(DATABASE_URL);
+let postgresPool: Pool | null = null;
+let postgresSchemaReady: Promise<void> | null = null;
+
+function getPostgresPool(): Pool {
+  if (!DATABASE_URL) {
+    throw new Error("DATABASE_URL is not configured.");
+  }
+
+  if (!postgresPool) {
+    postgresPool = new Pool({
+      connectionString: DATABASE_URL,
+      max: 3,
+    });
+  }
+
+  return postgresPool;
+}
+
+async function ensurePostgresSchema(): Promise<void> {
+  if (!USE_POSTGRES) return;
+
+  if (!postgresSchemaReady) {
+    postgresSchemaReady = (async () => {
+      const pool = getPostgresPool();
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS cloud_drafts (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          persisted_draft JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL
+        );
+      `);
+
+      await pool.query(
+        "CREATE INDEX IF NOT EXISTS cloud_drafts_user_updated_idx ON cloud_drafts (user_id, updated_at DESC);"
+      );
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS feedback_records (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          capture JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL
+        );
+      `);
+
+      await pool.query(
+        "CREATE INDEX IF NOT EXISTS feedback_records_user_created_idx ON feedback_records (user_id, created_at DESC);"
+      );
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS debug_snapshots (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          capture JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL
+        );
+      `);
+
+      await pool.query(
+        "CREATE INDEX IF NOT EXISTS debug_snapshots_user_created_idx ON debug_snapshots (user_id, created_at DESC);"
+      );
+    })();
+  }
+
+  await postgresSchemaReady;
+}
+
+function mapDraftRow(row: {
+  id: string;
+  user_id: string;
+  created_at: Date | string;
+  updated_at: Date | string;
+  persisted_draft: PersistedDraft;
+}): CloudDraftRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    schemaVersion: row.persisted_draft.schemaVersion,
+    savedAt: row.persisted_draft.savedAt,
+    draft: row.persisted_draft.draft,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+  };
+}
+
+function mapFeedbackRow(row: {
+  id: string;
+  user_id: string;
+  created_at: Date | string;
+  capture: FeedbackCapture;
+}): StoredFeedbackRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    createdAt: new Date(row.created_at).toISOString(),
+    capture: row.capture,
+  };
+}
+
+function mapDebugRow(row: {
+  id: string;
+  user_id: string;
+  created_at: Date | string;
+  capture: DebugSnapshotCapture;
+}): StoredDebugSnapshotRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    createdAt: new Date(row.created_at).toISOString(),
+    capture: row.capture,
+  };
+}
+
+async function listCloudDraftsByUserPostgres(userId: string): Promise<CloudDraftRecord[]> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    updated_at: Date | string;
+    persisted_draft: PersistedDraft;
+  }>(
+    `
+      SELECT id, user_id, created_at, updated_at, persisted_draft
+      FROM cloud_drafts
+      WHERE user_id = $1
+      ORDER BY updated_at DESC
+    `,
+    [userId]
+  );
+  return result.rows.map(mapDraftRow);
+}
+
+async function getCloudDraftByIdPostgres(userId: string, id: string): Promise<CloudDraftRecord | null> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    updated_at: Date | string;
+    persisted_draft: PersistedDraft;
+  }>(
+    `
+      SELECT id, user_id, created_at, updated_at, persisted_draft
+      FROM cloud_drafts
+      WHERE user_id = $1 AND id = $2
+      LIMIT 1
+    `,
+    [userId, id]
+  );
+
+  return result.rowCount ? mapDraftRow(result.rows[0]) : null;
+}
+
+async function saveCloudDraftPostgres(
+  userId: string,
+  persistedDraft: PersistedDraft,
+  id?: string
+): Promise<CloudDraftRecord> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const now = new Date().toISOString();
+
+  if (id) {
+    const updateResult = await pool.query<{
+      id: string;
+      user_id: string;
+      created_at: Date | string;
+      updated_at: Date | string;
+      persisted_draft: PersistedDraft;
+    }>(
+      `
+        UPDATE cloud_drafts
+        SET persisted_draft = $3::jsonb,
+            updated_at = $4::timestamptz
+        WHERE user_id = $1 AND id = $2
+        RETURNING id, user_id, created_at, updated_at, persisted_draft
+      `,
+      [userId, id, JSON.stringify(persistedDraft), now]
+    );
+
+    if (updateResult.rowCount) {
+      return mapDraftRow(updateResult.rows[0]);
+    }
+  }
+
+  const createdId = crypto.randomUUID();
+  const insertResult = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    updated_at: Date | string;
+    persisted_draft: PersistedDraft;
+  }>(
+    `
+      INSERT INTO cloud_drafts (id, user_id, persisted_draft, created_at, updated_at)
+      VALUES ($1, $2, $3::jsonb, $4::timestamptz, $5::timestamptz)
+      RETURNING id, user_id, created_at, updated_at, persisted_draft
+    `,
+    [createdId, userId, JSON.stringify(persistedDraft), now, now]
+  );
+
+  return mapDraftRow(insertResult.rows[0]);
+}
+
+async function deleteCloudDraftPostgres(userId: string, id: string): Promise<boolean> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const result = await pool.query(
+    "DELETE FROM cloud_drafts WHERE user_id = $1 AND id = $2",
+    [userId, id]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+async function saveFeedbackForUserPostgres(
+  userId: string,
+  capture: FeedbackCapture
+): Promise<StoredFeedbackRecord> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    capture: FeedbackCapture;
+  }>(
+    `
+      INSERT INTO feedback_records (id, user_id, capture, created_at)
+      VALUES ($1, $2, $3::jsonb, $4::timestamptz)
+      RETURNING id, user_id, created_at, capture
+    `,
+    [id, userId, JSON.stringify(capture), now]
+  );
+
+  return mapFeedbackRow(result.rows[0]);
+}
+
+async function saveDebugSnapshotForUserPostgres(
+  userId: string,
+  capture: DebugSnapshotCapture
+): Promise<StoredDebugSnapshotRecord> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    capture: DebugSnapshotCapture;
+  }>(
+    `
+      INSERT INTO debug_snapshots (id, user_id, capture, created_at)
+      VALUES ($1, $2, $3::jsonb, $4::timestamptz)
+      RETURNING id, user_id, created_at, capture
+    `,
+    [id, userId, JSON.stringify(capture), now]
+  );
+
+  return mapDebugRow(result.rows[0]);
+}
+
+async function listDebugSnapshotsByUserPostgres(
+  userId: string,
+  limit = 100
+): Promise<StoredDebugSnapshotRecord[]> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    capture: DebugSnapshotCapture;
+  }>(
+    `
+      SELECT id, user_id, created_at, capture
+      FROM debug_snapshots
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `,
+    [userId, Math.max(1, limit)]
+  );
+
+  return result.rows.map(mapDebugRow);
+}
+
+async function listAllDebugSnapshotsPostgres(
+  limit = 200
+): Promise<StoredDebugSnapshotRecord[]> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    capture: DebugSnapshotCapture;
+  }>(
+    `
+      SELECT id, user_id, created_at, capture
+      FROM debug_snapshots
+      ORDER BY created_at DESC
+      LIMIT $1
+    `,
+    [Math.max(1, limit)]
+  );
+
+  return result.rows.map(mapDebugRow);
+}
+
+function resolveDbPath(): string {
+  const configuredPath = process.env.CLOUD_DRAFT_DB_PATH?.trim();
+  if (configuredPath) {
+    return path.resolve(configuredPath);
+  }
+
+  // Serverless runtimes (e.g. Vercel) expose a read-only app filesystem, but /tmp is writable.
+  if (process.env.VERCEL) {
+    return path.join("/tmp", "cloud-drafts.json");
+  }
+
+  return path.join(process.cwd(), ".data", "cloud-drafts.json");
+}
+
+const DB_PATH = resolveDbPath();
 
 async function ensureDbFile(): Promise<void> {
   const folder = path.dirname(DB_PATH);
@@ -59,6 +396,10 @@ async function writeDb(db: CloudDraftDatabase): Promise<void> {
 }
 
 export async function listCloudDraftsByUser(userId: string): Promise<CloudDraftRecord[]> {
+  if (USE_POSTGRES) {
+    return listCloudDraftsByUserPostgres(userId);
+  }
+
   const db = await readDb();
   return db.drafts
     .filter((d) => d.userId === userId)
@@ -69,6 +410,10 @@ export async function getCloudDraftById(
   userId: string,
   id: string
 ): Promise<CloudDraftRecord | null> {
+  if (USE_POSTGRES) {
+    return getCloudDraftByIdPostgres(userId, id);
+  }
+
   const db = await readDb();
   return db.drafts.find((d) => d.userId === userId && d.id === id) ?? null;
 }
@@ -80,6 +425,10 @@ export async function saveCloudDraft(
 ): Promise<CloudDraftRecord> {
   if (!isValidPersistedDraft(persistedDraft)) {
     throw new Error("Invalid draft payload");
+  }
+
+  if (USE_POSTGRES) {
+    return saveCloudDraftPostgres(userId, persistedDraft, id);
   }
 
   const db = await readDb();
@@ -116,6 +465,10 @@ export async function saveCloudDraft(
 }
 
 export async function deleteCloudDraft(userId: string, id: string): Promise<boolean> {
+  if (USE_POSTGRES) {
+    return deleteCloudDraftPostgres(userId, id);
+  }
+
   const db = await readDb();
   const before = db.drafts.length;
   db.drafts = db.drafts.filter((d) => !(d.userId === userId && d.id === id));
@@ -132,6 +485,10 @@ export async function saveFeedbackForUser(
 ): Promise<StoredFeedbackRecord> {
   if (!isValidFeedbackCapture(capture)) {
     throw new Error("Invalid feedback payload");
+  }
+
+  if (USE_POSTGRES) {
+    return saveFeedbackForUserPostgres(userId, capture);
   }
 
   const db = await readDb();
@@ -158,6 +515,10 @@ export async function saveDebugSnapshotForUser(
     throw new Error("Invalid debug snapshot payload");
   }
 
+  if (USE_POSTGRES) {
+    return saveDebugSnapshotForUserPostgres(userId, capture);
+  }
+
   const db = await readDb();
   const now = new Date().toISOString();
 
@@ -178,6 +539,10 @@ export async function listDebugSnapshotsByUser(
   userId: string,
   limit = 100
 ): Promise<StoredDebugSnapshotRecord[]> {
+  if (USE_POSTGRES) {
+    return listDebugSnapshotsByUserPostgres(userId, limit);
+  }
+
   const db = await readDb();
   return db.debugSnapshots
     .filter((entry) => entry.userId === userId)
@@ -188,6 +553,10 @@ export async function listDebugSnapshotsByUser(
 export async function listAllDebugSnapshots(
   limit = 200
 ): Promise<StoredDebugSnapshotRecord[]> {
+  if (USE_POSTGRES) {
+    return listAllDebugSnapshotsPostgres(limit);
+  }
+
   const db = await readDb();
   return db.debugSnapshots
     .slice()
