@@ -71,6 +71,13 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
     input.click();
   }
 
+  function clearSelectedFiles() {
+    setSelectedFiles(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
@@ -157,10 +164,27 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                   multiple
                   className="hidden"
                   onChange={(e) => {
-                    setSelectedFiles(e.target.files);
+                    setSelectedFiles(e.target.files && e.target.files.length > 0 ? e.target.files : null);
                     setIsPickerOpen(false);
                   }}
                 />
+                {selectedFiles && selectedFiles.length > 0 && (
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <p className="truncate text-xs text-[#48617c]">
+                      {Array.from(selectedFiles)
+                        .map((file) => file.name)
+                        .join(", ")}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={clearSelectedFiles}
+                      disabled={isSubmitting}
+                      className="shrink-0 rounded-md border border-[#9fc3da] bg-white px-2 py-1 text-xs font-medium text-[#0b315b] hover:bg-[#edf3f8] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Clear files
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
