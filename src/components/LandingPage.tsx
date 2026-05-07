@@ -229,7 +229,7 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                   htmlFor="program-description"
                   className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#48617c]"
                 >
-                  Program description (optional)
+                  Tell us about your program
                 </label>
                 <textarea
                   id="program-description"
