@@ -10,6 +10,22 @@ import {
 import { buildPatchFromSuggestions, describeDetected, describeGaps } from "@/lib/bootstrap/patch";
 import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
 
+const MAX_BOOTSTRAP_FILES = 3;
+const MAX_BOOTSTRAP_TOTAL_BYTES = 4 * 1024 * 1024;
+
+function validateBootstrapUpload(files: FileList): string | null {
+  if (files.length > MAX_BOOTSTRAP_FILES) {
+    return `You can upload up to ${MAX_BOOTSTRAP_FILES} files at once.`;
+  }
+
+  const totalBytes = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_BOOTSTRAP_TOTAL_BYTES) {
+    return "Upload is too large. Please keep total file size under 4 MB or split into smaller files.";
+  }
+
+  return null;
+}
+
 interface LandingSubmitPayload {
   description: string;
   files: FileList | null;
@@ -26,14 +42,25 @@ export default function Home() {
   const model = useLogicModelStore((s) => s.model);
 
   async function runDocumentBootstrap(files: FileList) {
+    const validationError = validateBootstrapUpload(files);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
     const formData = new FormData();
     Array.from(files)
-      .slice(0, 3)
+      .slice(0, MAX_BOOTSTRAP_FILES)
       .forEach((f) => formData.append("files", f));
 
     const res = await fetch("/api/bootstrap", { method: "POST", body: formData });
     const raw = await res.text();
     let data: (BootstrapExtractionResponse & { error?: string }) | null = null;
+
+    if (!res.ok && res.status === 413) {
+      throw new Error(
+        "Upload is too large. Please keep total file size under 4 MB or split into smaller files."
+      );
+    }
 
     try {
       data = raw ? (JSON.parse(raw) as BootstrapExtractionResponse & { error?: string }) : null;

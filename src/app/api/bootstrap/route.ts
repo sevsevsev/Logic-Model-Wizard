@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 
 const MAX_FILES = 3;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_MULTIPART_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_COMBINED_CHARS = 60000;
 const MAX_SUGGESTIONS = 16;
 
@@ -246,6 +247,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Server misconfiguration." }, { status: 500 });
   }
 
+  const contentLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_MULTIPART_BODY_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          "Upload is too large. Please keep total file size under 4 MB or split into smaller files.",
+      },
+      { status: 413 }
+    );
+  }
+
   let formData: FormData;
   try {
     formData = await req.formData();
@@ -264,6 +276,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: `You can upload up to ${MAX_FILES} files at once.` },
       { status: 400 }
+    );
+  }
+
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_MULTIPART_BODY_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          "Upload is too large. Please keep total file size under 4 MB or split into smaller files.",
+      },
+      { status: 413 }
     );
   }
 

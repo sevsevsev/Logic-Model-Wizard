@@ -13,6 +13,22 @@ import {
   describeGaps,
 } from "@/lib/bootstrap/patch";
 
+const MAX_BOOTSTRAP_FILES = 3;
+const MAX_BOOTSTRAP_TOTAL_BYTES = 4 * 1024 * 1024;
+
+function validateBootstrapUpload(files: FileList): string | null {
+  if (files.length > MAX_BOOTSTRAP_FILES) {
+    return `You can upload up to ${MAX_BOOTSTRAP_FILES} files at once.`;
+  }
+
+  const totalBytes = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_BOOTSTRAP_TOTAL_BYTES) {
+    return "Upload is too large. Please keep total file size under 4 MB or split into smaller files.";
+  }
+
+  return null;
+}
+
 export default function DocumentBootstrap() {
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const addMessage = useLogicModelStore((s) => s.addMessage);
@@ -45,18 +61,31 @@ export default function DocumentBootstrap() {
   async function handleAnalyzeFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
 
+    const validationError = validateBootstrapUpload(files);
+    if (validationError) {
+      setError(validationError);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     setError(null);
     setIsAnalyzing(true);
 
     try {
       const formData = new FormData();
       Array.from(files)
-        .slice(0, 3)
+        .slice(0, MAX_BOOTSTRAP_FILES)
         .forEach((f) => formData.append("files", f));
 
       const res = await fetch("/api/bootstrap", { method: "POST", body: formData });
       const raw = await res.text();
       let data: (BootstrapExtractionResponse & { error?: string }) | null = null;
+
+      if (!res.ok && res.status === 413) {
+        throw new Error(
+          "Upload is too large. Please keep total file size under 4 MB or split into smaller files."
+        );
+      }
 
       try {
         data = raw ? (JSON.parse(raw) as BootstrapExtractionResponse & { error?: string }) : null;
