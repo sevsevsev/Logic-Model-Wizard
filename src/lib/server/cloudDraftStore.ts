@@ -88,6 +88,11 @@ async function ensurePostgresSchema(): Promise<void> {
       await pool.query(
         "CREATE INDEX IF NOT EXISTS debug_snapshots_user_created_idx ON debug_snapshots (user_id, created_at DESC);"
       );
+
+      // Migration: add addressed_at column if it does not yet exist.
+      await pool.query(
+        "ALTER TABLE debug_snapshots ADD COLUMN IF NOT EXISTS addressed_at TIMESTAMPTZ DEFAULT NULL;"
+      );
     })();
   }
 
@@ -130,12 +135,14 @@ function mapDebugRow(row: {
   id: string;
   user_id: string;
   created_at: Date | string;
+  addressed_at?: Date | string | null;
   capture: DebugSnapshotCapture;
 }): StoredDebugSnapshotRecord {
   return {
     id: row.id,
     userId: row.user_id,
     createdAt: new Date(row.created_at).toISOString(),
+    addressedAt: row.addressed_at ? new Date(row.addressed_at).toISOString() : null,
     capture: row.capture,
   };
 }
@@ -283,12 +290,13 @@ async function saveDebugSnapshotForUserPostgres(
     id: string;
     user_id: string;
     created_at: Date | string;
+    addressed_at: Date | string | null;
     capture: DebugSnapshotCapture;
   }>(
     `
       INSERT INTO debug_snapshots (id, user_id, capture, created_at)
       VALUES ($1, $2, $3::jsonb, $4::timestamptz)
-      RETURNING id, user_id, created_at, capture
+      RETURNING id, user_id, created_at, addressed_at, capture
     `,
     [id, userId, JSON.stringify(capture), now]
   );
@@ -306,10 +314,11 @@ async function listDebugSnapshotsByUserPostgres(
     id: string;
     user_id: string;
     created_at: Date | string;
+    addressed_at: Date | string | null;
     capture: DebugSnapshotCapture;
   }>(
     `
-      SELECT id, user_id, created_at, capture
+      SELECT id, user_id, created_at, addressed_at, capture
       FROM debug_snapshots
       WHERE user_id = $1
       ORDER BY created_at DESC
@@ -330,10 +339,11 @@ async function listAllDebugSnapshotsPostgres(
     id: string;
     user_id: string;
     created_at: Date | string;
+    addressed_at: Date | string | null;
     capture: DebugSnapshotCapture;
   }>(
     `
-      SELECT id, user_id, created_at, capture
+      SELECT id, user_id, created_at, addressed_at, capture
       FROM debug_snapshots
       ORDER BY created_at DESC
       LIMIT $1
@@ -342,6 +352,38 @@ async function listAllDebugSnapshotsPostgres(
   );
 
   return result.rows.map(mapDebugRow);
+}
+
+async function deleteDebugSnapshotPostgres(id: string): Promise<boolean> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const result = await pool.query(
+    "DELETE FROM debug_snapshots WHERE id = $1",
+    [id]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+async function markDebugSnapshotAddressedPostgres(id: string, addressed: boolean): Promise<StoredDebugSnapshotRecord | null> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const now = addressed ? new Date().toISOString() : null;
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    addressed_at: Date | string | null;
+    capture: DebugSnapshotCapture;
+  }>(
+    `
+      UPDATE debug_snapshots
+      SET addressed_at = $2
+      WHERE id = $1
+      RETURNING id, user_id, created_at, addressed_at, capture
+    `,
+    [id, now]
+  );
+  return result.rowCount ? mapDebugRow(result.rows[0]) : null;
 }
 
 function resolveDbPath(): string {
@@ -526,6 +568,7 @@ export async function saveDebugSnapshotForUser(
     id: crypto.randomUUID(),
     userId,
     createdAt: now,
+    addressedAt: null,
     capture,
   };
 
@@ -547,7 +590,8 @@ export async function listDebugSnapshotsByUser(
   return db.debugSnapshots
     .filter((entry) => entry.userId === userId)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, Math.max(1, limit));
+    .slice(0, Math.max(1, limit))
+    .map((e) => ({ ...e, addressedAt: e.addressedAt ?? null }));
 }
 
 export async function listAllDebugSnapshots(
@@ -561,5 +605,35 @@ export async function listAllDebugSnapshots(
   return db.debugSnapshots
     .slice()
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, Math.max(1, limit));
+    .slice(0, Math.max(1, limit))
+    .map((e) => ({ ...e, addressedAt: e.addressedAt ?? null }));
+}
+
+export async function deleteDebugSnapshot(id: string): Promise<boolean> {
+  if (USE_POSTGRES) {
+    return deleteDebugSnapshotPostgres(id);
+  }
+
+  const db = await readDb();
+  const before = db.debugSnapshots.length;
+  db.debugSnapshots = db.debugSnapshots.filter((s) => s.id !== id);
+  if (db.debugSnapshots.length === before) return false;
+  await writeDb(db);
+  return true;
+}
+
+export async function markDebugSnapshotAddressed(
+  id: string,
+  addressed: boolean
+): Promise<StoredDebugSnapshotRecord | null> {
+  if (USE_POSTGRES) {
+    return markDebugSnapshotAddressedPostgres(id, addressed);
+  }
+
+  const db = await readDb();
+  const entry = db.debugSnapshots.find((s) => s.id === id);
+  if (!entry) return null;
+  entry.addressedAt = addressed ? new Date().toISOString() : null;
+  await writeDb(db);
+  return entry;
 }

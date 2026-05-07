@@ -64,6 +64,7 @@ export interface StoredDebugSnapshotRecord {
   id: string;
   userId: string;
   createdAt: string;
+  addressedAt: string | null;
   capture: DebugSnapshotCapture;
 }
 
