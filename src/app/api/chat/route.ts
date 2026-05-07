@@ -661,7 +661,7 @@ export async function POST(req: NextRequest) {
   ].join("\n");
 
   const stateIntent = inferIntentFromModelState(modelSnapshot);
-  const intentResolution = resolveQuickReplyIntent(reply, questionIntent, stateIntent);
+  const intentResolution = resolveQuickReplyIntent(reply, questionIntent);
   const quickReplies = detectQuickReplies(intentResolution.intent, contextText);
 
   if (CHAT_INTENT_DEBUG) {
@@ -730,18 +730,28 @@ function normalizeQuestionIntent(raw: string | undefined): ParsedQuestionIntent 
 }
 
 function getQuestionFocusText(reply: string): { text: string; hasQuestion: boolean } {
-  const normalized = reply.replace(/\s+/g, " ").trim();
+  const normalized = reply.trim();
   if (!normalized) return { text: "", hasQuestion: false };
 
-  const questionMatches = normalized.match(/[^?]*\?/g);
-  if (questionMatches && questionMatches.length > 0) {
-    return {
-      text: questionMatches[questionMatches.length - 1].trim(),
-      hasQuestion: true,
-    };
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
+    const paragraph = paragraphs[index];
+    if (!paragraph.includes("?")) continue;
+
+    const questionMatches = paragraph.match(/[^?]*\?/g);
+    if (questionMatches && questionMatches.length > 0) {
+      return {
+        text: questionMatches[questionMatches.length - 1].trim(),
+        hasQuestion: true,
+      };
+    }
   }
 
-  return { text: normalized, hasQuestion: false };
+  return { text: paragraphs[paragraphs.length - 1] ?? "", hasQuestion: false };
 }
 
 const INTENT_QUESTION_PATTERNS: Record<QuestionIntent, RegExp[]> = {
@@ -755,7 +765,7 @@ const INTENT_QUESTION_PATTERNS: Record<QuestionIntent, RegExp[]> = {
     /(to\s+make\s+this\s+specific|what\s+exact\s+difference|point\s+to\s+in\s+10\s+years|graduat|persist|stable\s+employment|justice-system)/i,
   ],
   impact_review: [
-    /(does\s+that\s+capture|does\s+this\s+capture|capture\s+your\s+(?:intent|goal|ultimate\s+goal)|is\s+this\s+(?:right|accurate)|revise\s+the\s+impact\s+statement|adjust\s+the\s+wording|does\s+this\s+statement\s+capture|does\s+this\s+resonate|does\s+this\s+reflect|does\s+it\s+capture)/i,
+    /(does\s+that\s+capture|does\s+this\s+capture|better\s+capture|capture\s+your\s+(?:intent|goal|ultimate\s+goal)|is\s+this\s+(?:right|accurate)|revise\s+the\s+impact\s+statement|adjust\s+the\s+wording|does\s+this\s+statement\s+capture|does\s+this\s+resonate|does\s+this\s+reflect|does\s+it\s+capture|desired\s+long-term\s+impact)/i,
   ],
   long_term_help: [
     /(walk\s+me\s+through|what\s+a\s+long-term\s+goal\s+looks\s+like|help\s+me\s+develop\s+.*long-term)/i,
@@ -1043,10 +1053,11 @@ function getQuickRepliesForIntent(intent: QuestionIntent): QuickReply[] | undefi
       ];
     case "impact_specificity":
       return [
-        { label: "Education milestones", value: "Specifically, we expect more students to graduate high school on time and persist in college or credential programs." },
-        { label: "Workforce milestones", value: "Specifically, we expect more students to secure stable employment with upward career mobility." },
-        { label: "Safety and justice milestones", value: "Specifically, we expect lower justice-system involvement and stronger personal and community safety outcomes." },
-        { label: "Wellbeing milestones", value: "Specifically, we expect stronger mental health, stable housing, and supportive long-term relationships." },
+        { label: "Regular attendance", value: "Specifically, we expect more participants to attend school consistently and stay engaged over time." },
+        { label: "On-time school progress", value: "Specifically, we expect more participants to progress through school on time and avoid repeating grades." },
+        { label: "Stable wellbeing", value: "Specifically, we expect more participants to experience stronger mental health, stable housing, and supportive long-term relationships." },
+        { label: "Reduced justice involvement", value: "Specifically, we expect fewer participants to be involved in the justice system and more to experience lasting safety and stability." },
+        { label: "Name a different marker", value: "A more concrete long-term marker we want to see is ...", action: "prefill" },
         ALWAYS_TYPE,
       ];
     case "impact_review":
@@ -1150,7 +1161,7 @@ function ensureTypeQuickReply(replies: QuickReply[]): QuickReply[] {
 }
 
 function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
-  if (/(work on|refine|improve|tighten|revise|edit).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|tighten|revise|edit|wording)/i.test(reply)) {
+  if (/(work on|refine|improve|tighten|revise|edit).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|tighten|revise|edit|wording|better capture)|does\s+this\s+statement\s+better\s+capture/i.test(reply)) {
     return "impact_review";
   }
 
@@ -1217,6 +1228,36 @@ function injectContextualQuickReplies(
   const context = contextText.toLowerCase();
   const injected: QuickReply[] = [];
 
+  if (intent === "impact_specificity") {
+    if (/(elementary|children|kids|ages?\s*5|ages?\s*6|young artists?\s*5-18)/i.test(context)) {
+      injected.push(
+        {
+          label: "Reading/math at grade level",
+          value: "Specifically, we expect more students to read and do math at grade level.",
+        },
+        {
+          label: "Strong attendance habits",
+          value: "Specifically, we expect more students to attend school regularly and stay engaged in class.",
+        }
+      );
+    } else if (/(high school|teen|teens|adolescent|young adults?|postsecondary|college|career|workforce)/i.test(context)) {
+      injected.push(
+        {
+          label: "HS graduation",
+          value: "Specifically, we expect more students to graduate high school on time.",
+        },
+        {
+          label: "Postsecondary persistence",
+          value: "Specifically, we expect more students to persist in college or credential programs.",
+        },
+        {
+          label: "Stable employment",
+          value: "Specifically, we expect more participants to secure stable employment with upward career mobility.",
+        }
+      );
+    }
+  }
+
   if (intent === "geography") {
     if (/(geocod|parcel|site|land development|watershed)/i.test(context)) {
       injected.push({ label: "Site-specific", value: "Our program is site-specific." });
@@ -1261,17 +1302,16 @@ function injectContextualQuickReplies(
 
 function resolveQuickReplyIntent(
   reply: string,
-  explicitIntent?: ParsedQuestionIntent,
-  stateIntent?: QuestionIntent
+  explicitIntent?: ParsedQuestionIntent
 ): {
   intent?: QuestionIntent;
   fallbackIntent?: QuestionIntent;
   source:
     | "explicit"
     | "explicit-none"
+    | "forced-review"
     | "fallback"
     | "fallback-overrode-explicit"
-    | "state"
     | "suppressed-mismatch"
     | "none";
 } {
@@ -1287,6 +1327,14 @@ function resolveQuickReplyIntent(
       intent: undefined,
       fallbackIntent,
       source: "none",
+    };
+  }
+
+  if (isIntentCompatibleWithQuestion("impact_review", questionFocus.text)) {
+    return {
+      intent: "impact_review",
+      fallbackIntent,
+      source: "forced-review",
     };
   }
 
@@ -1316,10 +1364,6 @@ function resolveQuickReplyIntent(
 
   if (fallbackIntent && isIntentCompatibleWithQuestion(fallbackIntent, questionFocus.text)) {
     return { intent: fallbackIntent, fallbackIntent, source: "fallback" };
-  }
-
-  if (stateIntent && isIntentCompatibleWithQuestion(stateIntent, questionFocus.text)) {
-    return { intent: stateIntent, fallbackIntent, source: "state" };
   }
 
   return {

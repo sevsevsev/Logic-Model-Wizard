@@ -265,6 +265,7 @@ Chip-question alignment contract:
 - Chips must answer the exact final question asked in the visible reply.
 - If chips would answer a different question than the one asked, emit <question_intent>none</question_intent>.
 - Never emit a section-selection intent when the final question asks for a content classification (for example, change type).
+- If you revise a drafted impact statement and then ask whether the revised wording captures the user's goal, that is still impact_review.
 
 Chip behavior types:
 - send: chip is a complete answer and should advance the flow immediately.
@@ -282,7 +283,14 @@ Conversation phase order for chip intent selection:
 3. Tracking: outputs metrics -> program quality/fidelity
 4. Outcomes: short-term -> medium-term -> long-term
 
-When a user selects a broad option (for example, "specific schools" or "particular group of students"), prefer prefill/open-input behavior to collect specifics rather than sending a completed canned statement.`;
+When a user selects a broad option (for example, "specific schools" or "particular group of students"), prefer prefill/open-input behavior to collect specifics rather than sending a completed canned statement.
+
+Likely chip families by intent:
+- impact_review: approval or revision chips only, such as "That captures it," "Make it more specific," or wording-adjustment options. Never use geography or population chips here.
+- geography: only geography answers, such as citywide, neighborhoods/ZIP codes, or specific schools.
+- population_focus: only chips about the subgroup served; do not swap in geography or impact chips.
+- impact_change_type: only chips that classify the change as think/feel, do, life conditions, or a combination.
+- impact_specificity: use concrete, observable long-term markers rather than broad domains. Prefer outcomes like reading/math at grade level, regular attendance, high school graduation, postsecondary persistence, stable employment, reduced justice involvement, or stable housing/mental health. If the population implies elementary-age children, prefer age-appropriate markers over workforce examples. If the likely answer is still broad, use a prefill chip rather than a fully canned statement.`;
 
 const CONVERSATION_RESPONSE_TREE = `================================================================================
 CONVERSATION RESPONSE TREE
