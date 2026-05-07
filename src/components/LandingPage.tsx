@@ -125,11 +125,11 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
             <h1 className="font-display mt-4 text-4xl font-semibold leading-tight tracking-tight text-[#0b315b] sm:text-5xl">
               Show{" "}
               <span
-                className="relative inline-flex h-[1.08em] items-center overflow-hidden rounded-md bg-[#0b315b] px-2 py-0.5 align-baseline text-white shadow-[0_10px_20px_-14px_rgba(11,49,91,.9)]"
+                className="relative inline-flex h-[1.25em] items-center justify-center overflow-hidden rounded-md bg-[#0b315b] px-3 py-1 align-baseline text-white shadow-[0_10px_20px_-14px_rgba(11,49,91,.9)]"
                 style={{ width: `${audienceSlotWidthCh}ch` }}
               >
                 <span
-                  className={`absolute left-2 right-2 inline-block whitespace-nowrap transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                  className={`inline-block whitespace-nowrap transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                     isAudienceVisible
                       ? "translate-y-0 scale-100 opacity-100 blur-0"
                       : "translate-y-1 scale-[0.98] opacity-0 blur-[2px]"
