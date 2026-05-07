@@ -1,6 +1,7 @@
 import { listAllDebugSnapshots } from "@/lib/server/cloudDraftStore";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function formatDate(value: string): string {
   const date = new Date(value);
