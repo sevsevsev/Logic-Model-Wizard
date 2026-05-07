@@ -15,12 +15,16 @@ interface LandingPageProps {
 }
 
 export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPageProps) {
+  const rotatingAudiences = ["your board", "funders", "stakeholders", "staff"];
   const [description, setDescription] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [progressTick, setProgressTick] = useState(0);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [audienceIndex, setAudienceIndex] = useState(0);
+  const [isAudienceVisible, setIsAudienceVisible] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const rotateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -34,6 +38,23 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
 
     return () => clearInterval(timer);
   }, [isSubmitting]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsAudienceVisible(false);
+      if (rotateTimeoutRef.current) clearTimeout(rotateTimeoutRef.current);
+
+      rotateTimeoutRef.current = setTimeout(() => {
+        setAudienceIndex((prev) => (prev + 1) % rotatingAudiences.length);
+        setIsAudienceVisible(true);
+      }, 220);
+    }, 2600);
+
+    return () => {
+      clearInterval(interval);
+      if (rotateTimeoutRef.current) clearTimeout(rotateTimeoutRef.current);
+    };
+  }, [rotatingAudiences.length]);
 
   const processingSteps = [
     "Uploading documents",
@@ -101,7 +122,17 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
             </p>
 
             <h1 className="font-display mt-4 text-4xl font-semibold leading-tight tracking-tight text-[#0b315b] sm:text-5xl">
-              Build a shared logic model with confidence.
+              Show{" "}
+              <span className="relative inline-block min-w-[10ch] align-baseline">
+                <span
+                  className={`inline-block transition-all duration-300 ease-out ${
+                    isAudienceVisible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+                  }`}
+                >
+                  {rotatingAudiences[audienceIndex]}
+                </span>
+              </span>{" "}
+              exactly how you change lives.
             </h1>
 
             <p className="mt-4 max-w-2xl text-sm leading-7 text-[#31465f] sm:text-base">
