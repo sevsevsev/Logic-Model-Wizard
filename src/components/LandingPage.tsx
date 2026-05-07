@@ -48,8 +48,8 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
       rotateTimeoutRef.current = setTimeout(() => {
         setAudienceIndex((prev) => (prev + 1) % rotatingAudiences.length);
         setIsAudienceVisible(true);
-      }, 220);
-    }, 2600);
+      }, 320);
+    }, 3400);
 
     return () => {
       clearInterval(interval);
@@ -129,7 +129,7 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                 style={{ width: `${audienceSlotWidthCh}ch` }}
               >
                 <span
-                  className={`absolute left-2 right-2 inline-block whitespace-nowrap transition-all duration-400 ease-out ${
+                  className={`absolute left-2 right-2 inline-block whitespace-nowrap transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                     isAudienceVisible
                       ? "translate-y-0 scale-100 opacity-100 blur-0"
                       : "translate-y-1 scale-[0.98] opacity-0 blur-[2px]"
