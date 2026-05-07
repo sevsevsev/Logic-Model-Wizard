@@ -755,7 +755,7 @@ const INTENT_QUESTION_PATTERNS: Record<QuestionIntent, RegExp[]> = {
     /(to\s+make\s+this\s+specific|what\s+exact\s+difference|point\s+to\s+in\s+10\s+years|graduat|persist|stable\s+employment|justice-system)/i,
   ],
   impact_review: [
-    /(does\s+that\s+capture|does\s+this\s+capture|capture\s+your\s+intent|is\s+this\s+right|revise\s+the\s+impact\s+statement|adjust\s+the\s+wording)/i,
+    /(does\s+that\s+capture|does\s+this\s+capture|capture\s+your\s+(?:intent|goal|ultimate\s+goal)|is\s+this\s+(?:right|accurate)|revise\s+the\s+impact\s+statement|adjust\s+the\s+wording|does\s+this\s+statement\s+capture|does\s+this\s+resonate|does\s+this\s+reflect|does\s+it\s+capture)/i,
   ],
   long_term_help: [
     /(walk\s+me\s+through|what\s+a\s+long-term\s+goal\s+looks\s+like|help\s+me\s+develop\s+.*long-term)/i,
@@ -796,7 +796,8 @@ const POPULATION_FOCUS_PROBE_REGEX =
   /(particular subset|specific group|particular group|subgroup|specific schools|backgrounds?|circumstances?|confirm who you reach)/i;
 
 function looksSpecificPopulation(text: string): boolean {
-  return /\b(k\s*[-–]\s*\d+|\d+(?:st|nd|rd|th)\s+grad(?:e|ers?)?|elementary|middle school|high school|students?)\b/i.test(text);
+  // Requires a grade band, age range, or specific school type — not just "students"
+  return /\b(k\s*[-–]\s*\d+|\d+(?:st|nd|rd|th)\s+grad(?:e|ers?)?|elementary(?:\s+school)?|middle\s+school|high\s+school|grades?\s+\d|\d+(?:[-–]\d+)?[-\s]year[-\s]olds?|ages?\s+\d|youth|young\s+adults?|early\s+childhood|preschool|kindergarten)\b/i.test(text);
 }
 
 function looksSpecificGeography(text: string): boolean {
