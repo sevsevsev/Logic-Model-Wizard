@@ -10,17 +10,15 @@ import {
 import { buildPatchFromSuggestions, describeDetected, describeGaps } from "@/lib/bootstrap/patch";
 import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
 
-const MAX_BOOTSTRAP_FILES = 3;
-const MAX_BOOTSTRAP_TOTAL_BYTES = 4 * 1024 * 1024;
+const MAX_BOOTSTRAP_FILE_BYTES = 4 * 1024 * 1024;
 
 function validateBootstrapUpload(files: FileList): string | null {
-  if (files.length > MAX_BOOTSTRAP_FILES) {
-    return `You can upload up to ${MAX_BOOTSTRAP_FILES} files at once.`;
+  if (files.length === 0) {
+    return "Please select a file.";
   }
 
-  const totalBytes = Array.from(files).reduce((sum, file) => sum + file.size, 0);
-  if (totalBytes > MAX_BOOTSTRAP_TOTAL_BYTES) {
-    return "Upload is too large. Please keep total file size under 4 MB or split into smaller files.";
+  if (files[0].size > MAX_BOOTSTRAP_FILE_BYTES) {
+    return "File is too large. Please keep it under 4 MB.";
   }
 
   return null;
@@ -48,9 +46,7 @@ export default function Home() {
     }
 
     const formData = new FormData();
-    Array.from(files)
-      .slice(0, MAX_BOOTSTRAP_FILES)
-      .forEach((f) => formData.append("files", f));
+    formData.append("files", files[0]);
 
     const res = await fetch("/api/bootstrap", { method: "POST", body: formData });
     const raw = await res.text();

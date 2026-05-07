@@ -179,7 +179,7 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
             <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#48617c]">
-                  Upload files (optional)
+                  Upload a document (optional)
                 </label>
                 <button
                   type="button"
@@ -189,8 +189,8 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                 >
                   <span className="truncate">
                     {selectedFiles && selectedFiles.length > 0
-                      ? `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"} selected`
-                      : "Choose up to 3 files (.pdf, .docx, .txt, .md)"}
+                      ? selectedFiles[0].name
+                      : "Choose a file (.pdf, .docx, .txt, .md)"}
                   </span>
                   <FileUp size={16} className="shrink-0" />
                 </button>
@@ -198,7 +198,6 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                   ref={fileInputRef}
                   type="file"
                   accept=".pdf,.docx,.txt,.md"
-                  multiple
                   className="hidden"
                   onChange={(e) => {
                     setSelectedFiles(e.target.files && e.target.files.length > 0 ? e.target.files : null);

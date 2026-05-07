@@ -8,8 +8,8 @@ const PDFParser = require("pdf2json");
 
 export const runtime = "nodejs";
 
-const MAX_FILES = 3;
-const MAX_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_FILES = 1;
+const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_MULTIPART_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_COMBINED_CHARS = 60000;
 const MAX_SUGGESTIONS = 16;
@@ -272,9 +272,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Please upload at least one file." }, { status: 400 });
   }
 
-  if (files.length > MAX_FILES) {
+  if (files.length !== MAX_FILES) {
     return NextResponse.json(
-      { error: `You can upload up to ${MAX_FILES} files at once.` },
+      { error: "Please upload exactly one file." },
       { status: 400 }
     );
   }
