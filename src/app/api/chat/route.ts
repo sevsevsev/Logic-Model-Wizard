@@ -116,6 +116,8 @@ function simplifyPopulation(raw: string): string {
     .replace(/\s+in\s+.+$/i, "")
     .replace(/\s+through\s+.+$/i, "")
     .replace(/\s+with\s+.+$/i, "")
+    // Strip purpose/goal clauses like "students to help them build SEL skills..."
+    .replace(/\s+to\s+(?:help|build|develop|support|ensure|improve|prepare|enable)\b.+$/i, "")
     .replace(/[.,;:]+$/g, "")
     .trim();
 }
@@ -319,25 +321,22 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
   const patch: Partial<LogicModel> = {};
 
   if (populationCandidates.length > 0) {
-    const population = dedupeStrings(populationCandidates)[0];
-    patch.intended_impact = {
-      ...(patch.intended_impact ?? {}),
-      population,
-       geography: patch.intended_impact?.geography ?? "",
-       long_term_goal: patch.intended_impact?.long_term_goal ?? "",
-       compiled_statement: patch.intended_impact?.compiled_statement ?? "",
-};
+    // Reject candidates that are too long to plausibly be a population description.
+    // Long strings are typically goal sentences mis-matched by the regex.
+    const validPopulationCandidates = dedupeStrings(populationCandidates).filter(
+      (c) => c.length <= 60
+    );
+    if (validPopulationCandidates.length > 0) {
+      const population = validPopulationCandidates[0];
+      const base = patch.intended_impact ?? { population: "", geography: "", long_term_goal: "", compiled_statement: "" };
+      patch.intended_impact = { ...base, population };
+    }
   }
 
   if (geographyCandidates.length > 0) {
     const geography = dedupeStrings(geographyCandidates)[0];
-    patch.intended_impact = {
-      ...(patch.intended_impact ?? {}),
-      population: patch.intended_impact?.population ?? "",
-      geography,
-      long_term_goal: patch.intended_impact?.long_term_goal ?? "",
-      compiled_statement: patch.intended_impact?.compiled_statement ?? "",
-    };
+    const base = patch.intended_impact ?? { population: "", geography: "", long_term_goal: "", compiled_statement: "" };
+    patch.intended_impact = { ...base, geography };
   }
 
   if (dedupedStakeholders.length > 0) {
