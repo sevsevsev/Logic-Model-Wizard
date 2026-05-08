@@ -1,0 +1,432 @@
+import type { KnowledgeChunk } from "@/lib/rag/types";
+
+export const KNOWLEDGE_CHUNKS: KnowledgeChunk[] = [
+
+  // ─── FRAMEWORK FOUNDATION ─────────────────────────────────────────────────
+
+  {
+    id: "foundation-1",
+    title: "Logic model purpose and structure",
+    text: "A logic model is a structured roadmap that links what a program invests (resources), what it does (activities), what it produces (outputs), and what changes it achieves (outcomes), all in service of a long-term intended impact. It is not a strategic plan or an evaluation tool — it is a planning and communication tool. A well-built logic model should be readable by a new staff member, a funder, and a community member alike, and should clearly answer: who is served, where, and what lasting change is the program working toward.",
+    tags: ["foundation", "structure", "logic-model"],
+    source: "knowledge-base",
+    topic: "framework-foundation",
+  },
+  {
+    id: "foundation-causal-chain",
+    title: "Causal chain logic",
+    text: "Each step in a logic model must follow defensibly from the prior step using if-then reasoning: if we have these resources, then we can run these activities; if we run these activities, then we will produce these outputs; if we produce these outputs at the right quality and dosage, then participants will change in knowledge (short-term), then behavior (medium-term), then condition (long-term). A logic model with missing links — especially jumping from activities directly to long-term outcomes — signals an incomplete theory of change. Identify and name the missing intermediate steps.",
+    tags: ["causal-chain", "if-then", "theory-of-change"],
+    source: "knowledge-base",
+    topic: "framework-foundation",
+  },
+  {
+    id: "foundation-toc",
+    title: "Theory of change vs. logic model",
+    text: "A theory of change is the narrative reasoning behind why a program's approach will produce its intended outcomes — the assumptions and evidence base. A logic model is the structured visual representation of that reasoning. They are related but not interchangeable. A program can have a logic model without a fully articulated theory of change, but the logic model's causal links should be defensible as mini-theories. When a user references their 'theory of change,' confirm whether they mean the narrative rationale or the structured model, and help map whichever piece is missing.",
+    tags: ["theory-of-change", "ToC", "logic-model", "distinction"],
+    source: "knowledge-base",
+    topic: "framework-foundation",
+  },
+  {
+    id: "foundation-3ps",
+    title: "3 P reflection — Purpose, People, Process",
+    text: "Before finalizing a logic model, apply the 3 P checks. Purpose: does the intended impact capture the ultimate meaningful change for those served, not what the program does? Does the model identify the most strategically important activities and not just list every task? People: does the model reflect the real needs, values, and circumstances of those served? Do staff have adequate resources to implement? Process: how were stakeholders engaged in building the model — did co-designers include participants, partners, and community members, not just leadership?",
+    tags: ["review", "reflection", "3ps", "stakeholders"],
+    source: "knowledge-base",
+    topic: "framework-foundation",
+  },
+  {
+    id: "foundation-arc",
+    title: "ARC stakeholder engagement method",
+    text: "Meaningful logic model development uses the ARC method: Accessible (meet people where they are, eliminate jargon, offer multiple ways to participate), Reciprocal (make participation a two-way exchange — communicate how input will be used, offer tangible appreciation, share back findings), and Creative (use unexpected formats — gallery walks, shared meals, interactive sessions — to reduce power dynamics and build relationships). A logic model built only by leadership without participant or community input is likely to miss the most important outcomes and may lack the trust needed for implementation.",
+    tags: ["arc", "engagement", "stakeholders", "co-design"],
+    source: "knowledge-base",
+    topic: "framework-foundation",
+  },
+
+  // ─── GEOGRAPHY ────────────────────────────────────────────────────────────
+
+  {
+    id: "geo-scale",
+    title: "Geographic scale for logic models",
+    text: "Geography in a logic model names where the program operates or where the population is anchored — not every building where a session occurs. Scale matters: a neighborhood-level program differs fundamentally from a citywide or regional one. The levels from smallest to largest are: specific block or campus → neighborhood → section of city → city/municipality → county → multi-county region → state → national. Pick the level that accurately reflects who is served, not the level that sounds most impressive. A program serving one school in North Philadelphia should name that geography, not 'Philadelphia.'",
+    tags: ["geography", "scale", "scope"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-overview",
+    title: "Philadelphia as city and county",
+    text: "Philadelphia is a consolidated city-county: the City of Philadelphia and Philadelphia County are the same jurisdiction, covering approximately 142 square miles with a population of roughly 1.57 million (2024 estimate). When a user says 'the city,' 'the county,' or 'Philadelphia,' they typically mean the same entity. Philadelphia is the largest city in Pennsylvania and the sixth-largest in the United States. Programs operating 'citywide' are covering all of Philadelphia's neighborhoods and districts. Programs that reference 'the county' in a Philadelphia context are almost always referring to the City of Philadelphia, not an adjacent county.",
+    tags: ["philadelphia", "city", "county", "citywide"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-north",
+    title: "North Philadelphia neighborhoods",
+    text: "North Philadelphia includes neighborhoods such as Strawberry Mansion, Brewerytown, Temple University area (Cecil B. Moore), Hunting Park, Nicetown-Tioga, Fairhill, Hartranft, Francisville, and Yorktown. It is one of the most densely populated and historically disinvested areas of the city, with high proportions of Black and Latino residents, high poverty rates, and significant community health, education, and workforce challenges. Programs referencing 'North Philly,' 'North Philadelphia,' or neighborhood names within this area are serving communities that face compounding structural barriers. The Badlands and Kensington (sometimes classified as North or Northeast) are associated with concentrated poverty and the opioid crisis.",
+    tags: ["north-philadelphia", "neighborhoods", "philadelphia"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-west",
+    title: "West Philadelphia neighborhoods",
+    text: "West Philadelphia includes University City (anchored by the University of Pennsylvania and Drexel University), Cobbs Creek, Overbrook, Haddington, Mantua, Powelton Village, Cedar Park, and Kingsessing. University City is a distinct economic microclimate within West Philadelphia — it is affluent and institutional. Programs serving 'West Philadelphia' without specifying University City are typically serving lower-income Black communities in Cobbs Creek, Haddington, or Kingsessing. Clarify whether a program intends to serve the university-adjacent area or the broader residential neighborhoods west of 52nd Street.",
+    tags: ["west-philadelphia", "university-city", "neighborhoods"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-south",
+    title: "South Philadelphia neighborhoods",
+    text: "South Philadelphia includes Point Breeze, Passyunk Square (East and West), the Italian Market area (Bella Vista), Grays Ferry, Pennsport, Whitman, and neighborhoods near the Navy Yard. South Philadelphia has historically been working-class Italian and Irish, but has seen significant demographic change including growing Latino and Black populations, particularly in Point Breeze and Grays Ferry. Programs in South Philadelphia should specify which neighborhoods they serve, as demographics and needs vary significantly across the area.",
+    tags: ["south-philadelphia", "neighborhoods", "point-breeze"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-northeast",
+    title: "Northeast Philadelphia neighborhoods",
+    text: "Northeast Philadelphia (often called 'the Northeast' by locals) includes Mayfair, Frankford, Tacony, Bridesburg, Torresdale, Somerton, Oxford Circle, Rhawnhurst, and Fox Chase. It is geographically the largest section of the city and has historically been home to working-class white ethnic communities, though it has become significantly more diverse with growing Latino, Asian, and Black populations. Programs referencing 'the Northeast' or 'Northeast Philadelphia' are serving a large, diverse area that is distinct from the more urbanized neighborhoods closer to Center City.",
+    tags: ["northeast-philadelphia", "neighborhoods"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-northwest",
+    title: "Northwest Philadelphia neighborhoods",
+    text: "Northwest Philadelphia includes Germantown, Mt. Airy, Chestnut Hill, Roxborough, and Manayunk. Germantown is a historically significant neighborhood with a large Black population and community anchor institutions. Mt. Airy is known for racial integration and community organizing. Chestnut Hill is one of Philadelphia's most affluent neighborhoods. Roxborough and Manayunk are working-class to middle-class areas along the Wissahickon Creek and Schuylkill River. Programs in Northwest Philadelphia span a wide socioeconomic range — confirm which specific neighborhoods are in scope.",
+    tags: ["northwest-philadelphia", "germantown", "mt-airy", "chestnut-hill"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-center",
+    title: "Center City and adjacent neighborhoods",
+    text: "Center City is Philadelphia's downtown business and cultural district, roughly between Vine Street and South Street, river to river. Adjacent neighborhoods include Old City, Society Hill, Fairmount (Art Museum area), Spring Garden, Northern Liberties, and Fishtown. These areas have experienced significant gentrification since the 1990s and are now among the most expensive real estate in the city. Programs that locate their office in Center City but serve neighborhoods across the city should specify their service geography, not their office location, in the intended impact statement.",
+    tags: ["center-city", "downtown", "philadelphia", "gentrification"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-kensington",
+    title: "Kensington and the opioid crisis geography",
+    text: "Kensington is a neighborhood in lower Northeast / North Philadelphia that has become the epicenter of the opioid and fentanyl crisis in the United States. The intersection of Kensington and Allegheny Avenues (K&A) is a widely recognized reference point for drug use and encampments. Programs working in Kensington often serve people experiencing addiction, homelessness, or extreme poverty, and should be specific that they are working in Kensington rather than using broader geographic labels. 'The Badlands' is a colloquial term sometimes applied to parts of Kensington and North Philadelphia, generally used to signal concentrated poverty and violence.",
+    tags: ["kensington", "opioid-crisis", "K&A", "philadelphia"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-colloquial",
+    title: "Philadelphia colloquial geographic terms",
+    text: "Common colloquial Philadelphia geographic references and their interpretations: 'The Northeast' = Northeast Philadelphia. 'West Philly' = West Philadelphia residential neighborhoods (not University City specifically). 'University City' = Penn/Drexel area of West Philadelphia. 'North Philly' = North Philadelphia. 'South Philly' = South Philadelphia. 'The Main Line' = western suburbs (Lower Merion, Radnor, Wayne) — NOT Philadelphia proper. 'The 215' = Philadelphia broadly (the area code). 'SEPTA country' = areas served by SEPTA transit, extending into Bucks, Montgomery, Delaware, and Chester counties. 'The Delaware Valley' or 'Greater Philadelphia' = the Philadelphia metro region across multiple states. When a user uses any of these terms, confirm whether their program actually serves Philadelphia residents or the broader region.",
+    tags: ["colloquial", "philadelphia", "geography", "terminology"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-philly-regional",
+    title: "Greater Philadelphia and Delaware Valley regional scope",
+    text: "The 'Greater Philadelphia' metro region or 'Delaware Valley' includes Pennsylvania counties (Philadelphia, Bucks, Montgomery, Delaware, Chester) plus parts of New Jersey (Camden, Burlington, Gloucester, Salem) and Delaware. The Philadelphia MSA (Metropolitan Statistical Area) is formally called Philadelphia-Camden-Wilmington. SEPTA (Southeastern Pennsylvania Transportation Authority) serves Philadelphia plus Bucks, Montgomery, Delaware, and Chester counties. Programs serving 'the region' or 'Greater Philadelphia' are covering a multi-county, multi-state area with a combined population exceeding 6 million. If a program names regional geography, clarify whether they have actual service delivery and community relationships across that region or primarily operate in Philadelphia with occasional regional reach.",
+    tags: ["greater-philadelphia", "delaware-valley", "regional", "SEPTA"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-school-district",
+    title: "Philadelphia school district and catchment areas",
+    text: "The School District of Philadelphia (SDP) governs all traditional public schools in Philadelphia. Schools are organized by catchment areas — defined geographic zones that determine which neighborhood school a student is assigned to based on home address. There are also magnet programs (city-wide enrollment, no catchment) and charter schools (separate from SDP governance). When a program says it works in 'Philadelphia schools' or 'Philadelphia public schools,' clarify whether it operates in neighborhood catchment schools, magnet schools, charter schools, or some combination. School-based programs should name specific schools or catchments rather than saying 'the schools' or 'SDP.'",
+    tags: ["school-district", "SDP", "catchment", "philadelphia", "schools"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+  {
+    id: "geo-vague-warning",
+    title: "Vague geography language to clarify",
+    text: "Geography language that is too vague for a logic model intended impact statement includes: 'the community' (which community?), 'locally' (relative to what?), 'our area' (undefined), 'underserved communities' (descriptor, not geography), 'the region' (which region?). When a user provides language like this, prompt them to name the specific city, neighborhood, county, or region. An intended impact statement's geography should be specific enough that an outside reader can identify the place without additional context. 'Philadelphia' is sufficient for citywide programs. 'North Philadelphia' is better for a neighborhood-based program. 'Kensington' is better still for a highly localized program.",
+    tags: ["vague-geography", "clarification", "intended-impact"],
+    source: "knowledge-base",
+    topic: "geography",
+  },
+
+  // ─── POPULATION ───────────────────────────────────────────────────────────
+
+  {
+    id: "pop-specificity",
+    title: "Population specificity ladder",
+    text: "Populations in logic models should be specific enough that a reader knows who is served without asking. The ladder from too vague to too specific: too vague → 'people,' 'residents,' 'the community'; acceptable → 'youth,' 'adults,' 'families'; good → 'high school youth ages 14-18,' 'adults experiencing unemployment,' 'parents of elementary-school-age children'; overly narrow → naming a single individual, using a very specific sub-cohort that doesn't reflect program scope. Aim for the 'good' level — specific enough to be meaningful, broad enough to represent actual program reach. In a Philadelphia context, adding a neighborhood or school district qualifier often achieves the right level.",
+    tags: ["population", "specificity", "intended-impact"],
+    source: "knowledge-base",
+    topic: "population",
+  },
+  {
+    id: "pop-youth-philadelphia",
+    title: "Youth population language in Philadelphia programs",
+    text: "Programs serving young people in Philadelphia commonly use terms like: 'youth' (generally ages 12-24), 'young adults' (18-24), 'adolescents' (12-17), 'children' (under 12), 'elementary-age students' (K-5 or 5-11), 'middle schoolers' (grades 6-8), 'high school students' (grades 9-12), 'opportunity youth' (ages 16-24 not in school or work), and 'transition-age youth' (typically 16-21, focused on aging out of systems). When a user says 'the kids' or 'our youth,' ask for an age range or grade band. In Philadelphia, many youth programs are connected to the School District of Philadelphia and should specify whether they serve in-school, out-of-school, or both.",
+    tags: ["youth", "students", "philadelphia", "population"],
+    source: "knowledge-base",
+    topic: "population",
+  },
+  {
+    id: "pop-adult-workforce",
+    title: "Adult and workforce population language",
+    text: "Programs serving adults in Philadelphia often use population language like: 'unemployed adults,' 'job seekers,' 'adults with barriers to employment,' 'returning citizens' (people with criminal justice involvement), 'opportunity youth' (16-24 not in school or work), 'adults experiencing housing instability,' 'low-income adults,' or 'working-poor families.' When a user says 'adults' or 'residents,' prompt for clarifying context: What circumstance brings them to the program? What age range? Are they currently working or seeking work? This context shapes both the population field and the plausible short-to-long-term outcome sequence.",
+    tags: ["adults", "workforce", "employment", "population"],
+    source: "knowledge-base",
+    topic: "population",
+  },
+  {
+    id: "pop-family-caregiver",
+    title: "Family and caregiver population language",
+    text: "Programs that serve families or caregivers in Philadelphia often use language like: 'parents,' 'caregivers,' 'guardians,' 'families,' 'parents of school-age children,' 'kinship families' (grandparents or relatives raising children), 'foster families,' or 'two-generation families.' 'Two-generation' or '2Gen' programs explicitly serve both children and their parents/caregivers simultaneously. When a user describes a program serving families, clarify: who is the primary participant — the child, the caregiver, or both? This determines whether outcomes should be tracked for children, caregivers, or jointly.",
+    tags: ["families", "caregivers", "parents", "population"],
+    source: "knowledge-base",
+    topic: "population",
+  },
+  {
+    id: "pop-descriptors",
+    title: "Population descriptor terms and how to handle them",
+    text: "Users often describe populations using social descriptors rather than demographic or circumstantial terms. Common descriptors and how to interpret them: 'at-risk' or 'high-risk' (risk of what? — usually academic failure, violence exposure, or substance use; ask for clarification), 'underserved' or 'marginalized' (describes systemic exclusion, not a population itself; pair with who and where), 'BIPOC' or 'Black and Brown communities' (racial/ethnic identity descriptor; still needs circumstance and geography), 'low-income' or 'economically disadvantaged' (economic circumstance descriptor; ask for the population group this applies to), 'vulnerable' (too broad; ask for the specific vulnerability and population). Use these as qualifiers, not as standalone population names.",
+    tags: ["descriptors", "at-risk", "underserved", "BIPOC", "population"],
+    source: "knowledge-base",
+    topic: "population",
+  },
+  {
+    id: "pop-justice-involved",
+    title: "Justice-involved and returning citizen population",
+    text: "People with criminal justice involvement are described using several terms in Philadelphia programs: 'returning citizens' (preferred in Philadelphia policy and advocacy contexts — people returning from incarceration), 'justice-involved' (broader, includes people under supervision without incarceration), 'formerly incarcerated' (specific to post-release), 'people under supervision' (probation or parole), and 'system-involved' (sometimes used broadly). Philadelphia has a large returning citizen population and several anchor organizations (e.g., Philadelphia Reentry Coalition, PASA). When a user mentions people who have been 'in the system,' 'coming home,' or 'recently released,' confirm that returning citizens or justice-involved individuals is the intended population.",
+    tags: ["returning-citizens", "justice-involved", "reentry", "philadelphia"],
+    source: "knowledge-base",
+    topic: "population",
+  },
+  {
+    id: "pop-opportunity-youth",
+    title: "Opportunity youth — definition and Philadelphia context",
+    text: "'Opportunity youth' refers to people ages 16-24 who are neither enrolled in school nor participating in the labor market. This is a widely used policy and programmatic term in Philadelphia workforce development. Philadelphia has one of the highest rates of opportunity youth among large U.S. cities. Local programs addressing opportunity youth include YouthBuild Philadelphia, the Mayor's Commission on African American Males, and various workforce providers. If a user describes serving 'disconnected youth,' 'out-of-school youth,' 'out-of-school and out-of-work youth,' or 'OSOW youth,' they are describing opportunity youth. This population often has compounding barriers: lack of credentials, housing instability, justice involvement, or family caregiving responsibilities.",
+    tags: ["opportunity-youth", "OSOW", "disconnected-youth", "workforce", "philadelphia"],
+    source: "knowledge-base",
+    topic: "population",
+  },
+
+  // ─── INTENDED IMPACT ──────────────────────────────────────────────────────
+
+  {
+    id: "impact-format",
+    title: "Intended impact statement format",
+    text: "The intended impact statement follows the structure: '[Population] in [Geography] will [long-term change].' The population names who is served. The geography names where they are anchored. The long-term change names the ultimate condition, status, or life outcome the program is working toward — not what the program does, and not a measurement target. Example: 'High school students in North Philadelphia will graduate on time and be prepared for post-secondary education or employment.' The statement should be achievable in 5-10 years with sustained effort, should be meaningful to funders and community members alike, and should clearly distinguish the program's ultimate ambition from its day-to-day activities.",
+    tags: ["intended-impact", "format", "population", "geography", "statement"],
+    source: "knowledge-base",
+    topic: "intended-impact",
+  },
+  {
+    id: "impact-progressive",
+    title: "Progressive elicitation of intended impact",
+    text: "Build the intended impact statement progressively across multiple turns — do not attempt to write the full statement in one step. Sequence: (1) establish long-term aspiration (what ultimate change is the program working toward?), (2) identify population (who does the program serve?), (3) confirm geography (where are they located or served?), (4) check specificity of all three elements, (5) propose the compiled statement and gate confirmation explicitly. Only write the compiled_statement after the user explicitly accepts the proposed version. Do not conflate 'they seem OK with it' with explicit acceptance.",
+    tags: ["intended-impact", "progressive", "elicitation", "confirmation"],
+    source: "knowledge-base",
+    topic: "intended-impact",
+  },
+  {
+    id: "impact-confirmation-gating",
+    title: "Confirming the intended impact before moving on",
+    text: "Before treating the intended impact as settled and moving to implementation (resources, activities, outputs), the user must explicitly confirm the compiled statement. Acceptance signals include: 'yes,' 'that's right,' 'looks good,' 'that works,' 'correct,' 'exactly,' or paraphrasing the statement back approvingly. Non-acceptance signals include silence, adding qualifications, changing the wording, or asking a clarifying question about the statement. If the user modifies the statement, update the relevant fields and re-propose the compiled version before moving forward. Never automatically advance past the intended impact stage without an explicit user acceptance.",
+    tags: ["confirmation", "gating", "intended-impact", "acceptance"],
+    source: "knowledge-base",
+    topic: "intended-impact",
+  },
+
+  // ─── RESOURCES ────────────────────────────────────────────────────────────
+
+  {
+    id: "resources-categories",
+    title: "Resource categories — human, material, financial, knowledge",
+    text: "Resources (also called inputs) are the investments that make program implementation possible. They divide into four categories: (1) Human resources — staff, AmeriCorps members, volunteers, interns, partner organization personnel; (2) Material resources — classroom or program space, technology, vehicles, curriculum materials, supplies; (3) Financial resources — grants (government and foundation), earned revenue, individual donations, in-kind contributions; (4) Knowledge resources — areas of expertise or lived experience required to design and implement the program (e.g., trauma-informed practice, bilingual facilitation, community health expertise). Resources are things you use, not things you deliver — staff are a resource, 'training sessions' are an activity.",
+    tags: ["resources", "inputs", "human", "material", "financial", "knowledge"],
+    source: "knowledge-base",
+    topic: "resources",
+  },
+  {
+    id: "resources-philadelphia-context",
+    title: "Common resource patterns in Philadelphia programs",
+    text: "Philadelphia-based programs frequently cite these resource types: Human — community health workers (CHWs), licensed social workers (LSWs or LCSWs), certified teachers or tutors, AmeriCorps VISTA members, community navigators; Material — school-based space (SDP school partnerships), community center facilities, technology for virtual programming; Financial — City of Philadelphia contracts (DBHIDS, OHS, Commerce Department), Pennsylvania state grants, federal grants (Title IV, AmeriCorps, CDBG), foundation grants (William Penn Foundation, Pew Charitable Trusts, Philadelphia Foundation); Knowledge — cultural competency with specific communities, trauma-informed care, harm reduction principles, bilingual/bicultural capacity (Spanish, Vietnamese, Mandarin, Somali). When a user lists resources informally, map them to these categories.",
+    tags: ["resources", "philadelphia", "CHW", "AmeriCorps", "funding"],
+    source: "knowledge-base",
+    topic: "resources",
+  },
+
+  // ─── ACTIVITIES ───────────────────────────────────────────────────────────
+
+  {
+    id: "activities-categories",
+    title: "Organizing activities into strategy categories",
+    text: "Activities describe what the program does with its resources — the specific actions, events, and processes that constitute program delivery. They should be organized into strategy categories (3-5 categories is typical) rather than listing every individual task. Example categories: 'Curriculum delivery,' 'Family engagement,' 'Case management,' 'Partnership development,' 'Training and professional development,' 'Community outreach.' Each category should have 2-4 concrete action-oriented examples beneath it. If a user lists 20+ individual tasks, help them group them into a manageable number of strategy buckets. Activities should be written as verb phrases: 'Deliver,' 'Facilitate,' 'Coordinate,' 'Provide,' 'Conduct' — not nouns.",
+    tags: ["activities", "strategy-categories", "implementation"],
+    source: "knowledge-base",
+    topic: "activities",
+  },
+  {
+    id: "activities-vs-outputs",
+    title: "Activities vs. outputs — how to distinguish",
+    text: "An activity is what the program does. An output is what the activity produces. The test: activities are verbs (deliver tutoring, facilitate workshops, conduct home visits); outputs are nouns with counts (sessions delivered, participants served, home visits completed, materials distributed). 'We run workshops' is an activity. 'Number of workshop participants served' is an output. 'We distribute meals' is an activity. 'Number of meals distributed per month' is an output. When a user describes activities, check whether they have slipped into describing outputs (quantified products) or outcomes (changes in participants). Redirect each to its proper category.",
+    tags: ["activities", "outputs", "distinction"],
+    source: "knowledge-base",
+    topic: "activities",
+  },
+
+  // ─── OUTPUTS ──────────────────────────────────────────────────────────────
+
+  {
+    id: "outputs-types",
+    title: "Output types — reach and volume",
+    text: "Outputs track what a program delivers and who it reaches. There are two types: (1) Volume outputs — counts of services or products delivered (sessions held, home visits completed, meals provided, materials distributed, referrals made); (2) Reach outputs — the number of unique individuals who received services (participants served, families enrolled, students reached). A complete output picture usually includes both: 'We delivered X sessions to Y participants.' Outputs do not measure whether anyone changed — they confirm implementation happened. A program can have excellent outputs (many sessions, many participants) and weak outcomes (no meaningful change), especially if dosage, quality, or relevance is lacking.",
+    tags: ["outputs", "reach", "volume", "implementation"],
+    source: "knowledge-base",
+    topic: "outputs",
+  },
+  {
+    id: "outputs-dosage",
+    title: "Dosage as a key output dimension",
+    text: "Dosage is the frequency, duration, and total amount of program participation a person receives. It is distinct from aggregate output volume: 'We served 200 participants' tells you reach; 'participants received an average of 15 tutoring sessions over 10 weeks' tells you dosage. Adequate dosage is often a prerequisite for behavior- or condition-level outcomes. When a user describes their program, ask about dosage: How many sessions does a typical participant attend? Over what time period? What is the minimum threshold for a participant to be considered a full program completer? This information belongs in the outputs section and informs what outcome levels are plausible.",
+    tags: ["dosage", "outputs", "intensity", "implementation"],
+    source: "knowledge-base",
+    topic: "outputs",
+  },
+
+  // ─── OUTCOMES ─────────────────────────────────────────────────────────────
+
+  {
+    id: "outcomes-sequencing",
+    title: "Outcome sequencing — short, medium, long term",
+    text: "Outcomes should follow a believable causal sequence: Short-term outcomes (typically 0-12 months of program participation) capture changes in knowledge, awareness, attitudes, or confidence. Medium-term outcomes (1-3 years) capture changes in skills, behaviors, or actions. Long-term outcomes (3+ years) capture changes in condition, status, or life circumstances. Each level should follow plausibly from the prior level. Example sequence for a literacy program: short → students increase reading confidence; medium → students practice independent reading habits at home; long → students read on grade level by 3rd grade. If a user jumps from activities directly to long-term outcomes, help them identify the missing short- and medium-term steps.",
+    tags: ["outcomes", "sequencing", "short-term", "medium-term", "long-term"],
+    source: "knowledge-base",
+    topic: "outcomes",
+  },
+  {
+    id: "outcomes-right-sizing",
+    title: "Right-sizing outcomes — logic model vs. evaluation plan",
+    text: "Logic model outcomes name the type of change, not the measurement target. 'Students improve reading proficiency' is a logic model outcome. '85% of participants read at or above grade level by the end of third grade as measured by the DIBELS assessment' is an evaluation metric that belongs in an evaluation plan. If a user writes outcomes with percentages, 'as measured by,' specific assessment names, or data collection methods, they have written evaluation metrics. Acknowledge the measurement thinking and redirect: 'That's a great evaluation measure — for the logic model, we capture this as the type of change: [simplified outcome statement].' Right-sized outcomes make the logic model durable even if measurement tools change.",
+    tags: ["outcomes", "right-sizing", "evaluation", "metrics"],
+    source: "knowledge-base",
+    topic: "outcomes",
+  },
+  {
+    id: "outcomes-causal-test",
+    title: "Testing outcome sequence plausibility",
+    text: "Each step in the outcome sequence should pass a plausibility test: given the activities and outputs described, is it believable that participants would first change in knowledge, then in behavior, then in condition? Red flags that suggest the sequence is broken: (1) The short-term outcome is already a behavior change (skipping knowledge/awareness), (2) The long-term outcome is named before short- and medium-term steps are established, (3) Activities are disconnected from the outcomes named (the activities wouldn't plausibly produce the named outcomes), (4) The outcome is so ambitious that it exceeds what the program's dosage and reach could plausibly achieve. Use these tests to gently challenge and improve user-provided outcome drafts.",
+    tags: ["outcomes", "plausibility", "causal-chain", "sequence"],
+    source: "knowledge-base",
+    topic: "outcomes",
+  },
+
+  // ─── FIDELITY AND QUALITY ─────────────────────────────────────────────────
+
+  {
+    id: "fidelity-quality-distinction",
+    title: "Fidelity vs. quality — definition and distinction",
+    text: "Program fidelity and program quality are both tracked in the outputs section of a logic model, but they measure different things. Fidelity answers: was the program delivered as designed? It tracks adherence to core components, dosage (sessions delivered on schedule), and participant reach (the right people enrolled). Quality answers: how well was the program delivered and experienced? It tracks participant satisfaction, staff preparedness, engagement, and relationship quality. A program can have high fidelity but low quality (all sessions delivered but participants felt disengaged). Both matter because high-fidelity, high-quality implementation is the precondition for achieving outcomes. In the logic model, name what fidelity and quality indicators will be tracked.",
+    tags: ["fidelity", "quality", "implementation", "distinction"],
+    source: "knowledge-base",
+    topic: "fidelity-quality",
+  },
+
+  // ─── STAKEHOLDERS ─────────────────────────────────────────────────────────
+
+  {
+    id: "stakeholders-types",
+    title: "Stakeholder types in logic models",
+    text: "Stakeholders are people or groups with a meaningful interest in or connection to the program. In the logic model, they are named so that activities and outcomes can be attributed to the groups who experience or enable them. Types: (1) Participants — the people the program directly serves (students, youth, adults, families); (2) Partners — organizations or individuals who co-deliver the program or provide complementary services (schools, hospitals, community organizations); (3) Funders — government agencies, foundations, or individual donors providing financial resources; (4) Staff — program employees and volunteers who implement activities; (5) Community — the broader neighborhood or community context in which the program operates. In Philadelphia programs, name specific partner organizations when possible (e.g., 'School District of Philadelphia,' 'Children's Hospital of Philadelphia,' 'SEPTA').",
+    tags: ["stakeholders", "partners", "participants", "funders"],
+    source: "knowledge-base",
+    topic: "stakeholders",
+  },
+
+  // ─── ERRORS AND MISCONCEPTIONS ────────────────────────────────────────────
+
+  {
+    id: "error-activity-as-impact",
+    title: "Error: activity written as intended impact",
+    text: "The most common logic model error is writing an activity as the intended impact. Activities describe what the program does; the intended impact describes what changes for the people served. Error examples: 'We provide after-school tutoring' (activity, not impact), 'We run job training workshops' (activity), 'We offer mentoring' (activity). Corrected versions: 'K-5 students in North Philadelphia will read on grade level' (impact), 'Adults in Kensington will gain stable employment' (impact). When a user's intended impact statement starts with 'We provide,' 'We offer,' 'We run,' or 'We deliver,' it is almost certainly describing an activity. Redirect by asking: 'What do you hope changes for the people you serve as a result of that work?'",
+    tags: ["error", "activity", "intended-impact", "misconception"],
+    source: "knowledge-base",
+    topic: "errors-misconceptions",
+  },
+  {
+    id: "error-metric-as-outcome",
+    title: "Error: evaluation metric written as outcome",
+    text: "A frequent error is writing a measurable evaluation target into the outcomes section of a logic model. Logic model outcomes name the type of change; evaluation metrics specify how that change will be measured, by how much, and by when. Error examples: '80% of participants will read on grade level by 3rd grade' (metric), 'Increase employment rate by 15% within 6 months of program completion' (metric), '90% of youth will report improved confidence on pre/post survey' (metric). Corrected logic model outcomes: 'Students improve reading proficiency' (outcome), 'Adults gain employment' (outcome), 'Youth build confidence in school' (outcome). The measurement details belong in an evaluation plan or performance management system, not in the logic model.",
+    tags: ["error", "evaluation-metric", "outcomes", "misconception"],
+    source: "knowledge-base",
+    topic: "errors-misconceptions",
+  },
+  {
+    id: "error-stacked-impacts",
+    title: "Error: multiple intended impacts stacked into one statement",
+    text: "Programs sometimes try to name every population they serve or every outcome they hope to achieve in the intended impact statement, producing a stacked or compound statement. This dilutes strategic focus. Error: 'Youth and families in Philadelphia will improve educational outcomes, economic stability, and community safety.' This is three separate program theories compressed into one statement. The intended impact should name the single most meaningful, ultimate long-term change for the primary population in the specific geography the program is accountable for. If a program genuinely serves multiple distinct populations toward different ends, it may need multiple logic models, or the statement should focus on the primary population and most critical long-term change.",
+    tags: ["error", "intended-impact", "stacked", "multiple-outcomes"],
+    source: "knowledge-base",
+    topic: "errors-misconceptions",
+  },
+  {
+    id: "error-output-as-outcome",
+    title: "Error: output written as an outcome",
+    text: "Outputs and outcomes are frequently confused. Outputs track implementation (what was delivered, who was reached). Outcomes track change (how people are different as a result). Error examples written as outcomes: '500 youth served' (reach output), '30 sessions delivered' (volume output), 'Participants received job training' (activity/output, not a change). These belong in the outputs section, not outcomes. Outcomes must describe a change in knowledge, skill, behavior, or condition in the participant. Test: can you precede the statement with 'Participants will...' and have it describe a meaningful change? If it instead describes a service delivery count or event, it is an output.",
+    tags: ["error", "output", "outcome", "misconception"],
+    source: "knowledge-base",
+    topic: "errors-misconceptions",
+  },
+  {
+    id: "error-vague-geography",
+    title: "Error: vague or missing geography in impact statement",
+    text: "An intended impact statement without specific geography is incomplete and weakens the logic model. Vague geography errors: 'Youth in the community will...' (which community?), 'Residents in our area will...' (undefined area), 'People in underserved neighborhoods will...' (describes a characteristic, not a place). The geography should be specific enough that an outside reader can identify the place: 'Philadelphia,' 'North Philadelphia,' 'Kensington,' 'the Cobbs Creek neighborhood,' 'schools in the School District of Philadelphia.' If a user provides vague geography, ask: 'Can you tell me more specifically where your program operates — is it a particular neighborhood, school, or section of the city?'",
+    tags: ["error", "geography", "vague", "intended-impact"],
+    source: "knowledge-base",
+    topic: "errors-misconceptions",
+  },
+
+  // ─── EXAMPLES (Philadelphia context) ────────────────────────────────────────
+
+  {
+    id: "example-education-philly",
+    title: "Education program example — Philadelphia",
+    text: "Example intended impact for a Philadelphia education program: 'K-5 students in North Philadelphia will read on grade level and build the foundational literacy skills needed for long-term academic success.' Example short-term outcome: 'Students increase reading confidence and motivation.' Example medium-term outcome: 'Students practice reading independently at home and engage more actively in classroom learning.' Example long-term outcome: 'Students read at or above grade level.' Example activities: Deliver small-group literacy tutoring, facilitate family reading nights, provide coaching and professional development for teachers. Example outputs: tutoring sessions delivered, students served, family engagement events held.",
+    tags: ["example", "education", "literacy", "philadelphia", "north-philadelphia"],
+    source: "knowledge-base",
+    topic: "examples",
+  },
+  {
+    id: "example-workforce-philly",
+    title: "Workforce development example — Philadelphia",
+    text: "Example intended impact for a Philadelphia workforce program: 'Adults experiencing unemployment in West Philadelphia will gain stable, living-wage employment and achieve long-term economic self-sufficiency.' Example short-term outcome: 'Participants understand job market expectations and identify transferable skills.' Example medium-term outcome: 'Participants apply for jobs, complete interviews, and obtain employment.' Example long-term outcome: 'Participants maintain employment above the poverty line for 12+ months.' Example activities: Deliver occupational skills training, provide career coaching and job placement support, partner with employers for job fairs and hiring pipelines. Example outputs: participants enrolled in training, credentials or certifications earned, job placements made.",
+    tags: ["example", "workforce", "employment", "west-philadelphia", "philadelphia"],
+    source: "knowledge-base",
+    topic: "examples",
+  },
+  {
+    id: "example-youth-dev-philly",
+    title: "Youth development example — Philadelphia",
+    text: "Example intended impact for a Philadelphia youth development program: 'High school youth ages 14-18 in South Philadelphia will develop the social-emotional skills and networks needed to navigate to post-secondary success.' Example short-term outcome: 'Youth build relationships with caring adults and develop sense of belonging.' Example medium-term outcome: 'Youth make proactive decisions about their academic and career pathways and persist through challenges.' Example long-term outcome: 'Youth graduate high school and enroll in post-secondary education or career training.' Example activities: Facilitate mentoring relationships, deliver life-skills curriculum, organize college visits and career exploration. Example outputs: youth enrolled, mentor-mentee matches made, sessions delivered.",
+    tags: ["example", "youth-development", "south-philadelphia", "high-school"],
+    source: "knowledge-base",
+    topic: "examples",
+  },
+  {
+    id: "example-community-health-philly",
+    title: "Community health example — Philadelphia",
+    text: "Example intended impact for a Philadelphia community health program: 'Residents of Kensington will reduce harm from substance use and build pathways to recovery and stable health.' Example short-term outcome: 'Residents access harm reduction services and increase knowledge of treatment options.' Example medium-term outcome: 'Residents engage with recovery supports and reduce high-risk behaviors.' Example long-term outcome: 'Residents achieve and sustain recovery and improved health outcomes.' Example activities: Distribute harm reduction supplies, conduct community outreach, connect residents to treatment and housing resources. Example outputs: individuals reached through outreach, supplies distributed, referrals to treatment made. This type of program should use person-first language and avoid criminalizing terminology.",
+    tags: ["example", "community-health", "harm-reduction", "kensington", "substance-use"],
+    source: "knowledge-base",
+    topic: "examples",
+  },
+  {
+    id: "example-housing-philly",
+    title: "Housing and economic stability example — Philadelphia",
+    text: "Example intended impact for a Philadelphia housing and economic stability program: 'Low-income families in North and West Philadelphia will achieve and maintain stable housing and economic resilience.' Example short-term outcome: 'Families understand their rights, available resources, and the steps to address housing instability.' Example medium-term outcome: 'Families access rental assistance, legal aid, or other stabilization supports and avoid eviction.' Example long-term outcome: 'Families achieve stable housing and maintain financial stability over 24+ months.' Example activities: Provide financial counseling, connect families to rental assistance and legal services, facilitate peer support groups. Example outputs: families served, financial counseling sessions delivered, legal referrals made.",
+    tags: ["example", "housing", "economic-stability", "north-philadelphia", "west-philadelphia"],
+    source: "knowledge-base",
+    topic: "examples",
+  },
+];
