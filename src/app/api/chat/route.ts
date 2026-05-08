@@ -28,6 +28,7 @@ const DEBUG_AGENTIC_CONTEXT = process.env.DEBUG_AGENTIC_CONTEXT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
 const ENABLE_AGENTIC_TURN = process.env.ENABLE_AGENTIC_TURN === "true";
 const AGENTIC_DUAL_RUN = process.env.AGENTIC_DUAL_RUN === "true";
+const AGENTIC_SOFT_PHASE_ENFORCEMENT = process.env.AGENTIC_SOFT_PHASE_ENFORCEMENT !== "false";
 
 const PATCH_EXTRACTION_PROMPT = `You are a strict JSON extraction engine.
 
@@ -704,7 +705,8 @@ export async function POST(req: NextRequest) {
         const deterministic = enforceDeterministicPhaseQuestion(
           reply,
           normalizedIntent,
-          stateIntent
+          stateIntent,
+          { strict: !AGENTIC_SOFT_PHASE_ENFORCEMENT }
         );
 
         const contextText = [
@@ -869,7 +871,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
+  const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent, {
+    strict: true,
+  });
   reply = deterministic.reply;
   questionIntent = deterministic.questionIntent;
 
@@ -1313,8 +1317,11 @@ function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undef
 function enforceDeterministicPhaseQuestion(
   reply: string,
   questionIntent: ParsedQuestionIntent | undefined,
-  stateIntent: QuestionIntent | undefined
+  stateIntent: QuestionIntent | undefined,
+  options?: { strict?: boolean }
 ): { reply: string; questionIntent: ParsedQuestionIntent | undefined } {
+  const strict = options?.strict ?? true;
+
   if (!stateIntent) {
     return { reply, questionIntent };
   }
@@ -1329,6 +1336,30 @@ function enforceDeterministicPhaseQuestion(
     questionIntent && questionIntent !== "none"
       ? isIntentCompatibleWithQuestion(questionIntent, focus.text)
       : false;
+
+  const stateCompatible = focus.hasQuestion
+    ? isIntentCompatibleWithQuestion(stateIntent, focus.text)
+    : false;
+
+  if (!strict) {
+    // Soft mode (agentic): preserve coherent model-authored questions and
+    // only enforce canonical progression when no usable question exists.
+    if (focus.hasQuestion && (explicitCompatible || stateCompatible)) {
+      return {
+        reply,
+        questionIntent: questionIntent && questionIntent !== "none" ? questionIntent : stateIntent,
+      };
+    }
+
+    if (focus.hasQuestion) {
+      return { reply, questionIntent };
+    }
+
+    return {
+      reply: canonicalQuestion,
+      questionIntent: stateIntent,
+    };
+  }
 
   if (focus.hasQuestion && explicitCompatible && questionIntent === stateIntent) {
     return { reply, questionIntent };
