@@ -43,6 +43,11 @@ test("population specificity rejects generic labels", () => {
   assert.equal(looksSpecificPopulation("we serve youth"), false);
   assert.equal(looksSpecificPopulation("we serve justice-involved youth"), true);
   assert.equal(looksSpecificPopulation("we serve 9th graders"), true);
+  assert.equal(looksSpecificPopulation("we serve fifth graders"), true);
+  assert.equal(
+    looksSpecificPopulation("We provide mentoring to fifth graders in North Philadelphia."),
+    true
+  );
 });
 
 test("geography specificity accepts common place responses", () => {

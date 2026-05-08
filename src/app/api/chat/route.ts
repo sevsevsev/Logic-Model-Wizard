@@ -195,6 +195,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     /(?:enrolls?|serves?|supports?|targets?|works with)\s+([^.!?]+)/i,
     /(?:for|with|to)\s+((?:k-?12|middle school|high school|elementary)\s+students?)/i,
     /\bto\s+([^.!?]*(?:students?|youth|young adults?|adults?|participants?))/i,
+    /\b((?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+grad(?:e|ers?))\b/i,
     /\b([0-9]{1,2}(?:st|nd|rd|th)\s+graders?)\b/i,
   ];
 
