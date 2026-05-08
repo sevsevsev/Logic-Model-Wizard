@@ -1,9 +1,13 @@
 import {
+  buildCompactKnowledgeBase,
   buildChipEngineGuidance,
   buildConversationResponseTree,
   buildKnowledgeBase,
   buildResponsibilities,
 } from "@/lib/chat/knowledge";
+
+const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
+const USE_FULL_KNOWLEDGE_BASE = process.env.FULL_KNOWLEDGE_BASE_PROMPT === "true";
 
 export interface ToneProfile {
   name: string;
@@ -85,12 +89,17 @@ If the user jumps ahead, capture what they've shared and gently steer back to fi
 }
 
 export function buildSystemPrompt(profile: ToneProfile = defaultToneProfile): string {
-  return [
+  const sections = [
     `${profile.identity} You draw your knowledge from the structured logic-model reference below. Use it as your primary source for term meanings, distinctions, coaching, and validation.`,
-    buildKnowledgeBase(),
+    USE_FULL_KNOWLEDGE_BASE ? buildKnowledgeBase() : buildCompactKnowledgeBase(),
     buildResponsibilities(),
     buildConversationResponseTree(),
-    buildChipEngineGuidance(),
     buildResponseBehavior(profile),
-  ].join("\n\n");
+  ];
+
+  if (ENABLE_RESPONSE_CHIPS) {
+    sections.splice(4, 0, buildChipEngineGuidance());
+  }
+
+  return sections.join("\n\n");
 }

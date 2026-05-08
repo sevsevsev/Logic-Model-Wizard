@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:guardrails": "tsx --test src/lib/chat/guardrails.test.ts"
   },
   "dependencies": {
     "immer": "^11.1.4",
@@ -30,6 +31,7 @@
     "eslint-config-next": "^15.3.2",
     "pdfkit": "^0.18.0",
     "tailwindcss": "^4.1.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.3"
   }
 }

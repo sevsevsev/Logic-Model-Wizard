@@ -34,6 +34,10 @@ export interface OutcomeEntry {
 export interface Implementation {
   resources: Resource;
   activities: Activity[];
+  quality_fidelity: {
+    fidelity: string[];
+    quality: string[];
+  };
 }
 
 export interface Outcomes {
@@ -78,6 +82,10 @@ interface LogicModelPatch {
           stakeholderLabels?: string[];
         }
     >;
+    quality_fidelity?: {
+      fidelity?: string[];
+      quality?: string[];
+    };
   };
   outcomes?: Partial<{
     [K in keyof Outcomes]: Array<
@@ -163,6 +171,10 @@ const defaultModel: LogicModel = {
       knowledge: [],
     },
     activities: [],
+    quality_fidelity: {
+      fidelity: [],
+      quality: [],
+    },
   },
   outcomes: {
     short_term: [],
@@ -555,6 +567,21 @@ export const useLogicModelStore = create<LogicModelState>()(
               incomingActivities
             );
           }
+          if (patch.implementation.quality_fidelity) {
+            const qualityPatch = patch.implementation.quality_fidelity;
+            if (Array.isArray(qualityPatch.fidelity)) {
+              state.model.implementation.quality_fidelity.fidelity = mergeUniqueStringValues(
+                state.model.implementation.quality_fidelity.fidelity,
+                qualityPatch.fidelity
+              );
+            }
+            if (Array.isArray(qualityPatch.quality)) {
+              state.model.implementation.quality_fidelity.quality = mergeUniqueStringValues(
+                state.model.implementation.quality_fidelity.quality,
+                qualityPatch.quality
+              );
+            }
+          }
         }
         if (patch.outcomes) {
           const keys: Array<keyof Outcomes> = ["short_term", "medium_term", "long_term"];
@@ -609,6 +636,16 @@ export const useLogicModelStore = create<LogicModelState>()(
         restored.implementation.activities = (restored.implementation.activities || [])
           .map((a) => normalizeActivity(restored, a))
           .filter((a): a is Activity => Boolean(a));
+
+        if (!restored.implementation.quality_fidelity) {
+          restored.implementation.quality_fidelity = { fidelity: [], quality: [] };
+        }
+        if (!Array.isArray(restored.implementation.quality_fidelity.fidelity)) {
+          restored.implementation.quality_fidelity.fidelity = [];
+        }
+        if (!Array.isArray(restored.implementation.quality_fidelity.quality)) {
+          restored.implementation.quality_fidelity.quality = [];
+        }
 
         const outcomeKeys: Array<keyof Outcomes> = ["short_term", "medium_term", "long_term"];
         for (const key of outcomeKeys) {

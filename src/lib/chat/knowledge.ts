@@ -336,6 +336,25 @@ const RIGHT_SIZING_NOTES = [
   'Example: Increase reading level is usually the right level for the model; percent of participants reading on grade level by third grade belongs in the evaluation plan.',
 ];
 
+const WHY_LOGIC_MODELS_BENEFITS = [
+  'Clarifies program strategy and surfaces gaps in program logic that should be refined.',
+  'Creates a shared language and alignment across staff and stakeholders.',
+  'Anchors evaluation design by focusing data collection on strategic questions and priorities.',
+  'Supports learning and storytelling by connecting implementation and outcomes to intended impact.',
+];
+
+const REFLECTION_3PS = [
+  'Purpose (WHY): Does the model capture what matters most and keep intended impact focused on outcomes, not activities?',
+  'People (WHO): Does the model reflect participant needs, context, and whether staff have sufficient resources to deliver as designed?',
+  'Process (HOW): Are you engaging a diverse group of stakeholders in design, review, and refinement of the model?',
+];
+
+const ARC_STAKEHOLDER_ENGAGEMENT = [
+  'Accessible: meet people where they are and reduce jargon so stakeholders can participate with confidence.',
+  'Reciprocal: make participation two-way by clarifying how input is used and recognizing stakeholder contribution.',
+  'Creative: use engaging facilitation approaches that strengthen relationships and shared understanding.',
+];
+
 const COMMON_MISTAKES = [
   'Intended impact describes activities instead of outcomes.',
   'Activities are written as nouns instead of verb phrases.',
@@ -386,7 +405,8 @@ const RESPONSIBILITY_RULES = [
   'Do not over-probe population specificity after the user gives a grade band, age range, or school type plus geography.',
   'Guided long-term goal elicitation should move in sequence: aspiration, change type, concrete marker, then draft-and-review.',
   'Only draft an intended impact statement when population, geography, and a concrete long-term marker are all known.',
-  'Do not write intended_impact fields to the hidden patch until the user confirms or accepts a complete draft statement.',
+  'You may progressively capture intended_impact.population, intended_impact.geography, and intended_impact.long_term_goal as the user provides them.',
+  'Do not write intended_impact.compiled_statement until the user explicitly accepts or confirms a complete draft statement.',
   'Keep activities verb-based, outcome levels properly ordered, and resources bucketed by human, material, financial, and knowledge.',
 ];
 
@@ -470,6 +490,12 @@ export function buildKnowledgeBase(): string {
     '',
     formatSection('Right-Sizing Notes', RIGHT_SIZING_NOTES),
     '',
+    formatSection('Why Logic Models Matter in Practice', WHY_LOGIC_MODELS_BENEFITS),
+    '',
+    formatSection('Reflection Questions - 3 P\'s', REFLECTION_3PS),
+    '',
+    formatSection('Stakeholder Engagement - ARC Method', ARC_STAKEHOLDER_ENGAGEMENT),
+    '',
     formatSection('Population Stage Taxonomy', POPULATION_STAGE_TAXONOMY),
     '',
     formatSection('Outcome Sequencing Rules', OUTCOME_SEQUENCING_RULES),
@@ -479,6 +505,31 @@ export function buildKnowledgeBase(): string {
     Object.entries(GUIDING_QUESTIONS)
       .map(([section, questions]) => formatSection(`Guiding Questions - ${section}`, questions))
       .join('\n\n'),
+  ].join('\n');
+}
+
+export function buildCompactKnowledgeBase(): string {
+  return [
+    '================================================================================',
+    'KNOWLEDGE BASE - COMPACT REFERENCE',
+    '================================================================================',
+    '',
+    formatSection('Foundation', FOUNDATION),
+    '',
+    formatSection('Outcome Sequencing Rules', OUTCOME_SEQUENCING_RULES),
+    '',
+    formatSection('Common Mistakes to Catch and Correct', COMMON_MISTAKES),
+    '',
+    formatSection('Reflection Questions - 3 P\'s', REFLECTION_3PS),
+    '',
+    formatSection('Stakeholder Engagement - ARC Method', ARC_STAKEHOLDER_ENGAGEMENT),
+    '',
+    formatSection('Core Prompting Rules', [
+      'Ask one focused question at a time.',
+      'Keep intended impact outcome-focused rather than activity-focused.',
+      'If the user has already given specific population and geography, do not over-probe for narrower subgroup detail.',
+      'Prefer moving forward in phase order unless a critical gap must be resolved first.',
+    ]),
   ].join('\n');
 }
 
@@ -503,6 +554,7 @@ export function buildResponsibilities(): string {
     '  "intended_impact": { "population": "...", "geography": "...", "long_term_goal": "...", "compiled_statement": "..." },',
     '  "implementation": {',
     '    "resources": { "human": [], "material": [], "financial": [], "knowledge": [] },',
+    '    "quality_fidelity": { "fidelity": [], "quality": [] },',
     '    "activities": [{ "item": "...", "category": "...", "actions": [], "outputs": [{ "text": "...", "category": "..." }], "stakeholderLabels": [] }]',
     '  },',
     '  "outcomes": {',
