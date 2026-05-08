@@ -73,7 +73,7 @@ export function isExplicitImpactAcceptance(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   if (!normalized) return false;
 
-  return /(yes[, ]|yes\.|that captures it|this captures it|looks right|that works|sounds right|i approve|approved|confirmed)/i.test(
+  return /(^yes$|^yes[!.]?$|yes[, ]|that captures it|this captures it|looks right|that works|sounds right|i approve|approved|confirmed)/i.test(
     normalized
   );
 }

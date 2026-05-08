@@ -12,6 +12,7 @@ import {
   assertIntentWithLatestUserEvidence,
   buildContextCoverageSummary,
 } from "@/lib/chat/agenticContext";
+import { applyImpactAcceptanceFromReply } from "@/lib/chat/impactAcceptance";
 import { sanitizeImpactPatchWhenDraftBlocked } from "@/lib/chat/impactDraftGate";
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { executeAgenticTurn } from "@/lib/agent/executeTurn";
@@ -651,6 +652,7 @@ export async function POST(req: NextRequest) {
 
         modelPatch = normalizeMergedActivityPatch(modelPatch);
         modelPatch = enforceCompiledStatementAcceptance(modelPatch, modelSnapshot, message.trim());
+        modelPatch = applyImpactAcceptanceFromReply(modelPatch, modelSnapshot, message.trim());
 
         let reply = agentic.reply;
         let questionIntent = normalizeQuestionIntent(agentic.questionIntent);
@@ -828,6 +830,7 @@ export async function POST(req: NextRequest) {
 
   modelPatch = normalizeMergedActivityPatch(modelPatch);
   modelPatch = enforceCompiledStatementAcceptance(modelPatch, modelSnapshot, message.trim());
+  modelPatch = applyImpactAcceptanceFromReply(modelPatch, modelSnapshot, message.trim());
 
   if (shouldRequestImpactSpecificity(modelPatch)) {
     if (modelPatch) {

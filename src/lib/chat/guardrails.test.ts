@@ -59,6 +59,8 @@ test("geography specificity accepts common place responses", () => {
 });
 
 test("acceptance detector only passes explicit confirmations", () => {
+  assert.equal(isExplicitImpactAcceptance("yes"), true);
+  assert.equal(isExplicitImpactAcceptance("Yes!"), true);
   assert.equal(isExplicitImpactAcceptance("Yes, that captures it."), true);
   assert.equal(isExplicitImpactAcceptance("That sounds right."), true);
   assert.equal(isExplicitImpactAcceptance("Can you revise it?"), false);
