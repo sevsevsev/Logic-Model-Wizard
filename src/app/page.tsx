@@ -9,6 +9,7 @@ import {
 } from "@/lib/bootstrap/types";
 import { buildPatchFromSuggestions, describeGaps } from "@/lib/bootstrap/patch";
 import type { LogicModel } from "@/store/useLogicModelStore";
+import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 
 function buildQualityNote(patch: Partial<LogicModel>): string | null {
   const acts = patch.implementation?.activities ?? [];
@@ -50,6 +51,19 @@ interface LandingSubmitPayload {
   files: FileList | null;
 }
 
+function getCollaboratorId(): string | null {
+  if (typeof window === "undefined") return null;
+  const existing = window.localStorage.getItem(LOCAL_CLOUD_USER_KEY);
+  if (existing) return existing;
+
+  const generated =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? `collab-${crypto.randomUUID()}`
+      : `collab-${Date.now()}`;
+  window.localStorage.setItem(LOCAL_CLOUD_USER_KEY, generated);
+  return generated;
+}
+
 export default function Home() {
   const [started, setStarted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,7 +83,12 @@ export default function Home() {
     const formData = new FormData();
     formData.append("files", files[0]);
 
-    const res = await fetch("/api/bootstrap", { method: "POST", body: formData });
+    const collaboratorId = getCollaboratorId();
+    const res = await fetch("/api/bootstrap", {
+      method: "POST",
+      headers: collaboratorId ? { "x-user-id": collaboratorId } : undefined,
+      body: formData,
+    });
     const raw = await res.text();
     let data: (BootstrapExtractionResponse & { error?: string }) | null = null;
 
@@ -126,9 +145,13 @@ export default function Home() {
     try {
       const history = useLogicModelStore.getState().messages;
       const model = useLogicModelStore.getState().model;
+      const collaboratorId = getCollaboratorId();
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(collaboratorId ? { "x-user-id": collaboratorId } : {}),
+        },
         body: JSON.stringify({ message: description, history, model }),
       });
 

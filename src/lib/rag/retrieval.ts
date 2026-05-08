@@ -3,6 +3,10 @@ import { embedText } from "@/lib/rag/embeddings";
 import { queryVectorChunks } from "@/lib/rag/vectorStore";
 import type { RetrievedChunk } from "@/lib/rag/types";
 
+export interface RetrievalOptions {
+  userId?: string;
+}
+
 const ENABLE_RAG_RETRIEVAL = process.env.ENABLE_RAG_RETRIEVAL === "true";
 
 function tokenize(text: string): string[] {
@@ -38,7 +42,11 @@ function retrieveKnowledgeKeyword(query: string, topK = 5): RetrievedChunk[] {
     .slice(0, topK);
 }
 
-export async function retrieveKnowledge(query: string, topK = 5): Promise<RetrievedChunk[]> {
+export async function retrieveKnowledge(
+  query: string,
+  topK = 5,
+  options?: RetrievalOptions
+): Promise<RetrievedChunk[]> {
   if (!ENABLE_RAG_RETRIEVAL) {
     return retrieveKnowledgeKeyword(query, topK);
   }
@@ -55,9 +63,23 @@ export async function retrieveKnowledge(query: string, topK = 5): Promise<Retrie
       return retrieveKnowledgeKeyword(query, topK);
     }
 
-    const vectorResults = await queryVectorChunks(embedding, topK, "knowledge-base");
-    if (vectorResults.length > 0) {
-      return vectorResults;
+    const knowledgeBaseResults = await queryVectorChunks(embedding, topK, {
+      source: "knowledge-base",
+    });
+
+    const userResults = options?.userId
+      ? await queryVectorChunks(embedding, topK, {
+          source: "user-upload",
+          userId: options.userId,
+        })
+      : [];
+
+    const merged = [...userResults, ...knowledgeBaseResults]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
+
+    if (merged.length > 0) {
+      return merged;
     }
   } catch {
     // Fall back to keyword retrieval on vector or embedding failures.

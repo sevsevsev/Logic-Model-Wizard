@@ -60,7 +60,9 @@ function enforceCompiledStatementAcceptance(
 }
 
 export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTurnResult | null> {
-  const retrieved = await retrieveKnowledge(input.userMessage, 5);
+  const retrieved = await retrieveKnowledge(input.userMessage, 5, {
+    userId: input.userId,
+  });
 
   const evidenceBlock = retrieved
     .map((chunk) => `- [${chunk.id}] ${chunk.title}: ${chunk.text}`)

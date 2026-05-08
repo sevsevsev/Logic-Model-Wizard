@@ -21,6 +21,7 @@ export interface AgentTurnInput {
   userMessage: string;
   history: ChatMessage[];
   modelSnapshot?: LogicModel;
+  userId?: string;
 }
 
 export interface AgentTurnResult {

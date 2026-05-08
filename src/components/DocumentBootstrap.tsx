@@ -7,6 +7,7 @@ import {
   type BootstrapExtractionResponse,
 } from "@/lib/bootstrap/types";
 import { useLogicModelStore } from "@/store/useLogicModelStore";
+import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import {
   buildPatchFromSuggestions,
   describeDetected,
@@ -25,6 +26,19 @@ function validateBootstrapUpload(files: FileList): string | null {
   }
 
   return null;
+}
+
+function getCollaboratorId(): string | null {
+  if (typeof window === "undefined") return null;
+  const existing = window.localStorage.getItem(LOCAL_CLOUD_USER_KEY);
+  if (existing) return existing;
+
+  const generated =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? `collab-${crypto.randomUUID()}`
+      : `collab-${Date.now()}`;
+  window.localStorage.setItem(LOCAL_CLOUD_USER_KEY, generated);
+  return generated;
 }
 
 export default function DocumentBootstrap() {
@@ -73,7 +87,12 @@ export default function DocumentBootstrap() {
       const formData = new FormData();
       formData.append("files", files[0]);
 
-      const res = await fetch("/api/bootstrap", { method: "POST", body: formData });
+      const collaboratorId = getCollaboratorId();
+      const res = await fetch("/api/bootstrap", {
+        method: "POST",
+        headers: collaboratorId ? { "x-user-id": collaboratorId } : undefined,
+        body: formData,
+      });
       const raw = await res.text();
       let data: (BootstrapExtractionResponse & { error?: string }) | null = null;
 

@@ -1,10 +1,11 @@
-import type { KnowledgeChunk, KnowledgeChunkTopic } from "@/lib/rag/types";
+import type { KnowledgeChunk, KnowledgeChunkTopic, KnowledgeSource } from "@/lib/rag/types";
 
 export function chunkPlainText(
   text: string,
   sourcePrefix: string,
   maxChars = 450,
-  topic: KnowledgeChunkTopic = "framework-foundation"
+  topic: KnowledgeChunkTopic = "framework-foundation",
+  source: KnowledgeSource = "knowledge-base"
 ): KnowledgeChunk[] {
   const cleaned = text.replace(/\s+/g, " ").trim();
   if (!cleaned) return [];
@@ -18,7 +19,7 @@ export function chunkPlainText(
       title: `Chunk ${index + 1}`,
       text: cleaned.slice(start, end),
       tags: ["imported"],
-      source: "knowledge-base",
+      source,
       topic,
     });
     index += 1;

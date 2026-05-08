@@ -583,6 +583,7 @@ export async function POST(req: NextRequest) {
   }
 
   const modelSnapshot = isLogicModelShape(model) ? model : undefined;
+  const requestUserId = req.headers.get("x-user-id")?.trim() || undefined;
 
   // Cap history depth to prevent token-stuffing attacks
   const safeHistory = (history as ChatMessage[])
@@ -604,6 +605,7 @@ export async function POST(req: NextRequest) {
         userMessage: message.trim(),
         history: safeHistory,
         modelSnapshot,
+        userId: requestUserId,
       });
     } catch {
       dualRunAgenticResult = null;
@@ -617,6 +619,7 @@ export async function POST(req: NextRequest) {
         userMessage: message.trim(),
         history: safeHistory,
         modelSnapshot,
+        userId: requestUserId,
       });
 
       if (agentic) {

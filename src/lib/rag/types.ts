@@ -12,12 +12,14 @@ export type KnowledgeChunkTopic =
   | "examples"
   | "errors-misconceptions";
 
+export type KnowledgeSource = "knowledge-base" | "user-upload";
+
 export interface KnowledgeChunk {
   id: string;
   title: string;
   text: string;
   tags: string[];
-  source: "knowledge-base";
+  source: KnowledgeSource;
   topic: KnowledgeChunkTopic;
 }
 

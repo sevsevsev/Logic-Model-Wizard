@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRequire } from "module";
 import mammoth from "mammoth";
 import type { BootstrapExtractionResponse, BootstrapSuggestion } from "@/lib/bootstrap/types";
+import { ingestUserDocument } from "@/lib/rag/userIngest";
 
 const require = createRequire(import.meta.url);
 const PDFParser = require("pdf2json");
@@ -243,6 +244,7 @@ async function extractTextFromFile(file: File): Promise<string> {
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GEMINI_API_KEY;
+  const requestUserId = req.headers.get("x-user-id")?.trim() || undefined;
   if (!apiKey) {
     return NextResponse.json({ error: "Server misconfiguration." }, { status: 500 });
   }
@@ -304,6 +306,22 @@ export async function POST(req: NextRequest) {
         { error: "No readable text found in uploaded files." },
         { status: 400 }
       );
+    }
+
+    // Optional user-scoped ingestion: uploaded documents become retrievable context
+    // in future chat turns for this collaborator.
+    if (requestUserId) {
+      for (const doc of nonEmpty) {
+        try {
+          await ingestUserDocument({
+            userId: requestUserId,
+            fileName: doc.name,
+            text: doc.text,
+          });
+        } catch {
+          // Do not fail bootstrap suggestions if vector ingestion fails.
+        }
+      }
     }
 
     const combinedAlphaWords = nonEmpty

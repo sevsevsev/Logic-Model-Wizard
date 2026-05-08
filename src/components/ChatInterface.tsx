@@ -86,9 +86,13 @@ export default function ChatInterface() {
     setLoading(true);
 
     try {
+      const collaboratorId = requireCollaboratorId();
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(collaboratorId ? { "x-user-id": collaboratorId } : {}),
+        },
         body: JSON.stringify({ message: text, history: messages, model }),
       });
 

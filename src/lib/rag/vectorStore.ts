@@ -1,8 +1,18 @@
 import { Pool } from "pg";
-import type { KnowledgeChunk, RetrievedChunk } from "@/lib/rag/types";
+import type { KnowledgeChunk, KnowledgeSource, RetrievedChunk } from "@/lib/rag/types";
 
 let pool: Pool | null = null;
 let schemaReady: Promise<void> | null = null;
+
+export interface UpsertVectorChunkOptions {
+  userId?: string;
+  docId?: string;
+}
+
+export interface VectorQueryOptions {
+  source?: KnowledgeSource;
+  userId?: string;
+}
 
 function getDatabaseUrl(): string | null {
   const value = process.env.DATABASE_URL?.trim();
@@ -86,11 +96,36 @@ export async function ensureVectorSchema(): Promise<void> {
         // noop
       }
 
+      // Migrate: add optional user/doc ownership metadata for uploaded user corpus.
+      try {
+        await db.query(`
+          ALTER TABLE rag_knowledge_chunks
+            ADD COLUMN IF NOT EXISTS user_id TEXT
+        `);
+      } catch {
+        // noop
+      }
+
+      try {
+        await db.query(`
+          ALTER TABLE rag_knowledge_chunks
+            ADD COLUMN IF NOT EXISTS doc_id TEXT
+        `);
+      } catch {
+        // noop
+      }
+
       await db.query(
         "CREATE INDEX IF NOT EXISTS rag_knowledge_chunks_source_idx ON rag_knowledge_chunks (source);"
       );
       await db.query(
         "CREATE INDEX IF NOT EXISTS rag_knowledge_chunks_topic_idx ON rag_knowledge_chunks (topic);"
+      );
+      await db.query(
+        "CREATE INDEX IF NOT EXISTS rag_knowledge_chunks_user_source_idx ON rag_knowledge_chunks (user_id, source);"
+      );
+      await db.query(
+        "CREATE INDEX IF NOT EXISTS rag_knowledge_chunks_doc_idx ON rag_knowledge_chunks (doc_id);"
       );
     })();
   }
@@ -98,7 +133,11 @@ export async function ensureVectorSchema(): Promise<void> {
   await schemaReady;
 }
 
-export async function upsertVectorChunk(chunk: KnowledgeChunk, embedding: number[]): Promise<void> {
+export async function upsertVectorChunk(
+  chunk: KnowledgeChunk,
+  embedding: number[],
+  options?: UpsertVectorChunkOptions
+): Promise<void> {
   if (!isPostgresEnabled()) return;
   await ensureVectorSchema();
 
@@ -108,8 +147,8 @@ export async function upsertVectorChunk(chunk: KnowledgeChunk, embedding: number
 
   await db.query(
     `
-      INSERT INTO rag_knowledge_chunks (id, title, text_content, tags, source, topic, embedding, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7::vector, NOW())
+      INSERT INTO rag_knowledge_chunks (id, title, text_content, tags, source, topic, user_id, doc_id, embedding, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, NOW())
       ON CONFLICT (id)
       DO UPDATE SET
         title = EXCLUDED.title,
@@ -117,17 +156,29 @@ export async function upsertVectorChunk(chunk: KnowledgeChunk, embedding: number
         tags = EXCLUDED.tags,
         source = EXCLUDED.source,
         topic = EXCLUDED.topic,
+        user_id = EXCLUDED.user_id,
+        doc_id = EXCLUDED.doc_id,
         embedding = EXCLUDED.embedding,
         updated_at = NOW()
     `,
-    [chunk.id, chunk.title, chunk.text, chunk.tags, chunk.source, chunk.topic ?? "framework-foundation", embeddingLiteral]
+    [
+      chunk.id,
+      chunk.title,
+      chunk.text,
+      chunk.tags,
+      chunk.source,
+      chunk.topic ?? "framework-foundation",
+      options?.userId ?? null,
+      options?.docId ?? null,
+      embeddingLiteral,
+    ]
   );
 }
 
 export async function queryVectorChunks(
   embedding: number[],
   topK: number,
-  source?: string
+  sourceOrOptions?: KnowledgeSource | VectorQueryOptions
 ): Promise<RetrievedChunk[]> {
   if (!isPostgresEnabled()) return [];
   await ensureVectorSchema();
@@ -136,38 +187,57 @@ export async function queryVectorChunks(
   const normalized = normalizeEmbedding(embedding);
   const embeddingLiteral = embeddingToSqlLiteral(normalized);
 
+  const options: VectorQueryOptions =
+    typeof sourceOrOptions === "string" ? { source: sourceOrOptions } : sourceOrOptions ?? {};
+
   type VectorRow = {
     id: string;
     title: string;
     text_content: string;
     tags: string[];
-    source: "knowledge-base";
+    source: KnowledgeSource;
     topic: string;
     similarity: number;
   };
 
-  const result = source
-    ? await db.query<VectorRow>(
-        `
-          SELECT id, title, text_content, tags, source, topic,
-                 1 - (embedding <=> $1::vector) AS similarity
-          FROM rag_knowledge_chunks
-          WHERE source = $2
-          ORDER BY embedding <=> $1::vector ASC
-          LIMIT $3
-        `,
-        [embeddingLiteral, source, topK]
-      )
-    : await db.query<VectorRow>(
-        `
-          SELECT id, title, text_content, tags, source, topic,
-                 1 - (embedding <=> $1::vector) AS similarity
-          FROM rag_knowledge_chunks
-          ORDER BY embedding <=> $1::vector ASC
-          LIMIT $2
-        `,
-        [embeddingLiteral, topK]
-      );
+  let result;
+
+  if (options.source && options.userId) {
+    result = await db.query<VectorRow>(
+      `
+        SELECT id, title, text_content, tags, source, topic,
+               1 - (embedding <=> $1::vector) AS similarity
+        FROM rag_knowledge_chunks
+        WHERE source = $2 AND user_id = $3
+        ORDER BY embedding <=> $1::vector ASC
+        LIMIT $4
+      `,
+      [embeddingLiteral, options.source, options.userId, topK]
+    );
+  } else if (options.source) {
+    result = await db.query<VectorRow>(
+      `
+        SELECT id, title, text_content, tags, source, topic,
+               1 - (embedding <=> $1::vector) AS similarity
+        FROM rag_knowledge_chunks
+        WHERE source = $2
+        ORDER BY embedding <=> $1::vector ASC
+        LIMIT $3
+      `,
+      [embeddingLiteral, options.source, topK]
+    );
+  } else {
+    result = await db.query<VectorRow>(
+      `
+        SELECT id, title, text_content, tags, source, topic,
+               1 - (embedding <=> $1::vector) AS similarity
+        FROM rag_knowledge_chunks
+        ORDER BY embedding <=> $1::vector ASC
+        LIMIT $2
+      `,
+      [embeddingLiteral, topK]
+    );
+  }
 
   return result.rows.map((row) => ({
     id: row.id,
