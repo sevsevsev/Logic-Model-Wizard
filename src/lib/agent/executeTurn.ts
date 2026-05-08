@@ -1,6 +1,9 @@
 import { retrieveKnowledge } from "@/lib/rag/retrieval";
 import { buildCompiledStatement, isExplicitImpactAcceptance } from "@/lib/chat/guardrails";
+import { formatAgentPolicy, retrieveAgentPolicy } from "@/lib/agent/policy";
 import { parseAgentStructuredOutput } from "@/lib/agent/schema";
+import { buildAgentTurnBrief, formatAgentTurnBrief } from "@/lib/agent/turnBrief";
+import { sanitizeAgentTurnResult } from "@/lib/agent/validate";
 import type { AgentTurnInput, AgentTurnResult } from "@/lib/agent/types";
 import type { LogicModel } from "@/store/useLogicModelStore";
 
@@ -12,7 +15,14 @@ Return STRICT JSON only with this shape:
   "model_patch": { ...optional logic model patch... },
   "confidence": 0.0,
   "evidence_refs": ["chunk-id"],
-  "decision_summary": "short rationale without hidden reasoning"
+  "decision_summary": "short rationale without hidden reasoning",
+  "state_assessment": {
+    "currentPhase": "string",
+    "knownFacts": ["string"],
+    "missingFields": ["string"]
+  },
+  "contradiction_flags": ["asks_for_known_information|known_fact_overwrite|phase_regression|unsupported_patch"],
+  "patch_provenance": ["user_stated|retrieved_guidance|assistant_inferred"]
 }
 Rules:
 - Ask one focused question at most.
@@ -20,6 +30,9 @@ Rules:
 - Only include model_patch fields supported by the provided schema.
 - If the latest user message provides concrete facts for logic model fields (for example population, geography, resources, activities, outputs, or outcomes), include those facts in model_patch this turn.
 - Prefer extracting explicit user-provided facts over asking the user to restate the same information.
+- Treat the provided turn_brief as external working memory for this turn.
+- Do not ask for facts already listed in confirmed_facts or avoid_asking_for unless the user explicitly revises them.
+- If your planned question conflicts with the turn_brief, keep question_intent as none and set a contradiction flag.
 - If uncertain, set question_intent to none and avoid speculative patch fields.`;
 
 function enforceCompiledStatementAcceptance(
@@ -60,6 +73,21 @@ function enforceCompiledStatementAcceptance(
 }
 
 export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTurnResult | null> {
+  const turnBrief = buildAgentTurnBrief({
+    userMessage: input.userMessage,
+    history: input.history.slice(-20),
+    modelSnapshot: input.modelSnapshot,
+  });
+  const behaviorGuidance = retrieveAgentPolicy(
+    [
+      input.userMessage,
+      turnBrief.currentPhase,
+      ...turnBrief.missingFields,
+      ...turnBrief.confirmedFacts,
+    ].join("\n"),
+    4
+  );
+
   const retrieved = await retrieveKnowledge(input.userMessage, 5, {
     userId: input.userId,
   });
@@ -79,6 +107,8 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
               user_message: input.userMessage,
               history: input.history.slice(-20),
               model_snapshot: input.modelSnapshot,
+              turn_brief: formatAgentTurnBrief(turnBrief),
+              behavior_guidance: formatAgentPolicy(behaviorGuidance),
               retrieved_evidence: evidenceBlock,
             }),
           },
@@ -108,14 +138,29 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
   const parsed = parseAgentStructuredOutput(rawText);
   if (!parsed) return null;
 
-  let modelPatch = parsed.model_patch ?? null;
-  modelPatch = enforceCompiledStatementAcceptance(modelPatch, input.modelSnapshot, input.userMessage);
-
-  return {
+  const draftResult: AgentTurnResult = {
     reply: parsed.assistant_reply,
     questionIntent: parsed.question_intent,
-    modelPatch,
+    modelPatch: parsed.model_patch ?? null,
     confidence: parsed.confidence,
     evidenceRefs: parsed.evidence_refs,
+    stateAssessment: parsed.state_assessment,
+    contradictionFlags: parsed.contradiction_flags,
+    patchProvenance: parsed.patch_provenance,
+    decisionSummary: parsed.decision_summary,
   };
+
+  const sanitized = sanitizeAgentTurnResult(draftResult, {
+    modelSnapshot: input.modelSnapshot,
+    userMessage: input.userMessage,
+    turnBrief,
+  });
+
+  sanitized.modelPatch = enforceCompiledStatementAcceptance(
+    sanitized.modelPatch,
+    input.modelSnapshot,
+    input.userMessage
+  );
+
+  return sanitized;
 }

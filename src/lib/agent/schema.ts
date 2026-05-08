@@ -1,5 +1,10 @@
 import type { LogicModel } from "@/store/useLogicModelStore";
-import type { AgentQuestionIntent } from "@/lib/agent/types";
+import type {
+  AgentContradictionFlag,
+  AgentPatchProvenance,
+  AgentQuestionIntent,
+  AgentStateAssessment,
+} from "@/lib/agent/types";
 
 const ALLOWED_INTENTS: Set<AgentQuestionIntent> = new Set([
   "impact_aspiration",
@@ -25,6 +30,9 @@ export interface AgentStructuredOutput {
   confidence?: number;
   evidence_refs?: string[];
   decision_summary?: string;
+  state_assessment?: AgentStateAssessment;
+  contradiction_flags?: AgentContradictionFlag[];
+  patch_provenance?: AgentPatchProvenance[];
 }
 
 function stripCodeFences(text: string): string {
@@ -37,6 +45,19 @@ function stripCodeFences(text: string): string {
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+const ALLOWED_CONTRADICTIONS: Set<AgentContradictionFlag> = new Set([
+  "asks_for_known_information",
+  "known_fact_overwrite",
+  "phase_regression",
+  "unsupported_patch",
+]);
+
+const ALLOWED_PROVENANCE: Set<AgentPatchProvenance> = new Set([
+  "user_stated",
+  "retrieved_guidance",
+  "assistant_inferred",
+]);
 
 export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutput | null {
   const cleaned = stripCodeFences(rawText);
@@ -75,6 +96,40 @@ export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutp
 
   if (typeof parsed.decision_summary === "string") {
     output.decision_summary = parsed.decision_summary;
+  }
+
+  if (isPlainObject(parsed.state_assessment)) {
+    const stateAssessment: AgentStateAssessment = {};
+    if (typeof parsed.state_assessment.currentPhase === "string") {
+      stateAssessment.currentPhase = parsed.state_assessment.currentPhase;
+    }
+    if (Array.isArray(parsed.state_assessment.knownFacts)) {
+      stateAssessment.knownFacts = parsed.state_assessment.knownFacts.filter(
+        (v): v is string => typeof v === "string"
+      );
+    }
+    if (Array.isArray(parsed.state_assessment.missingFields)) {
+      stateAssessment.missingFields = parsed.state_assessment.missingFields.filter(
+        (v): v is string => typeof v === "string"
+      );
+    }
+    if (Object.keys(stateAssessment).length > 0) {
+      output.state_assessment = stateAssessment;
+    }
+  }
+
+  if (Array.isArray(parsed.contradiction_flags)) {
+    output.contradiction_flags = parsed.contradiction_flags.filter(
+      (value): value is AgentContradictionFlag =>
+        typeof value === "string" && ALLOWED_CONTRADICTIONS.has(value as AgentContradictionFlag)
+    );
+  }
+
+  if (Array.isArray(parsed.patch_provenance)) {
+    output.patch_provenance = parsed.patch_provenance.filter(
+      (value): value is AgentPatchProvenance =>
+        typeof value === "string" && ALLOWED_PROVENANCE.has(value as AgentPatchProvenance)
+    );
   }
 
   return output;

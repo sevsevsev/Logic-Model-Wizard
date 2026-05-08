@@ -16,6 +16,23 @@ export type AgentQuestionIntent =
   | "section_refine"
   | "none";
 
+export type AgentContradictionFlag =
+  | "asks_for_known_information"
+  | "known_fact_overwrite"
+  | "phase_regression"
+  | "unsupported_patch";
+
+export type AgentPatchProvenance =
+  | "user_stated"
+  | "retrieved_guidance"
+  | "assistant_inferred";
+
+export interface AgentStateAssessment {
+  currentPhase?: string;
+  knownFacts?: string[];
+  missingFields?: string[];
+}
+
 export interface AgentTurnInput {
   apiKey: string;
   userMessage: string;
@@ -30,4 +47,8 @@ export interface AgentTurnResult {
   modelPatch: Partial<LogicModel> | null;
   confidence?: number;
   evidenceRefs?: string[];
+  stateAssessment?: AgentStateAssessment;
+  contradictionFlags?: AgentContradictionFlag[];
+  patchProvenance?: AgentPatchProvenance[];
+  decisionSummary?: string;
 }

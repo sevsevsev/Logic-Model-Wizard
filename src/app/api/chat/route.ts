@@ -719,6 +719,9 @@ export async function POST(req: NextRequest) {
           console.info("[agentic-context-coverage]", {
             mode: "agentic",
             summary: buildContextCoverageSummary(message.trim(), modelPatch),
+            stateAssessment: agentic.stateAssessment ?? null,
+            contradictionFlags: agentic.contradictionFlags ?? [],
+            decisionSummary: agentic.decisionSummary ?? null,
           });
         }
 
