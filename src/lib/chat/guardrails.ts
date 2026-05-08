@@ -27,10 +27,30 @@ export function looksSpecificPopulation(text: string): boolean {
 }
 
 export function looksSpecificGeography(text: string): boolean {
+  // Common place names and neighborhood shorthand users provide directly.
+  if (
+    /\b(philadelphia|center\s+city|kensington|fishtown|germantown|south\s+philly|north\s+philly|west\s+philly|northeast\s+philadelphia|northwest\s+philadelphia)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+
   // Administrative / directional geography terms
   if (/\b(north|south|east|west|citywide|neighborhood|region|district|zip|borough|county|school\s+district|campus|site|statewide)\b/i.test(text)) {
     return true;
   }
+
+  // City/state shorthand like "Philadelphia, PA".
+  if (/\b[a-z]+(?:\s+[a-z]+){0,2},\s*[a-z]{2}\b/i.test(text)) {
+    return true;
+  }
+
+  // ZIP-code specificity.
+  if (/\b(?:zip(?:\s+code)?\s*)?\d{5}(?:-\d{4})?\b/i.test(text)) {
+    return true;
+  }
+
   // Named schools: "Bethune Elementary", "Roosevelt Middle School", etc.
   if (/\b\w[\w\s]*(?:elementary|middle|high)\s*(?:school)?\b/i.test(text)) {
     return true;

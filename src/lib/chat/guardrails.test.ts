@@ -5,6 +5,7 @@ import {
   buildCompiledStatement,
   inferNextRequiredIntent,
   isExplicitImpactAcceptance,
+  looksSpecificGeography,
   looksSpecificPopulation,
 } from "@/lib/chat/guardrails";
 
@@ -42,6 +43,14 @@ test("population specificity rejects generic labels", () => {
   assert.equal(looksSpecificPopulation("we serve youth"), false);
   assert.equal(looksSpecificPopulation("we serve justice-involved youth"), true);
   assert.equal(looksSpecificPopulation("we serve 9th graders"), true);
+});
+
+test("geography specificity accepts common place responses", () => {
+  assert.equal(looksSpecificGeography("Philadelphia"), true);
+  assert.equal(looksSpecificGeography("Philadelphia, PA"), true);
+  assert.equal(looksSpecificGeography("19121"), true);
+  assert.equal(looksSpecificGeography("citywide"), true);
+  assert.equal(looksSpecificGeography("the community"), false);
 });
 
 test("acceptance detector only passes explicit confirmations", () => {

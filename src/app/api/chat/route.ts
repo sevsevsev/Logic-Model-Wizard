@@ -178,6 +178,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
   if (sentences.length === 0) return null;
 
   const populationCandidates: string[] = [];
+  const geographyCandidates: string[] = [];
   const stakeholderLabels: string[] = [];
   const activities: Array<{
     item: string;
@@ -197,6 +198,12 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     /\b([0-9]{1,2}(?:st|nd|rd|th)\s+graders?)\b/i,
   ];
 
+  const geographyRegexes = [
+    /\b(?:in|across|throughout|within|at|serving)\s+((?:north|south|west|east|northeast|northwest|southeast|southwest)\s+philadelphia|philadelphia(?:,\s*pa)?|[a-z\s]+county|[a-z\s]+school\s+district|center\s+city|kensington|fishtown|germantown|south\s+philly|north\s+philly|west\s+philly|zip\s*\d{5}(?:-\d{4})?)/i,
+    /\b(citywide|statewide|region(?:al)?|district-wide|neighborhood-level)\b/i,
+    /\b(?:zip(?:\s+code)?\s*)?(\d{5}(?:-\d{4})?)\b/i,
+  ];
+
   const outputRegex = /\b(\d+\s+(?:lessons?|sessions?|classes?|participants?|students?)[^.,;]*)/i;
 
   for (const sentence of sentences) {
@@ -207,6 +214,14 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       if (match?.[1]) {
         const candidate = simplifyPopulation(match[1]);
         if (candidate.length > 2) populationCandidates.push(candidate);
+      }
+    }
+
+    for (const rx of geographyRegexes) {
+      const match = normalized.match(rx);
+      if (match?.[1]) {
+        const candidate = match[1].trim().replace(/[.,;:]+$/g, "");
+        if (candidate.length > 1) geographyCandidates.push(candidate);
       }
     }
 
@@ -311,6 +326,17 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
        long_term_goal: patch.intended_impact?.long_term_goal ?? "",
        compiled_statement: patch.intended_impact?.compiled_statement ?? "",
 };
+  }
+
+  if (geographyCandidates.length > 0) {
+    const geography = dedupeStrings(geographyCandidates)[0];
+    patch.intended_impact = {
+      ...(patch.intended_impact ?? {}),
+      population: patch.intended_impact?.population ?? "",
+      geography,
+      long_term_goal: patch.intended_impact?.long_term_goal ?? "",
+      compiled_statement: patch.intended_impact?.compiled_statement ?? "",
+    };
   }
 
   if (dedupedStakeholders.length > 0) {
