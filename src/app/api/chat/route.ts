@@ -1182,7 +1182,9 @@ function isLogicModelShape(value: unknown): value is LogicModel {
   );
 }
 
-function inferIntentFromModelState(model: LogicModel | undefined): QuestionIntent | undefined {
+function inferIntentFromModelState(
+  model: LogicModel | undefined
+): ReturnType<typeof inferNextRequiredIntent> {
   return inferNextRequiredIntent(model);
 }
 
