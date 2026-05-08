@@ -2,6 +2,7 @@ import type { LogicModel } from "@/store/useLogicModelStore";
 
 export type GuardrailIntent =
   | "impact_specificity"
+  | "impact_review"
   | "geography"
   | "population_focus"
   | "resources"
@@ -99,6 +100,12 @@ export function inferNextRequiredIntent(model: LogicModel | undefined): Guardrai
   const impactMarker = model.intended_impact.long_term_goal || model.intended_impact.compiled_statement;
   if (!hasConcreteImpactMarker(impactMarker)) {
     return "impact_specificity";
+  }
+
+  // All three inputs are present and concrete — but the user has not yet confirmed the
+  // synthesized statement. Hold at impact_review until compiled_statement is populated.
+  if (!model.intended_impact.compiled_statement?.trim()) {
+    return "impact_review";
   }
 
   const resources = model.implementation.resources;

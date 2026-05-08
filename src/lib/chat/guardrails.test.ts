@@ -83,6 +83,9 @@ test("phase intent progression follows atomic sequence", () => {
   assert.equal(inferNextRequiredIntent(model), "impact_specificity");
 
   model.intended_impact.long_term_goal = "graduate high school";
+  assert.equal(inferNextRequiredIntent(model), "impact_review");
+
+  model.intended_impact.compiled_statement = "9th graders in citywide will graduate high school";
   assert.equal(inferNextRequiredIntent(model), "resources");
 
   model.implementation.resources.human.push("Program staff");

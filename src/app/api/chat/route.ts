@@ -683,6 +683,18 @@ export async function POST(req: NextRequest) {
         const normalizedIntent = normalizeQuestionIntent(questionIntent);
         let stateIntent = inferIntentFromModelState(patchedSnapshot);
         stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
+
+        // When all three impact inputs are present but the user has not yet confirmed the
+        // compiled statement, synthesize it and present the draft for confirmation.
+        if (stateIntent === "impact_review" && !patchedSnapshot?.intended_impact.compiled_statement?.trim()) {
+          const { population, geography, long_term_goal } = patchedSnapshot!.intended_impact;
+          const compiled = buildCompiledStatement(population, geography, long_term_goal);
+          if (compiled) {
+            reply = `Based on what you've shared, here's a draft intended impact statement:\n\n${compiled}\n\nDoes this statement capture your ultimate goal for the students you serve?`;
+            questionIntent = "impact_review";
+          }
+        }
+
         const deterministic = enforceDeterministicPhaseQuestion(
           reply,
           normalizedIntent,
@@ -837,6 +849,18 @@ export async function POST(req: NextRequest) {
 
   let stateIntent = inferIntentFromModelState(patchedSnapshot);
   stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
+
+  // When all three impact inputs are present but the user has not yet confirmed the
+  // compiled statement, synthesize it and present the draft for confirmation.
+  if (stateIntent === "impact_review" && !patchedSnapshot?.intended_impact.compiled_statement?.trim()) {
+    const { population, geography, long_term_goal } = patchedSnapshot!.intended_impact;
+    const compiled = buildCompiledStatement(population, geography, long_term_goal);
+    if (compiled) {
+      reply = `Based on what you've shared, here's a draft intended impact statement:\n\n${compiled}\n\nDoes this statement capture your ultimate goal for the students you serve?`;
+      questionIntent = "impact_review";
+    }
+  }
+
   const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
   reply = deterministic.reply;
   questionIntent = deterministic.questionIntent;

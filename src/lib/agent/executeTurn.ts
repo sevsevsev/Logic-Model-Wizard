@@ -32,7 +32,7 @@ function enforceCompiledStatementAcceptance(
   const accepted = isExplicitImpactAcceptance(latestUserMessage);
   if (!accepted) {
     if ("compiled_statement" in modelPatch.intended_impact) {
-      (modelPatch.intended_impact.compiled_statement as any);
+      modelPatch.intended_impact.compiled_statement = "";
     }
     if (Object.keys(modelPatch.intended_impact).length === 0) {
       delete modelPatch.intended_impact;

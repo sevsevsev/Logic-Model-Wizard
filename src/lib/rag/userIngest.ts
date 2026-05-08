@@ -1,7 +1,10 @@
 import { createHash } from "crypto";
 import { chunkPlainText } from "@/lib/rag/chunking";
 import { embedText } from "@/lib/rag/embeddings";
-import { upsertVectorChunk } from "@/lib/rag/vectorStore";
+import { upsertVectorChunk, deleteExpiredUserChunks } from "@/lib/rag/vectorStore";
+
+/** Default TTL in days for user-uploaded document chunks. */
+const USER_CHUNK_TTL_DAYS = 30;
 
 export interface UserDocumentInput {
   userId: string;
@@ -46,6 +49,9 @@ export async function ingestUserDocument(input: UserDocumentInput): Promise<User
   if (!normalizedText) {
     throw new Error("Document text is empty.");
   }
+
+  // Opportunistically purge expired user chunks on every ingest (non-fatal).
+  deleteExpiredUserChunks(USER_CHUNK_TTL_DAYS).catch(() => undefined);
 
   const docId = buildDocId(userId, input.fileName, normalizedText);
   const prefix = `user-${slug(userId)}-${docId}`;

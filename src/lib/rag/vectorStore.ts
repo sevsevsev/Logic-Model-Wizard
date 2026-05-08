@@ -257,3 +257,81 @@ export async function countVectorChunks(): Promise<number> {
   const result = await db.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM rag_knowledge_chunks");
   return Number.parseInt(result.rows[0]?.count ?? "0", 10) || 0;
 }
+
+/** Delete all uploaded chunks for a user, or only chunks belonging to a specific document. */
+export async function deleteUserChunks(userId: string, docId?: string): Promise<number> {
+  if (!isPostgresEnabled()) return 0;
+  await ensureVectorSchema();
+  const db = getPool();
+
+  let result;
+  if (docId) {
+    result = await db.query<{ count: string }>(
+      `DELETE FROM rag_knowledge_chunks WHERE user_id = $1 AND doc_id = $2 AND source = 'user-upload'`,
+      [userId, docId]
+    );
+  } else {
+    result = await db.query<{ count: string }>(
+      `DELETE FROM rag_knowledge_chunks WHERE user_id = $1 AND source = 'user-upload'`,
+      [userId]
+    );
+  }
+
+  return result.rowCount ?? 0;
+}
+
+export interface UserDocSummary {
+  docId: string;
+  title: string;
+  updatedAt: string;
+  chunkCount: number;
+}
+
+/** List all documents a user has uploaded, with their most-recent update timestamp. */
+export async function listUserDocs(userId: string): Promise<UserDocSummary[]> {
+  if (!isPostgresEnabled()) return [];
+  await ensureVectorSchema();
+  const db = getPool();
+
+  const result = await db.query<{ doc_id: string; title: string; updated_at: Date; chunk_count: string }>(
+    `
+      SELECT
+        doc_id,
+        MIN(title) AS title,
+        MAX(updated_at) AS updated_at,
+        COUNT(*)::text AS chunk_count
+      FROM rag_knowledge_chunks
+      WHERE user_id = $1 AND source = 'user-upload'
+      GROUP BY doc_id
+      ORDER BY MAX(updated_at) DESC
+    `,
+    [userId]
+  );
+
+  return result.rows.map((row) => ({
+    docId: row.doc_id,
+    title: row.title,
+    updatedAt: row.updated_at.toISOString(),
+    chunkCount: Number.parseInt(row.chunk_count, 10) || 0,
+  }));
+}
+
+/**
+ * Delete user-upload chunks that have not been updated within the given number of days.
+ * Runs opportunistically on each ingest to prevent unbounded DB growth.
+ * Returns the number of chunks deleted.
+ */
+export async function deleteExpiredUserChunks(maxAgeDays = 30): Promise<number> {
+  if (!isPostgresEnabled()) return 0;
+  await ensureVectorSchema();
+  const db = getPool();
+
+  const result = await db.query(
+    `DELETE FROM rag_knowledge_chunks
+     WHERE source = 'user-upload'
+       AND updated_at < NOW() - ($1 || ' days')::INTERVAL`,
+    [maxAgeDays]
+  );
+
+  return result.rowCount ?? 0;
+}
