@@ -83,3 +83,35 @@ test("sanitizeAgentTurnResult seeds state assessment from turn brief when missin
   assert.equal(sanitized.stateAssessment?.currentPhase, brief.currentPhase);
   assert.deepEqual(sanitized.stateAssessment?.missingFields, brief.missingFields);
 });
+
+test("sanitizeAgentTurnResult preserves prior impact fields when geography-only turn emits empty clears", () => {
+  const model = createModel();
+  const sanitized = sanitizeAgentTurnResult(
+    {
+      reply: "Who exactly is the primary population your program serves?",
+      questionIntent: "population_focus",
+      modelPatch: {
+        intended_impact: {
+          geography: "Philadelphia",
+          population: "",
+          long_term_goal: "",
+        },
+      },
+    },
+    {
+      modelSnapshot: model,
+      userMessage: "We work across Philadelphia.",
+      turnBrief: {
+        ...createBrief(),
+        currentPhase: "impact_review",
+      },
+    }
+  );
+
+  assert.equal(sanitized.modelPatch?.intended_impact?.geography, "Philadelphia");
+  assert.equal(sanitized.modelPatch?.intended_impact?.population, undefined);
+  assert.equal(sanitized.modelPatch?.intended_impact?.long_term_goal, undefined);
+  assert.equal(sanitized.questionIntent, "none");
+  assert.ok((sanitized.contradictionFlags ?? []).includes("known_fact_overwrite"));
+  assert.ok((sanitized.contradictionFlags ?? []).includes("asks_for_known_information"));
+});

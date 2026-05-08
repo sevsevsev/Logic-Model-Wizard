@@ -14,6 +14,10 @@ function sameNormalized(a: string | undefined, b: string | undefined): boolean {
   return (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 }
 
+function isBlank(value: string | undefined): boolean {
+  return (value ?? "").trim().length === 0;
+}
+
 function phaseRank(intent: string | undefined): number {
   switch (intent) {
     case "population_focus":
@@ -69,6 +73,14 @@ export function sanitizeAgentTurnResult(
     }
 
     if (
+      isBlank(impactPatch.population) &&
+      looksSpecificPopulation(snapshotImpact.population)
+    ) {
+      delete impactPatch.population;
+      contradictionFlags.add("known_fact_overwrite");
+    }
+
+    if (
       impactPatch.geography &&
       looksSpecificGeography(snapshotImpact.geography) &&
       !sameNormalized(impactPatch.geography, snapshotImpact.geography) &&
@@ -79,10 +91,26 @@ export function sanitizeAgentTurnResult(
     }
 
     if (
+      isBlank(impactPatch.geography) &&
+      looksSpecificGeography(snapshotImpact.geography)
+    ) {
+      delete impactPatch.geography;
+      contradictionFlags.add("known_fact_overwrite");
+    }
+
+    if (
       impactPatch.long_term_goal &&
       hasConcreteImpactMarker(snapshotImpact.long_term_goal || snapshotImpact.compiled_statement) &&
       !sameNormalized(impactPatch.long_term_goal, snapshotImpact.long_term_goal) &&
       !hasConcreteImpactMarker(message)
+    ) {
+      delete impactPatch.long_term_goal;
+      contradictionFlags.add("known_fact_overwrite");
+    }
+
+    if (
+      isBlank(impactPatch.long_term_goal) &&
+      hasConcreteImpactMarker(snapshotImpact.long_term_goal || snapshotImpact.compiled_statement)
     ) {
       delete impactPatch.long_term_goal;
       contradictionFlags.add("known_fact_overwrite");

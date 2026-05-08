@@ -111,7 +111,7 @@ function normalizeSentence(sentence: string): string {
 }
 
 function simplifyPopulation(raw: string): string {
-  return raw
+  const simplified = raw
     .replace(/^the\s+/i, "")
     .replace(/\s+in\s+.+$/i, "")
     .replace(/\s+through\s+.+$/i, "")
@@ -120,6 +120,14 @@ function simplifyPopulation(raw: string): string {
     .replace(/\s+to\s+(?:help|build|develop|support|ensure|improve|prepare|enable)\b.+$/i, "")
     .replace(/[.,;:]+$/g, "")
     .trim();
+
+  // Normalize inverted phrasing like "students in middle school" to "middle school students".
+  const invertedMatch = simplified.match(/^students?\s+in\s+((?:k-?12|middle school|high school|elementary)(?:\s+school)?)$/i);
+  if (invertedMatch?.[1]) {
+    return `${invertedMatch[1].trim()} students`;
+  }
+
+  return simplified;
 }
 
 function makeStakeholder(label: string): { id: string; label: string } {
@@ -196,6 +204,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
   const populationRegexes = [
     /(?:enrolls?|serves?|supports?|targets?|works with)\s+([^.!?]+)/i,
     /(?:for|with|to)\s+((?:k-?12|middle school|high school|elementary)\s+students?)/i,
+    /\b(students?\s+in\s+(?:k-?12|middle school|high school|elementary)(?:\s+school)?)\b/i,
     /\bto\s+([^.!?]*(?:students?|youth|young adults?|adults?|participants?))/i,
     /\b((?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+grad(?:e|ers?))\b/i,
     /\b([0-9]{1,2}(?:st|nd|rd|th)\s+graders?)\b/i,
@@ -328,15 +337,15 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     );
     if (validPopulationCandidates.length > 0) {
       const population = validPopulationCandidates[0];
-      const base = patch.intended_impact ?? { population: "", geography: "", long_term_goal: "", compiled_statement: "" };
-      patch.intended_impact = { ...base, population };
+      const base = (patch.intended_impact ?? {}) as Partial<LogicModel["intended_impact"]>;
+      patch.intended_impact = { ...base, population } as LogicModel["intended_impact"];
     }
   }
 
   if (geographyCandidates.length > 0) {
     const geography = dedupeStrings(geographyCandidates)[0];
-    const base = patch.intended_impact ?? { population: "", geography: "", long_term_goal: "", compiled_statement: "" };
-    patch.intended_impact = { ...base, geography };
+    const base = (patch.intended_impact ?? {}) as Partial<LogicModel["intended_impact"]>;
+    patch.intended_impact = { ...base, geography } as LogicModel["intended_impact"];
   }
 
   if (dedupedStakeholders.length > 0) {
