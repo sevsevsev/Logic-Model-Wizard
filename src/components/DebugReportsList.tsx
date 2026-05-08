@@ -17,6 +17,7 @@ function ReportCard({ entry }: { entry: StoredDebugSnapshotRecord }) {
   const report = entry.capture.feedbackReport;
   const messageCount = entry.capture.session.messageCount;
   const quickReplyCount = entry.capture.ui.activeQuickReplies.length;
+  const latestLlmCall = entry.capture.llm?.recentCalls?.[entry.capture.llm.recentCalls.length - 1];
   const isAddressed = Boolean(entry.addressedAt);
 
   async function handleToggleAddressed() {
@@ -112,6 +113,9 @@ function ReportCard({ entry }: { entry: StoredDebugSnapshotRecord }) {
             <li>Total messages: {entry.capture.session.messageCount}</li>
             <li>Assistant messages: {entry.capture.session.assistantMessageCount}</li>
             <li>User messages: {entry.capture.session.userMessageCount}</li>
+            <li>
+              Latest model: {latestLlmCall ? `${latestLlmCall.model} (${latestLlmCall.path})` : "n/a"}
+            </li>
             <li>Last URL: {entry.capture.browser?.url ?? "n/a"}</li>
             <li>Timezone: {entry.capture.browser?.timeZone ?? "n/a"}</li>
           </ul>

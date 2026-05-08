@@ -51,4 +51,5 @@ export interface AgentTurnResult {
   contradictionFlags?: AgentContradictionFlag[];
   patchProvenance?: AgentPatchProvenance[];
   decisionSummary?: string;
+  modelUsed?: string;
 }

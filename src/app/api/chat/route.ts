@@ -734,6 +734,10 @@ export async function POST(req: NextRequest) {
           reply: deterministic.reply,
           modelPatch,
           quickReplies,
+          llmMeta: {
+            path: "agentic",
+            model: agentic.modelUsed ?? null,
+          },
         });
       }
     } catch {
@@ -771,7 +775,7 @@ export async function POST(req: NextRequest) {
     },
   };
 
-  const { response: geminiRes } = await generateGeminiContentWithFallback(
+  const { response: geminiRes, model: legacyModelUsed } = await generateGeminiContentWithFallback(
     apiKey,
     geminiPayload,
     "chat"
@@ -907,7 +911,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ reply, modelPatch, quickReplies });
+  return NextResponse.json({
+    reply,
+    modelPatch,
+    quickReplies,
+    llmMeta: {
+      path: "legacy",
+      model: legacyModelUsed,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

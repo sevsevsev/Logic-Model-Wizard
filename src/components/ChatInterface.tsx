@@ -56,6 +56,9 @@ export default function ChatInterface() {
   const [exportBugError, setExportBugError] = useState<string | null>(null);
   const [exportSaving, setExportSaving] = useState(false);
   const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
+  const [llmTelemetry, setLlmTelemetry] = useState<
+    Array<{ atIso: string; model: string; path: "agentic" | "legacy" | "unknown" }>
+  >([]);
   const exportDescriptionRef = useRef<HTMLTextAreaElement>(null);
 
   // Active quick replies: only when last message is an assistant message with suggestions
@@ -97,7 +100,15 @@ export default function ChatInterface() {
       });
 
       const raw = await res.text();
-      let data: { reply?: string; modelPatch?: unknown; quickReplies?: QuickReply[]; error?: string } | null = null;
+      let data:
+        | {
+            reply?: string;
+            modelPatch?: unknown;
+            quickReplies?: QuickReply[];
+            error?: string;
+            llmMeta?: { model?: string | null; path?: string | null };
+          }
+        | null = null;
 
       try {
         data = raw
@@ -110,6 +121,23 @@ export default function ChatInterface() {
 
       if (!res.ok) throw new Error(data?.error || `Request failed (HTTP ${res.status}).`);
       if (!data?.reply) throw new Error("Response is missing assistant reply.");
+
+      const usedModel = data.llmMeta?.model?.trim();
+      const usedPath = data.llmMeta?.path?.trim();
+      if (usedModel) {
+        const normalizedPath: "agentic" | "legacy" | "unknown" =
+          usedPath === "agentic" || usedPath === "legacy" ? usedPath : "unknown";
+        setLlmTelemetry((prev) =>
+          [
+            ...prev,
+            {
+              atIso: new Date().toISOString(),
+              model: usedModel,
+              path: normalizedPath,
+            },
+          ].slice(-30)
+        );
+      }
 
       addMessage("assistant", data.reply, data.quickReplies);
       if (data.modelPatch) {
@@ -214,6 +242,9 @@ export default function ChatInterface() {
       app: {
         name: "lm-chatbot",
         runtime: "browser",
+      },
+      llm: {
+        recentCalls: llmTelemetry,
       },
       session: {
         userId: safeUserId,

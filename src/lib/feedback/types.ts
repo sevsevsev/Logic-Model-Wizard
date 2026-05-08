@@ -29,6 +29,13 @@ export interface DebugSnapshotCapture {
     name: string;
     runtime: string;
   };
+  llm?: {
+    recentCalls: Array<{
+      atIso: string;
+      model: string;
+      path: "agentic" | "legacy" | "unknown";
+    }>;
+  };
   session: {
     userId: string | null;
     messageCount: number;
@@ -179,6 +186,7 @@ export function isValidDebugSnapshotCapture(value: unknown): value is DebugSnaps
   const feedbackReport = v.feedbackReport as Record<string, unknown> | undefined;
   const draftSnapshot = v.draftSnapshot as Record<string, unknown> | undefined;
   const browser = v.browser;
+  const llm = v.llm as Record<string, unknown> | undefined;
 
   const browserIsValid =
     browser === null ||
@@ -195,6 +203,23 @@ export function isValidDebugSnapshotCapture(value: unknown): value is DebugSnaps
     !!draftSnapshot &&
     isValidLogicModel(draftSnapshot.model) &&
     isChatMessageArray(draftSnapshot.messages);
+
+  const llmIsValid =
+    llm === undefined ||
+    (
+      typeof llm === "object" &&
+      llm !== null &&
+      Array.isArray(llm.recentCalls) &&
+      llm.recentCalls.every((call) => {
+        if (!call || typeof call !== "object") return false;
+        const c = call as Record<string, unknown>;
+        return (
+          typeof c.atIso === "string" &&
+          typeof c.model === "string" &&
+          (c.path === "agentic" || c.path === "legacy" || c.path === "unknown")
+        );
+      })
+    );
 
   return (
     v.schemaVersion === "logic-model-debug-snapshot-v1" &&
@@ -215,6 +240,7 @@ export function isValidDebugSnapshotCapture(value: unknown): value is DebugSnaps
     isValidLogicModel(v.model) &&
     isChatMessageArray(v.messages) &&
     draftIsValid &&
+    llmIsValid &&
     !!feedbackReport &&
     typeof feedbackReport.description === "string" &&
     feedbackReport.description.trim().length >= 20 &&

@@ -123,7 +123,7 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
     },
   };
 
-  const { response: res } = await generateGeminiContentWithFallback(input.apiKey, payload, "agent");
+  const { response: res, model: modelUsed } = await generateGeminiContentWithFallback(input.apiKey, payload, "agent");
 
   if (!res.ok) return null;
 
@@ -142,6 +142,7 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
     contradictionFlags: parsed.contradiction_flags,
     patchProvenance: parsed.patch_provenance,
     decisionSummary: parsed.decision_summary,
+    modelUsed,
   };
 
   const sanitized = sanitizeAgentTurnResult(draftResult, {
