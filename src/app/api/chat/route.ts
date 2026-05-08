@@ -304,11 +304,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
        geography: patch.intended_impact?.geography ?? "",
        long_term_goal: patch.intended_impact?.long_term_goal ?? "",
        compiled_statement: patch.intended_impact?.compiled_statement ?? "",
-<<<<<<< Updated upstream
-    };
-=======
-     };
->>>>>>> Stashed changes
+};
   }
 
   if (dedupedStakeholders.length > 0) {
@@ -321,11 +317,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       activities: dedupedActivities,
        resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
        quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
-<<<<<<< Updated upstream
-    };
-=======
-     };
->>>>>>> Stashed changes
+};
   }
 
   if (shortOutcomes.length > 0 || mediumOutcomes.length > 0 || longOutcomes.length > 0) {
@@ -444,11 +436,7 @@ function normalizeMergedActivityPatch(
       activities: normalizedActivities,
        resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
        quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
-<<<<<<< Updated upstream
-    },
-=======
-     },
->>>>>>> Stashed changes
+},
   };
 }
 
@@ -1615,3 +1603,4 @@ function detectQuickReplies(
   );
   return ensureTypeQuickReply(contextualReplies);
 }
+
