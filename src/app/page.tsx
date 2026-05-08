@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import MainLayout from "@/components/MainLayout";
-import LandingPage from "@/components/LandingPage";
+import LandingPage, { LANDING_DESCRIPTION_DRAFT_KEY } from "@/components/LandingPage";
 import {
   getNextGapQuestion,
   type BootstrapExtractionResponse,
@@ -143,7 +143,13 @@ export default function Home() {
     addMessage("user", description);
     setLoading(true);
     try {
-      const history = useLogicModelStore.getState().messages;
+      const historyWithLatest = useLogicModelStore.getState().messages;
+      const history =
+        historyWithLatest.length > 0 &&
+        historyWithLatest[historyWithLatest.length - 1]?.role === "user" &&
+        historyWithLatest[historyWithLatest.length - 1]?.content === description
+          ? historyWithLatest.slice(0, -1)
+          : historyWithLatest;
       const model = useLogicModelStore.getState().model;
       const collaboratorId = getCollaboratorId();
       const res = await fetch("/api/chat", {
@@ -217,6 +223,13 @@ export default function Home() {
       }
 
       if (progressed) {
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.removeItem(LANDING_DESCRIPTION_DRAFT_KEY);
+          } catch {
+            // Ignore sessionStorage access failures.
+          }
+        }
         setStarted(true);
       }
     } finally {

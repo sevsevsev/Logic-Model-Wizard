@@ -81,8 +81,28 @@ export function isExplicitImpactAcceptance(text: string): boolean {
 export function buildCompiledStatement(population: string, geography: string, longTermGoal: string): string | undefined {
   const p = population.trim();
   const g = geography.trim();
-  const l = longTermGoal.trim();
-  if (!p || !g || !l) return undefined;
+  if (!p || !g || !longTermGoal.trim()) return undefined;
+
+  // Normalize the goal so it reads as a clean verb phrase after "will":
+  // 1. Strip trailing punctuation.
+  // 2. Strip a leading subject pronoun/noun so we don't get "will Students read…"
+  // 3. If the first word is a gerund (ends in -ing), insert "be" → "will be reading…"
+  let l = longTermGoal
+    .trim()
+    .replace(/[.!?]+$/, "")
+    .trim();
+
+  // Strip leading subject like "Students", "Youth", "Participants", "They", "We", "Clients", "Residents"
+  l = l.replace(/^(?:students?|youth|participants?|clients?|residents?|they|we)\s+/i, "").trim();
+
+  // Strip a leading auxiliary that duplicates "will"
+  l = l.replace(/^(?:will|should|can)\s+/i, "").trim();
+
+  // If the goal starts with a present participle, insert "be" to get "will be <gerund>"
+  if (/^\w+ing\b/i.test(l)) {
+    l = `be ${l}`;
+  }
+
   return `${p} in ${g} will ${l}`;
 }
 

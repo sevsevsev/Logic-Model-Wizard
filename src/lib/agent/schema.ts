@@ -35,11 +35,85 @@ export interface AgentStructuredOutput {
   patch_provenance?: AgentPatchProvenance[];
 }
 
+const INTENT_ALIASES: Record<string, AgentQuestionIntent> = {
+  aspiration: "impact_aspiration",
+  impact: "impact_aspiration",
+  impact_change: "impact_change_type",
+  impact_change_type: "impact_change_type",
+  impact_specificity: "impact_specificity",
+  specificity: "impact_specificity",
+  impact_review: "impact_review",
+  review: "impact_review",
+  help_long_term: "long_term_help",
+  long_term_help: "long_term_help",
+  geography: "geography",
+  population: "population_focus",
+  population_focus: "population_focus",
+  resources: "resources",
+  activities: "activities",
+  outputs: "outputs_metrics",
+  outputs_metrics: "outputs_metrics",
+  quality: "quality_evidence",
+  quality_evidence: "quality_evidence",
+  outcomes: "outcomes_review",
+  outcomes_review: "outcomes_review",
+  refine: "section_refine",
+  section_refine: "section_refine",
+  none: "none",
+};
+
 function stripCodeFences(text: string): string {
   return text
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
+}
+
+function extractJsonObjectCandidate(text: string): string {
+  const cleaned = stripCodeFences(text);
+  if (!cleaned) return "";
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return cleaned.slice(firstBrace, lastBrace + 1).trim();
+  }
+
+  return cleaned;
+}
+
+function normalizeIntent(rawIntent: unknown): AgentQuestionIntent {
+  if (typeof rawIntent !== "string") return "none";
+  const normalized = rawIntent.trim().toLowerCase();
+  if (!normalized) return "none";
+  if (ALLOWED_INTENTS.has(normalized as AgentQuestionIntent)) {
+    return normalized as AgentQuestionIntent;
+  }
+  return INTENT_ALIASES[normalized] ?? "none";
+}
+
+function parseJsonWithLooseRecovery(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const recovered = text.replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(recovered);
+  }
+}
+
+function toObjectOrNull(raw: unknown): Record<string, unknown> | null {
+  if (isPlainObject(raw)) return raw;
+  if (typeof raw !== "string") return null;
+
+  const extracted = extractJsonObjectCandidate(raw);
+  if (!extracted) return null;
+
+  try {
+    const parsed = parseJsonWithLooseRecovery(extracted);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -60,7 +134,7 @@ const ALLOWED_PROVENANCE: Set<AgentPatchProvenance> = new Set([
 ]);
 
 export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutput | null {
-  const cleaned = stripCodeFences(rawText);
+  const cleaned = extractJsonObjectCandidate(rawText);
   if (!cleaned) return null;
 
   let parsed: unknown;
@@ -127,6 +201,81 @@ export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutp
 
   if (Array.isArray(parsed.patch_provenance)) {
     output.patch_provenance = parsed.patch_provenance.filter(
+      (value): value is AgentPatchProvenance =>
+        typeof value === "string" && ALLOWED_PROVENANCE.has(value as AgentPatchProvenance)
+    );
+  }
+
+  return output;
+}
+
+export function salvageAgentStructuredOutput(rawText: string): AgentStructuredOutput | null {
+  const object = toObjectOrNull(rawText);
+  if (!object) return null;
+
+  const rawReply =
+    (typeof object.assistant_reply === "string" && object.assistant_reply) ||
+    (typeof object.reply === "string" && object.reply) ||
+    (typeof object.assistantReply === "string" && object.assistantReply) ||
+    "";
+
+  const assistantReply = rawReply.trim();
+  if (!assistantReply) return null;
+
+  const output: AgentStructuredOutput = {
+    assistant_reply: assistantReply,
+    question_intent: normalizeIntent(
+      object.question_intent ?? object.questionIntent ?? object.intent ?? "none"
+    ),
+  };
+
+  const patchCandidate =
+    object.model_patch ?? object.modelPatch ?? object.patch ?? null;
+  if (isPlainObject(patchCandidate)) {
+    output.model_patch = patchCandidate as Partial<LogicModel>;
+  }
+
+  if (typeof object.confidence === "number") {
+    output.confidence = Math.max(0, Math.min(1, object.confidence));
+  }
+
+  if (Array.isArray(object.evidence_refs)) {
+    output.evidence_refs = object.evidence_refs.filter((v): v is string => typeof v === "string");
+  }
+
+  if (typeof object.decision_summary === "string") {
+    output.decision_summary = object.decision_summary;
+  }
+
+  if (isPlainObject(object.state_assessment)) {
+    const stateAssessment: AgentStateAssessment = {};
+    if (typeof object.state_assessment.currentPhase === "string") {
+      stateAssessment.currentPhase = object.state_assessment.currentPhase;
+    }
+    if (Array.isArray(object.state_assessment.knownFacts)) {
+      stateAssessment.knownFacts = object.state_assessment.knownFacts.filter(
+        (v): v is string => typeof v === "string"
+      );
+    }
+    if (Array.isArray(object.state_assessment.missingFields)) {
+      stateAssessment.missingFields = object.state_assessment.missingFields.filter(
+        (v): v is string => typeof v === "string"
+      );
+    }
+    if (Object.keys(stateAssessment).length > 0) {
+      output.state_assessment = stateAssessment;
+    }
+  }
+
+  if (Array.isArray(object.contradiction_flags)) {
+    output.contradiction_flags = object.contradiction_flags.filter(
+      (value): value is AgentContradictionFlag =>
+        typeof value === "string" && ALLOWED_CONTRADICTIONS.has(value as AgentContradictionFlag)
+    );
+  }
+
+  if (Array.isArray(object.patch_provenance)) {
+    output.patch_provenance = object.patch_provenance.filter(
       (value): value is AgentPatchProvenance =>
         typeof value === "string" && ALLOWED_PROVENANCE.has(value as AgentPatchProvenance)
     );

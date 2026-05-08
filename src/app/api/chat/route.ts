@@ -29,6 +29,7 @@ const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
 const ENABLE_AGENTIC_TURN = process.env.ENABLE_AGENTIC_TURN === "true";
 const AGENTIC_DUAL_RUN = process.env.AGENTIC_DUAL_RUN === "true";
 const AGENTIC_SOFT_PHASE_ENFORCEMENT = process.env.AGENTIC_SOFT_PHASE_ENFORCEMENT !== "false";
+const AGENTIC_ENABLE_ROUTE_REWRITES = process.env.AGENTIC_ENABLE_ROUTE_REWRITES === "true";
 
 const PATCH_EXTRACTION_PROMPT = `You are a strict JSON extraction engine.
 
@@ -437,10 +438,37 @@ function normalizeMergedActivityPatch(
 
   const normalizedActivities: NonNullable<NonNullable<Partial<LogicModel>["implementation"]>["activities"]> = [];
 
-  for (const activity of activities) {
-    const actionTexts = Array.isArray(activity.actions) ? activity.actions : [];
-    const outputs = Array.isArray(activity.outputs) ? [...activity.outputs] : [];
-    const combinedText = [activity.item, ...actionTexts]
+  for (const rawActivity of activities) {
+    if (!rawActivity || typeof rawActivity !== "object") {
+      continue;
+    }
+
+    const activity = rawActivity as {
+      item?: unknown;
+      category?: unknown;
+      actions?: unknown;
+      outputs?: unknown;
+      stakeholderLabels?: unknown;
+    };
+
+    const item = typeof activity.item === "string" ? activity.item : "";
+    const actionTexts = Array.isArray(activity.actions)
+      ? activity.actions.filter((value): value is string => typeof value === "string")
+      : [];
+    const outputs = Array.isArray(activity.outputs)
+      ? activity.outputs
+          .filter((value): value is { text: string; category?: string } => {
+            if (!value || typeof value !== "object") return false;
+            const output = value as Record<string, unknown>;
+            return typeof output.text === "string";
+          })
+          .map((output) => ({
+            text: output.text,
+            category: output.category,
+          }))
+      : [];
+
+    const combinedText = [item, ...actionTexts]
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .join(" ")
       .toLowerCase();
@@ -469,7 +497,9 @@ function normalizeMergedActivityPatch(
     }
 
     normalizedActivities.push({
-      ...activity,
+      item,
+      category: typeof activity.category === "string" ? activity.category : undefined,
+      actions: actionTexts,
       outputs,
     });
   }
@@ -607,6 +637,7 @@ export async function POST(req: NextRequest) {
   // -------------------------------------------------------------------------
 
   let dualRunAgenticResult: Awaited<ReturnType<typeof executeAgenticTurn>> = null;
+  let agenticFallbackReason: string | null = null;
   if (!ENABLE_AGENTIC_TURN && AGENTIC_DUAL_RUN) {
     try {
       dualRunAgenticResult = await executeAgenticTurn({
@@ -632,10 +663,13 @@ export async function POST(req: NextRequest) {
       });
 
       if (agentic) {
+        let usedExtractionFallback = false;
+        let usedHeuristicMerge = false;
         let modelPatch = agentic.modelPatch;
 
         // Agentic mode should preserve user-provided facts with the same resilience as legacy mode.
         if (!modelPatch) {
+          usedExtractionFallback = true;
           modelPatch = await extractModelPatchFallback({
             apiKey,
             history: safeHistory,
@@ -646,6 +680,7 @@ export async function POST(req: NextRequest) {
 
         try {
           const heuristicPatch = buildHeuristicNarrativePatch(message.trim());
+          usedHeuristicMerge = Boolean(heuristicPatch);
           modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
         } catch {
           // Heuristic extraction failed — proceed with AI patch only
@@ -658,18 +693,14 @@ export async function POST(req: NextRequest) {
         let reply = agentic.reply;
         let questionIntent = normalizeQuestionIntent(agentic.questionIntent);
 
-        if (shouldRequestImpactSpecificity(modelPatch)) {
-          if (modelPatch) {
-            const { intended_impact: _omit, ...remainingPatch } = modelPatch;
-            modelPatch = remainingPatch;
-          }
+        if (AGENTIC_ENABLE_ROUTE_REWRITES && shouldRequestImpactSpecificity(modelPatch)) {
           reply = "Let's make that impact statement more specific. What exact long-term difference should we be able to point to in 10 years (for example, sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
           questionIntent = "impact_specificity";
         }
 
         const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
 
-        if (shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
+        if (AGENTIC_ENABLE_ROUTE_REWRITES && shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
           reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
           questionIntent = "impact_aspiration";
         }
@@ -680,7 +711,11 @@ export async function POST(req: NextRequest) {
           message.trim()
         );
 
-        if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
+        if (
+          AGENTIC_ENABLE_ROUTE_REWRITES &&
+          !impactDraftReadiness.ready &&
+          shouldBlockImpactDraft(reply, questionIntent, modelPatch)
+        ) {
           modelPatch = sanitizeImpactPatchWhenDraftBlocked(modelPatch);
 
           questionIntent = impactDraftReadiness.missingIntent;
@@ -702,9 +737,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const deterministic = enforceDeterministicPhaseQuestion(
+        const qualityClarified = refineRepeatedQualityQuestion(
           reply,
           normalizedIntent,
+          stateIntent,
+          message.trim()
+        );
+        reply = qualityClarified.reply;
+        questionIntent = qualityClarified.questionIntent;
+
+        const deterministic = enforceDeterministicPhaseQuestion(
+          reply,
+          normalizeQuestionIntent(questionIntent),
           stateIntent,
           { strict: !AGENTIC_SOFT_PHASE_ENFORCEMENT }
         );
@@ -724,6 +768,10 @@ export async function POST(req: NextRequest) {
           ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
           : undefined;
 
+        // Final-pass: deterministically synthesize compiled_statement when all
+        // three core impact fields are present but the statement is still empty.
+        modelPatch = synthesizeCompiledStatementIfComplete(modelPatch, applyPatchToSnapshot(modelSnapshot, modelPatch));
+
         if (DEBUG_AGENTIC_CONTEXT) {
           console.info("[agentic-context-coverage]", {
             mode: "agentic",
@@ -741,10 +789,26 @@ export async function POST(req: NextRequest) {
           llmMeta: {
             path: "agentic",
             model: agentic.modelUsed ?? null,
+            fallbackReason: null,
+            trace: {
+              stateIntent: stateIntent ?? null,
+              initialIntent: normalizeQuestionIntent(agentic.questionIntent) ?? null,
+              finalIntent: deterministic.questionIntent ?? null,
+              contradictionFlags: agentic.contradictionFlags ?? [],
+              decisionSummary: agentic.decisionSummary ?? null,
+              usedExtractionFallback,
+              usedHeuristicMerge,
+              routeRewritesEnabled: AGENTIC_ENABLE_ROUTE_REWRITES,
+            },
           },
         });
       }
+
+      agenticFallbackReason = "null-agentic-result";
+      logAgenticFallback("null-agentic-result", message.trim(), modelSnapshot, safeHistory.length);
     } catch {
+      agenticFallbackReason = "agentic-exception";
+      logAgenticFallback("agentic-exception", message.trim(), modelSnapshot, safeHistory.length);
       // Fall through to legacy pipeline when agentic mode fails.
     }
   }
@@ -871,6 +935,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const qualityClarified = refineRepeatedQualityQuestion(
+    reply,
+    normalizeQuestionIntent(questionIntent),
+    stateIntent,
+    message.trim()
+  );
+  reply = qualityClarified.reply;
+  questionIntent = qualityClarified.questionIntent;
+
   const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent, {
     strict: true,
   });
@@ -920,11 +993,19 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     reply,
-    modelPatch,
+    modelPatch: synthesizeCompiledStatementIfComplete(modelPatch, applyPatchToSnapshot(modelSnapshot, modelPatch)),
     quickReplies,
     llmMeta: {
       path: "legacy",
       model: legacyModelUsed,
+      fallbackReason: ENABLE_AGENTIC_TURN ? agenticFallbackReason : null,
+      trace: {
+        stateIntent: stateIntent ?? null,
+        initialIntent: normalizeQuestionIntent(intentMatch?.[1]) ?? null,
+        finalIntent: questionIntent ?? null,
+        resolutionSource: intentResolution.source,
+        routeRewritesEnabled: true,
+      },
     },
   });
 }
@@ -1182,12 +1263,126 @@ function buildImpactMissingFollowUp(missingIntent: QuestionIntent | undefined): 
   }
 }
 
+function looksLikeOutputVolumeEvidence(text: string): boolean {
+  return /(attendance|participants?\s+served|number\s+of\s+(?:students?|participants?|sessions?|hours?)|sessions?\s+delivered|hours?\s+delivered|reach|count(?:s|ed)?)/i.test(
+    text
+  );
+}
+
+function looksLikeQualityFidelityEvidence(text: string): boolean {
+  return /(fidelity|quality|adherence|as\s+designed|dosage|observation\s+rubric|facilitator\s+observation|participant\s+satisfaction|engagement|retention|implementation\s+checklist)/i.test(
+    text
+  );
+}
+
+function refineRepeatedQualityQuestion(
+  reply: string,
+  questionIntent: ParsedQuestionIntent | undefined,
+  stateIntent: QuestionIntent | undefined,
+  latestUserMessage: string
+): { reply: string; questionIntent: ParsedQuestionIntent | undefined } {
+  if (stateIntent !== "quality_evidence" || questionIntent !== "quality_evidence") {
+    return { reply, questionIntent };
+  }
+
+  const focus = getQuestionFocusText(reply);
+  const canonical = buildCanonicalQuestionForIntent("quality_evidence");
+  const canonicalText = canonical?.trim().toLowerCase() ?? "";
+  const isCanonicalRepeat =
+    focus.hasQuestion &&
+    canonicalText.length > 0 &&
+    focus.text.trim().toLowerCase() === canonicalText;
+
+  if (!isCanonicalRepeat) {
+    return { reply, questionIntent };
+  }
+
+  const userHasOutputEvidence = looksLikeOutputVolumeEvidence(latestUserMessage);
+  const userHasQualityEvidence = looksLikeQualityFidelityEvidence(latestUserMessage);
+  if (!userHasOutputEvidence || userHasQualityEvidence) {
+    return { reply, questionIntent };
+  }
+
+  return {
+    reply:
+      "Thanks - that helps for output volume. For implementation fidelity and quality, what evidence shows delivery matched the design and participants experienced it well (for example facilitator observation rubrics, adherence checks, or participant satisfaction feedback)?",
+    questionIntent: "quality_evidence",
+  };
+}
+
 function isExplicitImpactAcceptance(text: string): boolean {
   return guardrailIsExplicitImpactAcceptance(text);
 }
 
 function buildCompiledStatement(population: string, geography: string, longTermGoal: string): string | undefined {
   return guardrailBuildCompiledStatement(population, geography, longTermGoal);
+}
+
+/**
+ * Final-pass deterministic synthesis: if all three core impact fields are now
+ * present in the merged snapshot but compiled_statement is still empty, write
+ * it to the patch without waiting for explicit user acceptance.
+ *
+ * This is intentionally a server-side safety net so that field-capture is never
+ * blocked by a missed acceptance-detection heuristic.
+ */
+function synthesizeCompiledStatementIfComplete(
+  modelPatch: Partial<LogicModel> | null,
+  mergedSnapshot: LogicModel | undefined
+): Partial<LogicModel> | null {
+  const impact = mergedSnapshot?.intended_impact;
+  if (
+    !impact?.population?.trim() ||
+    !impact?.geography?.trim() ||
+    !impact?.long_term_goal?.trim() ||
+    impact?.compiled_statement?.trim()
+  ) {
+    return modelPatch;
+  }
+
+  const compiled = buildCompiledStatement(impact.population, impact.geography, impact.long_term_goal);
+  if (!compiled) return modelPatch;
+
+  return {
+    ...modelPatch,
+    intended_impact: {
+      ...(modelPatch?.intended_impact ?? {}),
+      compiled_statement: compiled,
+    },
+  } as Partial<LogicModel>;
+}
+
+/**
+ * Emit a structured warning when the agentic path drops to legacy.
+ * Fields are logged so that the RAG knowledge gaps that triggered the
+ * fallback can be identified and addressed.
+ */
+function logAgenticFallback(
+  reason: string,
+  userMessage: string,
+  modelSnapshot: LogicModel | undefined,
+  historyLength: number
+): void {
+  const impact = modelSnapshot?.intended_impact;
+  console.warn("[agentic-legacy-fallback]", JSON.stringify({
+    reason,
+    timestamp: new Date().toISOString(),
+    userMessagePreview: userMessage.slice(0, 300),
+    historyTurns: historyLength,
+    modelState: {
+      hasPopulation: Boolean(impact?.population?.trim()),
+      hasGeography: Boolean(impact?.geography?.trim()),
+      hasLongTermGoal: Boolean(impact?.long_term_goal?.trim()),
+      hasCompiledStatement: Boolean(impact?.compiled_statement?.trim()),
+      hasStakeholders: (modelSnapshot?.stakeholders?.length ?? 0) > 0,
+      hasActivities: (modelSnapshot?.implementation?.activities?.length ?? 0) > 0,
+      hasOutcomes:
+        (modelSnapshot?.outcomes?.short_term?.length ?? 0) +
+        (modelSnapshot?.outcomes?.medium_term?.length ?? 0) +
+        (modelSnapshot?.outcomes?.long_term?.length ?? 0) > 0,
+    },
+    ragHint: "Review what the user said and which knowledge chunks would have guided the agentic parse.",
+  }));
 }
 
 function enforceCompiledStatementAcceptance(

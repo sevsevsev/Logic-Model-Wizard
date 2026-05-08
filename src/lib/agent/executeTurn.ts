@@ -1,15 +1,23 @@
 import { retrieveKnowledge } from "@/lib/rag/retrieval";
 import { buildCompiledStatement, isExplicitImpactAcceptance } from "@/lib/chat/guardrails";
 import { formatAgentPolicy, retrieveAgentPolicy } from "@/lib/agent/policy";
-import { parseAgentStructuredOutput } from "@/lib/agent/schema";
+import { parseAgentStructuredOutput, salvageAgentStructuredOutput } from "@/lib/agent/schema";
 import { buildAgentTurnBrief, formatAgentTurnBrief } from "@/lib/agent/turnBrief";
 import { sanitizeAgentTurnResult } from "@/lib/agent/validate";
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import type { AgentTurnInput, AgentTurnResult } from "@/lib/agent/types";
 import type { LogicModel } from "@/store/useLogicModelStore";
 
-const AGENT_SYSTEM_INSTRUCTION = `You are an assistant for a logic model coaching wizard.
-Return STRICT JSON only with this shape:
+const DEBUG_AGENTIC_TURN = process.env.DEBUG_AGENTIC_TURN === "true";
+
+const AGENT_SYSTEM_INSTRUCTION = `You are a logic model coaching assistant.
+
+Purpose:
+- Help the user build a clear, high-quality logic model.
+- Capture concrete facts the user provides.
+- Ask only the most useful next question when needed.
+
+Return STRICT JSON only with this exact shape:
 {
   "assistant_reply": "string",
   "question_intent": "impact_aspiration|impact_change_type|impact_specificity|impact_review|long_term_help|geography|population_focus|resources|activities|outputs_metrics|quality_evidence|outcomes_review|section_refine|none",
@@ -25,20 +33,15 @@ Return STRICT JSON only with this shape:
   "contradiction_flags": ["asks_for_known_information|known_fact_overwrite|phase_regression|unsupported_patch"],
   "patch_provenance": ["user_stated|retrieved_guidance|assistant_inferred"]
 }
-Rules:
-- Be a capable, general language understanding assistant first: interpret natural user language semantically, not by rigid keyword matching.
-- Ask one focused question at most.
-- Keep assistant_reply concise and user-facing.
-- Only include model_patch fields supported by the provided schema.
-- If the latest user message provides concrete facts for logic model fields (for example population, geography, resources, activities, outputs, or outcomes), include those facts in model_patch this turn.
-- Prefer extracting explicit user-provided facts over asking the user to restate the same information.
-- Treat short confirmations and natural affirmations (for example "yes", "yep", "that works", "looks right") as acceptance when context makes that interpretation clear.
-- Treat short revisions/refusals (for example "not quite", "revise", "change it") as non-acceptance when context makes that interpretation clear.
-- Treat the provided turn_brief as external working memory for this turn.
-- Do not ask for facts already listed in confirmed_facts or avoid_asking_for unless the user explicitly revises them.
-- Use retrieved_evidence and behavior_guidance as support, but do not force citations when they are not needed for a concise, grounded response.
-- If your planned question conflicts with the turn_brief, keep question_intent as none and set a contradiction flag.
-- If uncertain, set question_intent to none and avoid speculative patch fields.`;
+
+Guidelines:
+- Prioritize natural language understanding over rigid pattern matching.
+- Keep assistant_reply concise, clear, and user-facing.
+- Ask at most one focused question.
+- If the user provided concrete logic-model facts this turn, include them in model_patch.
+- Do not overwrite confirmed facts unless the user is revising them.
+- Use retrieved_evidence and behavior_guidance as helpful context, not hard templates.
+- If uncertain, avoid speculative patch fields and set question_intent to "none".`;
 
 function enforceCompiledStatementAcceptance(
   modelPatch: Partial<LogicModel> | null,
@@ -129,23 +132,41 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
 
   const { response: res, model: modelUsed } = await generateGeminiContentWithFallback(input.apiKey, payload, "agent");
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    if (DEBUG_AGENTIC_TURN) {
+      console.warn("[agentic-turn] model call failed", {
+        status: res.status,
+        modelUsed,
+      });
+    }
+    return null;
+  }
 
   const data = await res.json();
   const rawText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   const parsed = parseAgentStructuredOutput(rawText);
-  if (!parsed) return null;
+  const salvaged = parsed ? null : salvageAgentStructuredOutput(rawText);
+  const output = parsed ?? salvaged;
+  if (!output) {
+    if (DEBUG_AGENTIC_TURN) {
+      console.warn("[agentic-turn] parse failure", {
+        modelUsed,
+        rawPreview: rawText.slice(0, 600),
+      });
+    }
+    return null;
+  }
 
   const draftResult: AgentTurnResult = {
-    reply: parsed.assistant_reply,
-    questionIntent: parsed.question_intent,
-    modelPatch: parsed.model_patch ?? null,
-    confidence: parsed.confidence,
-    evidenceRefs: parsed.evidence_refs,
-    stateAssessment: parsed.state_assessment,
-    contradictionFlags: parsed.contradiction_flags,
-    patchProvenance: parsed.patch_provenance,
-    decisionSummary: parsed.decision_summary,
+    reply: output.assistant_reply,
+    questionIntent: output.question_intent,
+    modelPatch: output.model_patch ?? null,
+    confidence: output.confidence,
+    evidenceRefs: output.evidence_refs,
+    stateAssessment: output.state_assessment,
+    contradictionFlags: output.contradiction_flags,
+    patchProvenance: output.patch_provenance,
+    decisionSummary: output.decision_summary,
     modelUsed,
   };
 
@@ -154,6 +175,15 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
     userMessage: input.userMessage,
     turnBrief,
   });
+
+  if (DEBUG_AGENTIC_TURN) {
+    console.info("[agentic-turn] parsed", {
+      modelUsed,
+      usedSalvage: Boolean(salvaged),
+      questionIntent: sanitized.questionIntent,
+      hasPatch: Boolean(sanitized.modelPatch),
+    });
+  }
 
   sanitized.modelPatch = enforceCompiledStatementAcceptance(
     sanitized.modelPatch,

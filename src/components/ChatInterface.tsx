@@ -57,9 +57,47 @@ export default function ChatInterface() {
   const [exportSaving, setExportSaving] = useState(false);
   const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
   const [llmTelemetry, setLlmTelemetry] = useState<
-    Array<{ atIso: string; model: string; path: "agentic" | "legacy" | "unknown" }>
+    Array<{
+      atIso: string;
+      model: string;
+      path: "agentic" | "legacy" | "unknown";
+      fallbackReason?: string | null;
+      trace?: {
+        stateIntent?: string | null;
+        initialIntent?: string | null;
+        finalIntent?: string | null;
+        resolutionSource?: string | null;
+        contradictionFlags?: string[];
+        decisionSummary?: string | null;
+        usedExtractionFallback?: boolean;
+        usedHeuristicMerge?: boolean;
+        routeRewritesEnabled?: boolean;
+      };
+    }>
   >([]);
+  const [traceByMessageId, setTraceByMessageId] = useState<
+    Record<
+      string,
+      {
+        model: string;
+        path: "agentic" | "legacy" | "unknown";
+        fallbackReason?: string | null;
+        trace?: {
+          stateIntent?: string | null;
+          initialIntent?: string | null;
+          finalIntent?: string | null;
+          resolutionSource?: string | null;
+          contradictionFlags?: string[];
+          decisionSummary?: string | null;
+          usedExtractionFallback?: boolean;
+          usedHeuristicMerge?: boolean;
+          routeRewritesEnabled?: boolean;
+        };
+      }
+    >
+  >({});
   const exportDescriptionRef = useRef<HTMLTextAreaElement>(null);
+  const latestLlmCall = llmTelemetry.length > 0 ? llmTelemetry[llmTelemetry.length - 1] : null;
 
   // Active quick replies: only when last message is an assistant message with suggestions
   const lastMsg = messages[messages.length - 1];
@@ -106,7 +144,22 @@ export default function ChatInterface() {
             modelPatch?: unknown;
             quickReplies?: QuickReply[];
             error?: string;
-            llmMeta?: { model?: string | null; path?: string | null };
+            llmMeta?: {
+              model?: string | null;
+              path?: string | null;
+              fallbackReason?: string | null;
+              trace?: {
+                stateIntent?: string | null;
+                initialIntent?: string | null;
+                finalIntent?: string | null;
+                resolutionSource?: string | null;
+                contradictionFlags?: string[];
+                decisionSummary?: string | null;
+                usedExtractionFallback?: boolean;
+                usedHeuristicMerge?: boolean;
+                routeRewritesEnabled?: boolean;
+              } | null;
+            };
           }
         | null = null;
 
@@ -124,9 +177,33 @@ export default function ChatInterface() {
 
       const usedModel = data.llmMeta?.model?.trim();
       const usedPath = data.llmMeta?.path?.trim();
+      let pendingTrace:
+        | {
+            model: string;
+            path: "agentic" | "legacy" | "unknown";
+            fallbackReason?: string | null;
+            trace?: {
+              stateIntent?: string | null;
+              initialIntent?: string | null;
+              finalIntent?: string | null;
+              resolutionSource?: string | null;
+              contradictionFlags?: string[];
+              decisionSummary?: string | null;
+              usedExtractionFallback?: boolean;
+              usedHeuristicMerge?: boolean;
+              routeRewritesEnabled?: boolean;
+            };
+          }
+        | null = null;
       if (usedModel) {
         const normalizedPath: "agentic" | "legacy" | "unknown" =
           usedPath === "agentic" || usedPath === "legacy" ? usedPath : "unknown";
+        pendingTrace = {
+          model: usedModel,
+          path: normalizedPath,
+          fallbackReason: data.llmMeta?.fallbackReason ?? null,
+          trace: data.llmMeta?.trace ?? undefined,
+        };
         setLlmTelemetry((prev) =>
           [
             ...prev,
@@ -134,12 +211,23 @@ export default function ChatInterface() {
               atIso: new Date().toISOString(),
               model: usedModel,
               path: normalizedPath,
+              fallbackReason: data.llmMeta?.fallbackReason ?? null,
+              trace: data.llmMeta?.trace ?? undefined,
             },
           ].slice(-30)
         );
       }
 
       addMessage("assistant", data.reply, data.quickReplies);
+      if (pendingTrace) {
+        const latestMessage = useLogicModelStore.getState().messages.at(-1);
+        if (latestMessage?.role === "assistant") {
+          setTraceByMessageId((prev) => ({
+            ...prev,
+            [latestMessage.id]: pendingTrace!,
+          }));
+        }
+      }
       if (data.modelPatch) {
         applyModelPatch(data.modelPatch);
       }
@@ -440,6 +528,13 @@ export default function ChatInterface() {
         <div>
           <h2 className="font-display text-base font-semibold text-[#0b315b]">AI Coach</h2>
           <p className="text-xs text-[#48617c]">Logic Model Architect</p>
+          {latestLlmCall && (
+            <p className="text-[10px] text-[#48617c]">
+              {latestLlmCall.model} ({latestLlmCall.path})
+              {latestLlmCall.fallbackReason ? ` • fallback: ${latestLlmCall.fallbackReason}` : ""}
+              {latestLlmCall.trace?.finalIntent ? ` • intent: ${latestLlmCall.trace.finalIntent}` : ""}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <a
@@ -585,6 +680,20 @@ export default function ChatInterface() {
 
                   {feedbackErrorByMessage[msg.id] && feedbackTargetId !== msg.id && (
                     <p className="mt-1 text-[11px] text-red-600">{feedbackErrorByMessage[msg.id]}</p>
+                  )}
+
+                  {traceByMessageId[msg.id] && (
+                    <details className="mt-1 rounded-md border border-[#c6deed] bg-white px-2 py-1.5">
+                      <summary className="cursor-pointer text-[11px] text-[#48617c]">
+                        Trace: {traceByMessageId[msg.id].model} ({traceByMessageId[msg.id].path})
+                        {traceByMessageId[msg.id].fallbackReason
+                          ? ` • fallback: ${traceByMessageId[msg.id].fallbackReason}`
+                          : ""}
+                      </summary>
+                      <pre className="mt-1 overflow-auto rounded bg-[#f1f6fa] p-2 text-[10px] leading-relaxed text-[#0b315b]">
+                        {JSON.stringify(traceByMessageId[msg.id].trace ?? {}, null, 2)}
+                      </pre>
+                    </details>
                   )}
                 </div>
               )}

@@ -116,6 +116,12 @@ function ReportCard({ entry }: { entry: StoredDebugSnapshotRecord }) {
             <li>
               Latest model: {latestLlmCall ? `${latestLlmCall.model} (${latestLlmCall.path})` : "n/a"}
             </li>
+            {latestLlmCall?.fallbackReason && (
+              <li>Fallback reason: {latestLlmCall.fallbackReason}</li>
+            )}
+            {latestLlmCall?.trace?.finalIntent && (
+              <li>Resolved intent: {latestLlmCall.trace.finalIntent}</li>
+            )}
             <li>Last URL: {entry.capture.browser?.url ?? "n/a"}</li>
             <li>Timezone: {entry.capture.browser?.timeZone ?? "n/a"}</li>
           </ul>

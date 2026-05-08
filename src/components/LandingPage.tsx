@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, FileUp, Sparkles } from "lucide-react";
 
+export const LANDING_DESCRIPTION_DRAFT_KEY = "lm-chatbot.landing.description";
+
 interface LandingSubmitPayload {
   description: string;
   files: FileList | null;
@@ -26,6 +28,32 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
   const [isAudienceVisible, setIsAudienceVisible] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rotateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.sessionStorage.getItem(LANDING_DESCRIPTION_DRAFT_KEY);
+      if (saved) {
+        setDescription(saved);
+      }
+    } catch {
+      // Ignore sessionStorage access failures.
+    }
+  }, []);
+
+  function updateDescription(value: string) {
+    setDescription(value);
+    if (typeof window === "undefined") return;
+    try {
+      if (value.trim().length === 0) {
+        window.sessionStorage.removeItem(LANDING_DESCRIPTION_DRAFT_KEY);
+      } else {
+        window.sessionStorage.setItem(LANDING_DESCRIPTION_DRAFT_KEY, value);
+      }
+    } catch {
+      // Ignore sessionStorage access failures.
+    }
+  }
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -233,7 +261,7 @@ export default function LandingPage({ isSubmitting, onSubmit, error }: LandingPa
                 <textarea
                   id="program-description"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => updateDescription(e.target.value)}
                   rows={7}
                   disabled={isSubmitting}
                   placeholder="Describe your program, who it serves, key activities, and intended outcomes."

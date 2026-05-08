@@ -34,6 +34,18 @@ export interface DebugSnapshotCapture {
       atIso: string;
       model: string;
       path: "agentic" | "legacy" | "unknown";
+      fallbackReason?: string | null;
+      trace?: {
+        stateIntent?: string | null;
+        initialIntent?: string | null;
+        finalIntent?: string | null;
+        resolutionSource?: string | null;
+        contradictionFlags?: string[];
+        decisionSummary?: string | null;
+        usedExtractionFallback?: boolean;
+        usedHeuristicMerge?: boolean;
+        routeRewritesEnabled?: boolean;
+      };
     }>;
   };
   session: {
@@ -216,7 +228,9 @@ export function isValidDebugSnapshotCapture(value: unknown): value is DebugSnaps
         return (
           typeof c.atIso === "string" &&
           typeof c.model === "string" &&
-          (c.path === "agentic" || c.path === "legacy" || c.path === "unknown")
+          (c.path === "agentic" || c.path === "legacy" || c.path === "unknown") &&
+          (c.fallbackReason === undefined || c.fallbackReason === null || typeof c.fallbackReason === "string") &&
+          (c.trace === undefined || (typeof c.trace === "object" && c.trace !== null))
         );
       })
     );
