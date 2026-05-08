@@ -12,6 +12,7 @@ import {
   assertIntentWithLatestUserEvidence,
   buildContextCoverageSummary,
 } from "@/lib/chat/agenticContext";
+import { sanitizeImpactPatchWhenDraftBlocked } from "@/lib/chat/impactDraftGate";
 import { executeAgenticTurn } from "@/lib/agent/executeTurn";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
@@ -679,10 +680,7 @@ export async function POST(req: NextRequest) {
         );
 
         if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
-          if (modelPatch?.intended_impact) {
-            const { intended_impact: _omit, ...remainingPatch } = modelPatch;
-            modelPatch = remainingPatch;
-          }
+          modelPatch = sanitizeImpactPatchWhenDraftBlocked(modelPatch);
 
           questionIntent = impactDraftReadiness.missingIntent;
           reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
@@ -849,10 +847,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
-    if (modelPatch?.intended_impact) {
-      const { intended_impact: _omit, ...remainingPatch } = modelPatch;
-      modelPatch = remainingPatch;
-    }
+    modelPatch = sanitizeImpactPatchWhenDraftBlocked(modelPatch);
 
     questionIntent = impactDraftReadiness.missingIntent;
     reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
