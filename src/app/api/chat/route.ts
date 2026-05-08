@@ -300,6 +300,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       population,
        geography: patch.intended_impact?.geography ?? "",
        long_term_goal: patch.intended_impact?.long_term_goal ?? "",
+       compiled_statement: patch.intended_impact?.compiled_statement ?? "",
     };
   }
 
@@ -312,6 +313,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       ...(patch.implementation ?? {}),
       activities: dedupedActivities,
        resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+       quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
     };
   }
 
@@ -430,6 +432,7 @@ function normalizeMergedActivityPatch(
       ...patch.implementation,
       activities: normalizedActivities,
        resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+       quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
     },
   };
 }
@@ -971,7 +974,7 @@ function enforceCompiledStatementAcceptance(
   const accepted = isExplicitImpactAcceptance(latestUserMessage);
   if (!accepted) {
     if ("compiled_statement" in modelPatch.intended_impact) {
-      delete modelPatch.intended_impact.compiled_statement;
+      modelPatch.intended_impact.compiled_statement = "";
     }
     if (Object.keys(modelPatch.intended_impact).length === 0) {
       delete modelPatch.intended_impact;
