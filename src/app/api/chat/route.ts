@@ -184,7 +184,8 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
 
   const populationRegexes = [
     /(?:enrolls?|serves?|supports?|targets?|works with)\s+([^.!?]+)/i,
-    /(?:for|with)\s+((?:k-?12|middle school|high school|elementary)\s+students?)/i,
+    /(?:for|with|to)\s+((?:k-?12|middle school|high school|elementary)\s+students?)/i,
+    /\bto\s+([^.!?]*(?:students?|youth|young adults?|adults?|participants?))/i,
     /\b([0-9]{1,2}(?:st|nd|rd|th)\s+graders?)\b/i,
   ];
 
@@ -647,6 +648,8 @@ export async function POST(req: NextRequest) {
   modelPatch = normalizeMergedActivityPatch(modelPatch);
   modelPatch = enforceCompiledStatementAcceptance(modelPatch, modelSnapshot, message.trim());
 
+  const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
+
   if (shouldRequestImpactSpecificity(modelPatch)) {
     if (modelPatch) {
       const { intended_impact: _omit, ...remainingPatch } = modelPatch;
@@ -656,7 +659,7 @@ export async function POST(req: NextRequest) {
     questionIntent = "impact_specificity";
   }
 
-  if (shouldSkipPopulationFocusProbe(reply, message.trim(), modelSnapshot)) {
+  if (shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
     reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
     questionIntent = "impact_aspiration";
   }
@@ -671,7 +674,8 @@ export async function POST(req: NextRequest) {
     reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
   }
 
-  const stateIntent = inferIntentFromModelState(applyPatchToSnapshot(modelSnapshot, modelPatch));
+  let stateIntent = inferIntentFromModelState(patchedSnapshot);
+  stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
   const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
   reply = deterministic.reply;
   questionIntent = deterministic.questionIntent;
@@ -1033,6 +1037,25 @@ function isLogicModelShape(value: unknown): value is LogicModel {
 
 function inferIntentFromModelState(model: LogicModel | undefined): QuestionIntent | undefined {
   return inferNextRequiredIntent(model);
+}
+
+function assertIntentWithLatestUserEvidence(
+  inferredIntent: QuestionIntent | undefined,
+  latestUserMessage: string,
+  mergedModel: LogicModel | undefined
+): QuestionIntent | undefined {
+  if (!inferredIntent) return undefined;
+
+  if (inferredIntent === "population_focus" && looksSpecificPopulation(latestUserMessage)) {
+    const knownGeography = looksSpecificGeography(mergedModel?.intended_impact.geography ?? latestUserMessage);
+    return knownGeography ? "impact_specificity" : "geography";
+  }
+
+  if (inferredIntent === "geography" && looksSpecificGeography(latestUserMessage)) {
+    return "impact_specificity";
+  }
+
+  return inferredIntent;
 }
 
 /**
