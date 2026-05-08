@@ -27,9 +27,19 @@ export function looksSpecificPopulation(text: string): boolean {
 }
 
 export function looksSpecificGeography(text: string): boolean {
-  return /\b(north|south|east|west|citywide|neighborhood|region|district|zip|borough|county|school\s+district|campus|site|statewide)\b/i.test(
-    text
-  );
+  // Administrative / directional geography terms
+  if (/\b(north|south|east|west|citywide|neighborhood|region|district|zip|borough|county|school\s+district|campus|site|statewide)\b/i.test(text)) {
+    return true;
+  }
+  // Named schools: "Bethune Elementary", "Roosevelt Middle School", etc.
+  if (/\b\w[\w\s]*(?:elementary|middle|high)\s*(?:school)?\b/i.test(text)) {
+    return true;
+  }
+  // Explicit school-list phrasing: "in these schools: …", "at these schools: …"
+  if (/\b(?:in|at|across)\s+(?:these\s+)?schools?\b/i.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 export function hasConcreteImpactMarker(text: string): boolean {

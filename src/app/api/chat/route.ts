@@ -588,7 +588,7 @@ export async function POST(req: NextRequest) {
 
       if (agentic) {
         const normalizedIntent = normalizeQuestionIntent(agentic.questionIntent);
-        const stateIntent = inferIntentFromModelState(modelSnapshot);
+        const stateIntent = inferIntentFromModelState(applyPatchToSnapshot(modelSnapshot, agentic.modelPatch));
         const deterministic = enforceDeterministicPhaseQuestion(
           agentic.reply,
           normalizedIntent,
@@ -732,7 +732,7 @@ export async function POST(req: NextRequest) {
     reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
   }
 
-  const stateIntent = inferIntentFromModelState(modelSnapshot);
+  const stateIntent = inferIntentFromModelState(applyPatchToSnapshot(modelSnapshot, modelPatch));
   const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
   reply = deterministic.reply;
   questionIntent = deterministic.questionIntent;
@@ -1104,6 +1104,32 @@ function isLogicModelShape(value: unknown): value is LogicModel {
 
 function inferIntentFromModelState(model: LogicModel | undefined): QuestionIntent | undefined {
   return inferNextRequiredIntent(model);
+}
+
+/**
+ * Returns a new model snapshot with the patch applied so that
+ * `inferIntentFromModelState` sees this turn's extracted data rather than
+ * the stale client-sent snapshot. This prevents the bot from re-asking a
+ * question the user just answered in the same turn.
+ */
+function applyPatchToSnapshot(
+  snapshot: LogicModel | undefined,
+  patch: Partial<LogicModel> | null
+): LogicModel | undefined {
+  if (!snapshot || !patch) return snapshot;
+  return {
+    ...snapshot,
+    intended_impact: patch.intended_impact
+      ? { ...snapshot.intended_impact, ...patch.intended_impact }
+      : snapshot.intended_impact,
+    stakeholders: patch.stakeholders ?? snapshot.stakeholders,
+    implementation: patch.implementation
+      ? { ...snapshot.implementation, ...patch.implementation }
+      : snapshot.implementation,
+    outcomes: patch.outcomes
+      ? { ...snapshot.outcomes, ...patch.outcomes }
+      : snapshot.outcomes,
+  };
 }
 
 function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undefined {
