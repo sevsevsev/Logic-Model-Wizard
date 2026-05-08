@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRequire } from "module";
 import mammoth from "mammoth";
 import type { BootstrapExtractionResponse, BootstrapSuggestion } from "@/lib/bootstrap/types";
+import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { ingestUserDocument } from "@/lib/rag/userIngest";
 
 const require = createRequire(import.meta.url);
@@ -385,13 +386,10 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
+    const { response: geminiRes } = await generateGeminiContentWithFallback(
+      apiKey,
+      payload,
+      "bootstrap"
     );
 
     if (!geminiRes.ok) {
@@ -459,13 +457,10 @@ export async function POST(req: NextRequest) {
         },
       };
 
-      const secondRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(secondPayload),
-        }
+      const { response: secondRes } = await generateGeminiContentWithFallback(
+        apiKey,
+        secondPayload,
+        "bootstrap"
       );
 
       if (secondRes.ok) {
@@ -524,13 +519,10 @@ export async function POST(req: NextRequest) {
         },
       };
 
-      const rescueRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(rescuePayload),
-        }
+      const { response: rescueRes } = await generateGeminiContentWithFallback(
+        apiKey,
+        rescuePayload,
+        "bootstrap"
       );
 
       if (rescueRes.ok) {

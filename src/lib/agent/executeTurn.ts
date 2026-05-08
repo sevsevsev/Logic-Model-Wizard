@@ -4,6 +4,7 @@ import { formatAgentPolicy, retrieveAgentPolicy } from "@/lib/agent/policy";
 import { parseAgentStructuredOutput } from "@/lib/agent/schema";
 import { buildAgentTurnBrief, formatAgentTurnBrief } from "@/lib/agent/turnBrief";
 import { sanitizeAgentTurnResult } from "@/lib/agent/validate";
+import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import type { AgentTurnInput, AgentTurnResult } from "@/lib/agent/types";
 import type { LogicModel } from "@/store/useLogicModelStore";
 
@@ -122,14 +123,7 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
     },
   };
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${input.apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  );
+  const { response: res } = await generateGeminiContentWithFallback(input.apiKey, payload, "agent");
 
   if (!res.ok) return null;
 

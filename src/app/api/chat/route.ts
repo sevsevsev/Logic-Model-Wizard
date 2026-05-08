@@ -13,6 +13,7 @@ import {
   buildContextCoverageSummary,
 } from "@/lib/chat/agenticContext";
 import { sanitizeImpactPatchWhenDraftBlocked } from "@/lib/chat/impactDraftGate";
+import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { executeAgenticTurn } from "@/lib/agent/executeTurn";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
@@ -516,13 +517,10 @@ async function extractModelPatchFallback({
     },
   };
 
-  const extractionRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(extractionPayload),
-    }
+  const { response: extractionRes } = await generateGeminiContentWithFallback(
+    apiKey,
+    extractionPayload,
+    "extraction"
   );
 
   if (!extractionRes.ok) {
@@ -773,13 +771,10 @@ export async function POST(req: NextRequest) {
     },
   };
 
-  const geminiRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiPayload),
-    }
+  const { response: geminiRes } = await generateGeminiContentWithFallback(
+    apiKey,
+    geminiPayload,
+    "chat"
   );
 
   if (!geminiRes.ok) {
