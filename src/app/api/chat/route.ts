@@ -621,7 +621,8 @@ export async function POST(req: NextRequest) {
   let modelPatch: Partial<LogicModel> | null = null;
   if (patchMatch?.[1]) {
     try {
-      modelPatch = JSON.parse(patchMatch[1].trim());
+      const parsed = JSON.parse(patchMatch[1].trim()) as Partial<LogicModel>;
+      modelPatch = parsed && typeof parsed === "object" && Object.keys(parsed).length > 0 ? parsed : null;
     } catch {
       // Malformed patch — ignore, don't crash
     }
@@ -647,6 +648,10 @@ export async function POST(req: NextRequest) {
 
   modelPatch = normalizeMergedActivityPatch(modelPatch);
   modelPatch = enforceCompiledStatementAcceptance(modelPatch, modelSnapshot, message.trim());
+
+  if (modelPatch && Object.keys(modelPatch).length === 0) {
+    modelPatch = null;
+  }
 
   const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
 
@@ -676,9 +681,14 @@ export async function POST(req: NextRequest) {
 
   let stateIntent = inferIntentFromModelState(patchedSnapshot);
   stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
-  const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
-  reply = deterministic.reply;
-  questionIntent = deterministic.questionIntent;
+
+  // Only force canonical phase question when we captured turn data; otherwise
+  // keep model reply to avoid repeating stale prompts that feel like ignored input.
+  if (modelPatch) {
+    const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
+    reply = deterministic.reply;
+    questionIntent = deterministic.questionIntent;
+  }
 
   const contextText = [
     ...safeHistory.map((msg) => msg.content),
