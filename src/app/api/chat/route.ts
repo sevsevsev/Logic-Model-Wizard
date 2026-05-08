@@ -8,6 +8,10 @@ import {
   looksSpecificGeography as guardrailLooksSpecificGeography,
   looksSpecificPopulation as guardrailLooksSpecificPopulation,
 } from "@/lib/chat/guardrails";
+import {
+  assertIntentWithLatestUserEvidence,
+  buildContextCoverageSummary,
+} from "@/lib/chat/agenticContext";
 import { executeAgenticTurn } from "@/lib/agent/executeTurn";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
@@ -17,6 +21,7 @@ import type { ChatMessage } from "@/store/useLogicModelStore";
 // ---------------------------------------------------------------------------
 const SYSTEM_PROMPT = buildSystemPrompt();
 const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
+const DEBUG_AGENTIC_CONTEXT = process.env.DEBUG_AGENTIC_CONTEXT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
 const ENABLE_AGENTIC_TURN = process.env.ENABLE_AGENTIC_TURN === "true";
 const AGENTIC_DUAL_RUN = process.env.AGENTIC_DUAL_RUN === "true";
@@ -587,10 +592,68 @@ export async function POST(req: NextRequest) {
       });
 
       if (agentic) {
-        const normalizedIntent = normalizeQuestionIntent(agentic.questionIntent);
-        const stateIntent = inferIntentFromModelState(applyPatchToSnapshot(modelSnapshot, agentic.modelPatch));
+        let modelPatch = agentic.modelPatch;
+
+        // Agentic mode should preserve user-provided facts with the same resilience as legacy mode.
+        if (!modelPatch) {
+          modelPatch = await extractModelPatchFallback({
+            apiKey,
+            history: safeHistory,
+            userMessage: message.trim(),
+            modelSnapshot,
+          });
+        }
+
+        try {
+          const heuristicPatch = buildHeuristicNarrativePatch(message.trim());
+          modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
+        } catch {
+          // Heuristic extraction failed — proceed with AI patch only
+        }
+
+        modelPatch = normalizeMergedActivityPatch(modelPatch);
+        modelPatch = enforceCompiledStatementAcceptance(modelPatch, modelSnapshot, message.trim());
+
+        let reply = agentic.reply;
+        let questionIntent = normalizeQuestionIntent(agentic.questionIntent);
+
+        if (shouldRequestImpactSpecificity(modelPatch)) {
+          if (modelPatch) {
+            const { intended_impact: _omit, ...remainingPatch } = modelPatch;
+            modelPatch = remainingPatch;
+          }
+          reply = "Let's make that impact statement more specific. What exact long-term difference should we be able to point to in 10 years (for example, sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
+          questionIntent = "impact_specificity";
+        }
+
+        const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
+
+        if (shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
+          reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
+          questionIntent = "impact_aspiration";
+        }
+
+        const impactDraftReadiness = inferImpactDraftReadiness(
+          modelSnapshot,
+          safeHistory,
+          message.trim()
+        );
+
+        if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
+          if (modelPatch?.intended_impact) {
+            const { intended_impact: _omit, ...remainingPatch } = modelPatch;
+            modelPatch = remainingPatch;
+          }
+
+          questionIntent = impactDraftReadiness.missingIntent;
+          reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
+        }
+
+        const normalizedIntent = normalizeQuestionIntent(questionIntent);
+        let stateIntent = inferIntentFromModelState(patchedSnapshot);
+        stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
         const deterministic = enforceDeterministicPhaseQuestion(
-          agentic.reply,
+          reply,
           normalizedIntent,
           stateIntent
         );
@@ -610,9 +673,16 @@ export async function POST(req: NextRequest) {
           ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
           : undefined;
 
+        if (DEBUG_AGENTIC_CONTEXT) {
+          console.info("[agentic-context-coverage]", {
+            mode: "agentic",
+            summary: buildContextCoverageSummary(message.trim(), modelPatch),
+          });
+        }
+
         return NextResponse.json({
           reply: deterministic.reply,
-          modelPatch: agentic.modelPatch,
+          modelPatch,
           quickReplies,
         });
       }
@@ -717,7 +787,9 @@ export async function POST(req: NextRequest) {
     questionIntent = "impact_specificity";
   }
 
-  if (shouldSkipPopulationFocusProbe(reply, message.trim(), modelSnapshot)) {
+  const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
+
+  if (shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
     reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
     questionIntent = "impact_aspiration";
   }
@@ -732,7 +804,8 @@ export async function POST(req: NextRequest) {
     reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
   }
 
-  const stateIntent = inferIntentFromModelState(applyPatchToSnapshot(modelSnapshot, modelPatch));
+  let stateIntent = inferIntentFromModelState(patchedSnapshot);
+  stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
   const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
   reply = deterministic.reply;
   questionIntent = deterministic.questionIntent;
@@ -747,6 +820,13 @@ export async function POST(req: NextRequest) {
   const quickReplies = ENABLE_RESPONSE_CHIPS
     ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
     : undefined;
+
+  if (DEBUG_AGENTIC_CONTEXT) {
+    console.info("[agentic-context-coverage]", {
+      mode: "legacy",
+      summary: buildContextCoverageSummary(message.trim(), modelPatch),
+    });
+  }
 
   if (CHAT_INTENT_DEBUG) {
     console.info("[chat-intent]", {

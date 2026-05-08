@@ -18,6 +18,8 @@ Rules:
 - Ask one focused question at most.
 - Keep assistant_reply concise and user-facing.
 - Only include model_patch fields supported by the provided schema.
+- If the latest user message provides concrete facts for logic model fields (for example population, geography, resources, activities, outputs, or outcomes), include those facts in model_patch this turn.
+- Prefer extracting explicit user-provided facts over asking the user to restate the same information.
 - If uncertain, set question_intent to none and avoid speculative patch fields.`;
 
 function enforceCompiledStatementAcceptance(
