@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:guardrails": "tsx --test src/lib/chat/guardrails.test.ts"
+    "test:guardrails": "tsx --test src/lib/chat/guardrails.test.ts",
+    "rag:ingest": "tsx --env-file .env.local scripts/rag/ingest-knowledge.ts",
+    "rag:reset-table": "tsx --env-file .env.local scripts/rag/reset-vector-table.ts"
   },
   "dependencies": {
     "immer": "^11.1.4",

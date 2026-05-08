@@ -8,6 +8,7 @@ import {
   looksSpecificGeography as guardrailLooksSpecificGeography,
   looksSpecificPopulation as guardrailLooksSpecificPopulation,
 } from "@/lib/chat/guardrails";
+import { executeAgenticTurn } from "@/lib/agent/executeTurn";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
 
@@ -17,6 +18,8 @@ import type { ChatMessage } from "@/store/useLogicModelStore";
 const SYSTEM_PROMPT = buildSystemPrompt();
 const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
+const ENABLE_AGENTIC_TURN = process.env.ENABLE_AGENTIC_TURN === "true";
+const AGENTIC_DUAL_RUN = process.env.AGENTIC_DUAL_RUN === "true";
 
 const PATCH_EXTRACTION_PROMPT = `You are a strict JSON extraction engine.
 
@@ -301,7 +304,11 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
        geography: patch.intended_impact?.geography ?? "",
        long_term_goal: patch.intended_impact?.long_term_goal ?? "",
        compiled_statement: patch.intended_impact?.compiled_statement ?? "",
+<<<<<<< Updated upstream
     };
+=======
+     };
+>>>>>>> Stashed changes
   }
 
   if (dedupedStakeholders.length > 0) {
@@ -314,7 +321,11 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       activities: dedupedActivities,
        resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
        quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
+<<<<<<< Updated upstream
     };
+=======
+     };
+>>>>>>> Stashed changes
   }
 
   if (shortOutcomes.length > 0 || mediumOutcomes.length > 0 || longOutcomes.length > 0) {
@@ -433,7 +444,11 @@ function normalizeMergedActivityPatch(
       activities: normalizedActivities,
        resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
        quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
+<<<<<<< Updated upstream
     },
+=======
+     },
+>>>>>>> Stashed changes
   };
 }
 
@@ -559,6 +574,64 @@ export async function POST(req: NextRequest) {
         typeof m.content === "string"
     );
   // -------------------------------------------------------------------------
+
+  let dualRunAgenticResult: Awaited<ReturnType<typeof executeAgenticTurn>> = null;
+  if (!ENABLE_AGENTIC_TURN && AGENTIC_DUAL_RUN) {
+    try {
+      dualRunAgenticResult = await executeAgenticTurn({
+        apiKey,
+        userMessage: message.trim(),
+        history: safeHistory,
+        modelSnapshot,
+      });
+    } catch {
+      dualRunAgenticResult = null;
+    }
+  }
+
+  if (ENABLE_AGENTIC_TURN) {
+    try {
+      const agentic = await executeAgenticTurn({
+        apiKey,
+        userMessage: message.trim(),
+        history: safeHistory,
+        modelSnapshot,
+      });
+
+      if (agentic) {
+        const normalizedIntent = normalizeQuestionIntent(agentic.questionIntent);
+        const stateIntent = inferIntentFromModelState(modelSnapshot);
+        const deterministic = enforceDeterministicPhaseQuestion(
+          agentic.reply,
+          normalizedIntent,
+          stateIntent
+        );
+
+        const contextText = [
+          ...safeHistory.map((msg) => msg.content),
+          message.trim(),
+          deterministic.reply,
+        ].join("\n");
+
+        const intentResolution = resolveQuickReplyIntent(
+          deterministic.reply,
+          deterministic.questionIntent
+        );
+
+        const quickReplies = ENABLE_RESPONSE_CHIPS
+          ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
+          : undefined;
+
+        return NextResponse.json({
+          reply: deterministic.reply,
+          modelPatch: agentic.modelPatch,
+          quickReplies,
+        });
+      }
+    } catch {
+      // Fall through to legacy pipeline when agentic mode fails.
+    }
+  }
 
   // Build Gemini contents array from chat history
   const impactDraftReadiness = inferImpactDraftReadiness(
@@ -698,6 +771,16 @@ export async function POST(req: NextRequest) {
       responseChipsEnabled: ENABLE_RESPONSE_CHIPS,
       impactDraftReadiness,
     });
+
+    if (AGENTIC_DUAL_RUN) {
+      console.info("[agentic-dual-run]", {
+        enabled: Boolean(dualRunAgenticResult),
+        agenticReplyPreview: dualRunAgenticResult?.reply?.slice(0, 220) ?? null,
+        legacyReplyPreview: reply.slice(0, 220),
+        agenticIntent: dualRunAgenticResult?.questionIntent ?? null,
+        legacyIntent: questionIntent ?? null,
+      });
+    }
   }
 
   return NextResponse.json({ reply, modelPatch, quickReplies });
