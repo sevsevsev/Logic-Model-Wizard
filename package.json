@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test:guardrails": "tsx --test src/lib/chat/guardrails.test.ts",
     "rag:ingest": "tsx --env-file .env.local scripts/rag/ingest-knowledge.ts",
+    "rag:ingest-export": "tsx --env-file .env.local scripts/rag/ingest-from-export.ts",
     "rag:reset-table": "tsx --env-file .env.local scripts/rag/reset-vector-table.ts",
     "rag:list": "tsx --env-file .env.local scripts/rag/list-chunks.ts"
   },
@@ -18,7 +19,6 @@
     "mammoth": "^1.12.0",
     "next": "^15.3.2",
     "pdf2json": "^4.0.3",
-    "pg": "^8.20.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zustand": "^5.0.3"
@@ -30,9 +30,11 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "dotenv": "^17.4.2",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.3.2",
     "pdfkit": "^0.18.0",
+    "pg": "^8.20.0",
     "tailwindcss": "^4.1.6",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3"

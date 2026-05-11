@@ -13,18 +13,28 @@ export type GuardrailIntent =
   | "section_refine";
 
 export function looksSpecificPopulation(text: string): boolean {
-  const gradeOrAgeSpecific = /\b(k\s*[-–]\s*\d+|\d+(?:st|nd|rd|th)\s+grad(?:e|ers?)?|(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+grad(?:e|ers?)?|elementary(?:\s+school)?|middle\s+school|high\s+school|grades?\s+\d|\d+(?:[-–]\d+)?[-\s]year[-\s]olds?|ages?\s+\d|early\s+childhood|preschool|kindergarten)\b/i.test(
-    text
-  );
+  if (!text.trim()) return false;
 
+  // Grade / age / developmental stage specificity
+  const gradeOrAgeSpecific = /\b(k\s*[-–]\s*\d+|\d+(?:st|nd|rd|th)\s+grad(?:e|ers?)?|(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+grad(?:e|ers?)?|elementary(?:\s+school)?|middle\s+school|high\s+school|grades?\s+\d|\d+(?:[-–]\d+)?[-\s]year[-\s]olds?|ages?\s+\d|early\s+childhood|preschool|kindergarten)\b/i.test(text);
   if (gradeOrAgeSpecific) return true;
 
-  const hasPopulationNoun = /\b(students?|youth|young\s+adults?|adults?|participants?)\b/i.test(text);
-  const hasQualifier = /\b(low[-\s]?income|first[-\s]?generation|justice[-\s]?involved|court[-\s]?involved|english\s+learners?|newcomer|immigrant|foster|homeless|unemployed|pregnant|parenting|disabled|with\s+disabilities|rural|tribal)\b/i.test(
-    text
-  );
+  // Named population groups that are always specific enough on their own
+  const namedGroup = /\b(veterans?|military\s+(?:families|spouses|members|veterans?)|returning\s+(?:citizens?|veterans?|residents?)|formerly\s+incarcerated|ex[-\s]offenders?|reentry|seniors?|elderly|older\s+adults?|refugees?|asylum\s+seekers?|undocumented\s+(?:immigrants?|residents?)|english\s+language\s+learners?|ELL|ESOL|LGBTQ\+?|BIPOC|people\s+experiencing\s+homelessness|unhoused|adults?\s+in\s+recovery|people\s+in\s+recovery)\b/i.test(text);
+  if (namedGroup) return true;
 
-  return hasPopulationNoun && hasQualifier;
+  // Population noun + qualifier combinations
+  const hasPopulationNoun = /\b(students?|youth|young\s+adults?|adults?|children|kids?|teens?|adolescents?|participants?|families|parents?|caregivers?|guardians?|residents?|individuals?|people|clients?|women|men|girls?|boys?|community\s+members?)\b/i.test(text);
+  const hasQualifier = /\b(low[-\s]?income|first[-\s]?generation|justice[-\s]?involved|court[-\s]?involved|english\s+learners?|newcomer|immigrant|foster|homeless|unhoused|unemployed|underemployed|pregnant|parenting|teen\s+parents?|disabled?|with\s+disabilit|rural|tribal|at[-\s]?risk|underserved|marginalized|under-resourced|economically\s+disadvantaged|public\s+housing|in\s+recovery|recovering|formerly\s+incarcerated|returning|reentry|vulnerable|high[-\s]?need|special\s+needs?|chronic(?:ally)?\s+absent|dual[-\s]?language|bilingual|minority|under-represented)\b/i.test(text);
+  if (hasPopulationNoun && hasQualifier) return true;
+
+  // Fallback: any non-trivial description already stored in the model field (4+ distinct words)
+  // trusts that the LLM extracted something meaningful rather than a generic placeholder
+  const wordCount = text.trim().split(/\s+/).length;
+  const isPlaceholder = /^(people|community|everyone|anyone|participants|clients|users|individuals)$/i.test(text.trim());
+  if (wordCount >= 4 && !isPlaceholder) return true;
+
+  return false;
 }
 
 export function looksSpecificGeography(text: string): boolean {
@@ -73,9 +83,16 @@ export function isExplicitImpactAcceptance(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   if (!normalized) return false;
 
-  return /(^yes$|^yes[!.]?$|yes[, ]|that captures it|this captures it|looks right|that works|sounds right|i approve|approved|confirmed)/i.test(
-    normalized
-  );
+  // Always-accept: unambiguous one-word or short affirmatives
+  if (/^(yes|yep|yup|yeah|correct|perfect|exactly|approved|confirmed|ok|okay)[\.!]?$/.test(normalized)) return true;
+
+  // Phrase-level acceptance
+  if (/(that captures it|this captures it|looks right|that works|sounds right|that's right|that is right|i approve|looks good|sounds good|that's good|that is good|that's accurate|that is accurate|that's correct|that is correct|that's it|that's perfect|looks perfect|yes[,! ]|let'?s move on|move on|next section|proceed|continue to|looks great|that's great|nailed it|spot on)/.test(normalized)) return true;
+
+  // Short affirmative response (under 80 chars) that starts with yes/yep/correct/right
+  if (normalized.length < 80 && /^(yes|yep|yup|correct|right|exactly|perfect|agreed|sure|absolutely)/.test(normalized)) return true;
+
+  return false;
 }
 
 export function buildCompiledStatement(population: string, geography: string, longTermGoal: string): string | undefined {
@@ -103,7 +120,13 @@ export function buildCompiledStatement(population: string, geography: string, lo
     l = `be ${l}`;
   }
 
-  return `${p} in ${g} will ${l}`;
+  // Normalize sentence casing for display quality.
+  if (/^[A-Z][a-z]/.test(l)) {
+    l = l.charAt(0).toLowerCase() + l.slice(1);
+  }
+
+  const statement = `${p} in ${g} will ${l}`.replace(/\s+/g, " ").trim();
+  return statement.charAt(0).toUpperCase() + statement.slice(1);
 }
 
 export function inferNextRequiredIntent(model: LogicModel | undefined): GuardrailIntent | undefined {
@@ -119,7 +142,11 @@ export function inferNextRequiredIntent(model: LogicModel | undefined): Guardrai
 
   const impactMarker = model.intended_impact.long_term_goal || model.intended_impact.compiled_statement;
   if (!hasConcreteImpactMarker(impactMarker)) {
-    return "impact_specificity";
+    // Also accept any substantive statement (15+ chars) even without specific outcome vocabulary.
+    // The LLM can coach toward specificity at impact_review rather than blocking advancement.
+    if (!impactMarker || impactMarker.trim().length < 15) {
+      return "impact_specificity";
+    }
   }
 
   // All three inputs are present and concrete — but the user has not yet confirmed the

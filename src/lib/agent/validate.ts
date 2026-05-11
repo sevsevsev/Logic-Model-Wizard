@@ -62,16 +62,7 @@ export function sanitizeAgentTurnResult(
     const impactPatch = sanitizedPatch.intended_impact as Partial<LogicModel["intended_impact"]>;
     const snapshotImpact = snapshot.intended_impact;
 
-    if (
-      impactPatch.population &&
-      looksSpecificPopulation(snapshotImpact.population) &&
-      !sameNormalized(impactPatch.population, snapshotImpact.population) &&
-      !looksSpecificPopulation(message)
-    ) {
-      delete impactPatch.population;
-      contradictionFlags.add("known_fact_overwrite");
-    }
-
+    // Only block a blank overwrite of a confirmed population; allow refinements/expansions through.
     if (
       isBlank(impactPatch.population) &&
       looksSpecificPopulation(snapshotImpact.population)
@@ -80,16 +71,7 @@ export function sanitizeAgentTurnResult(
       contradictionFlags.add("known_fact_overwrite");
     }
 
-    if (
-      impactPatch.geography &&
-      looksSpecificGeography(snapshotImpact.geography) &&
-      !sameNormalized(impactPatch.geography, snapshotImpact.geography) &&
-      !looksSpecificGeography(message)
-    ) {
-      delete impactPatch.geography;
-      contradictionFlags.add("known_fact_overwrite");
-    }
-
+    // Only block a blank overwrite of a confirmed geography; allow refinements through.
     if (
       isBlank(impactPatch.geography) &&
       looksSpecificGeography(snapshotImpact.geography)
@@ -98,16 +80,7 @@ export function sanitizeAgentTurnResult(
       contradictionFlags.add("known_fact_overwrite");
     }
 
-    if (
-      impactPatch.long_term_goal &&
-      hasConcreteImpactMarker(snapshotImpact.long_term_goal || snapshotImpact.compiled_statement) &&
-      !sameNormalized(impactPatch.long_term_goal, snapshotImpact.long_term_goal) &&
-      !hasConcreteImpactMarker(message)
-    ) {
-      delete impactPatch.long_term_goal;
-      contradictionFlags.add("known_fact_overwrite");
-    }
-
+    // Only block a blank overwrite of a confirmed long-term goal; allow refinements through.
     if (
       isBlank(impactPatch.long_term_goal) &&
       hasConcreteImpactMarker(snapshotImpact.long_term_goal || snapshotImpact.compiled_statement)
