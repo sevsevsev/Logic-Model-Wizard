@@ -1099,7 +1099,7 @@ export async function POST(req: NextRequest) {
       : undefined;
 
   const legacyRetrieved = await retrieveKnowledge(message.trim(), 5, {
-    userId,
+    userId: requestUserId,
   });
 
   if (DEBUG_AGENTIC_CONTEXT) {
@@ -1134,7 +1134,9 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     reply,
-    modelPatch: synthesizeCompiledStatementIfComplete(modelPatch, applyPatchToSnapshot(modelSnapshot, modelPatch)),
+    modelPatch: applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
+      synthesizeWhenComplete: true,
+    }),
     quickReplies,
     llmMeta: {
       path: "legacy",
@@ -1167,6 +1169,10 @@ interface QuickReply {
 }
 
 type QuestionIntent =
+  | "impact_statement"
+  | "impact_population_facet"
+  | "impact_geography_facet"
+  | "impact_outcome_facet"
   | "impact_aspiration"
   | "impact_change_type"
   | "impact_specificity"
@@ -1179,13 +1185,18 @@ type QuestionIntent =
   | "outputs_metrics"
   | "quality_evidence"
   | "outcomes_review"
-  | "section_refine";
+  | "section_refine"
+  | "none";
 
-type ParsedQuestionIntent = QuestionIntent | "none";
+type ParsedQuestionIntent = QuestionIntent;
 
 function normalizeQuestionIntent(raw: string | undefined): ParsedQuestionIntent | undefined {
   const normalized = raw?.trim().toLowerCase();
   switch (normalized) {
+    case "impact_statement":
+    case "impact_population_facet":
+    case "impact_geography_facet":
+    case "impact_outcome_facet":
     case "impact_aspiration":
     case "impact_change_type":
     case "impact_specificity":
@@ -1338,6 +1349,18 @@ function getQuestionFocusText(reply: string): { text: string; hasQuestion: boole
 }
 
 const INTENT_QUESTION_PATTERNS: Record<QuestionIntent, RegExp[]> = {
+  impact_statement: [
+    /(intended\s+impact\s+statement|draft\s+statement|statement\s+capture|capture\s+your\s+ultimate\s+goal)/i,
+  ],
+  impact_population_facet: [
+    /(who\s+is\s+this\s+for|primary\s+population|which\s+students|target\s+population|who\s+exactly\s+do\s+you\s+serve)/i,
+  ],
+  impact_geography_facet: [
+    /(where\s+do\s+you\s+serve|what\s+place\s+should\s+anchor|which\s+neighborhood|citywide|zip\s+codes?|geograph)/i,
+  ],
+  impact_outcome_facet: [
+    /(what\s+concrete\s+long-term\s+change|what\s+exact\s+difference|ultimate\s+outcome|long-term\s+impact\s+you\s+expect)/i,
+  ],
   impact_aspiration: [
     /(in\s+10\s+years|ten\s+years|want\s+to\s+be\s+true|ultimate\s+change|what\s+would\s+be\s+different)/i,
   ],
@@ -1377,6 +1400,7 @@ const INTENT_QUESTION_PATTERNS: Record<QuestionIntent, RegExp[]> = {
   section_refine: [
     /(which\s+section\s+.*work\s+on|what\s+should\s+we\s+work\s+on\s+next|which\s+part\s+to\s+refine|look\s+complete)/i,
   ],
+  none: [/^$/],
 };
 
 function isIntentCompatibleWithQuestion(intent: QuestionIntent, questionText: string): boolean {

@@ -2,6 +2,12 @@ import type { LogicModel } from "@/store/useLogicModelStore";
 
 export type GuardrailIntent =
   | "impact_specificity"
+  | "impact_statement"
+  | "impact_population_facet"
+  | "impact_geography_facet"
+  | "impact_outcome_facet"
+  | "impact_aspiration"
+  | "impact_change_type"
   | "impact_review"
   | "geography"
   | "population_focus"
@@ -10,7 +16,8 @@ export type GuardrailIntent =
   | "outputs_metrics"
   | "quality_evidence"
   | "outcomes_review"
-  | "section_refine";
+  | "section_refine"
+  | "long_term_help" | "none";
 
 export interface ImpactFacetState {
   draftText: string;

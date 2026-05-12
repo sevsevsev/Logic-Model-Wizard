@@ -64,10 +64,11 @@ export function applyCompiledStatementPolicy(
         mergedImpact.long_term_goal
       );
       if (compiled) {
+        const impactSnapshot = mergeImpactSnapshot(modelSnapshot, nextPatch);
         nextPatch = {
           ...(nextPatch ?? {}),
           intended_impact: {
-            ...(nextPatch?.intended_impact ?? {}),
+            ...impactSnapshot,
             compiled_statement: compiled,
           },
         };
