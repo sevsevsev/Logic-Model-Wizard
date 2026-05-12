@@ -1,5 +1,14 @@
 import type { LogicModel } from "@/store/useLogicModelStore";
+import { deriveImpactFacetState } from "@/lib/chat/guardrails";
 import type { BootstrapSuggestion } from "@/lib/bootstrap/types";
+
+type RefinementDomain = "impact" | "resources" | "activities" | "outcomes" | "stakeholders";
+
+export interface BootstrapRefinementCoaching {
+  note: string;
+  question: string;
+  broadRefinementNeeded: boolean;
+}
 
 function mergeUniqueStrings(base: string[] = [], incoming: string[] = []): string[] {
   return Array.from(new Set([...base, ...incoming]));
@@ -156,10 +165,14 @@ export function buildPatchFromSuggestions(suggestions: BootstrapSuggestion[]): P
 
 export function describeDetected(patch: Partial<LogicModel>): string[] {
   const found: string[] = [];
-  if (patch.intended_impact?.population) found.push("target population");
-  if (patch.intended_impact?.geography) found.push("geography");
-  if (patch.intended_impact?.long_term_goal) found.push("long-term goal");
-  if (patch.intended_impact?.compiled_statement) found.push("impact statement");
+  if (
+    patch.intended_impact?.compiled_statement ||
+    patch.intended_impact?.long_term_goal ||
+    patch.intended_impact?.population ||
+    patch.intended_impact?.geography
+  ) {
+    found.push("intended impact");
+  }
   const res = patch.implementation?.resources;
   if (res) {
     (["human", "material", "financial", "knowledge"] as const).forEach((k) => {
@@ -176,12 +189,13 @@ export function describeDetected(patch: Partial<LogicModel>): string[] {
 
 export function describeGaps(model: LogicModel): string[] {
   const gaps: string[] = [];
-  if (!model.intended_impact.population) gaps.push("target population");
-  if (!model.intended_impact.geography) gaps.push("geography");
-  // If we already have a compiled impact statement from an uploaded document,
-  // do not treat long_term_goal as a missing gap in the onboarding summary.
-  if (!model.intended_impact.long_term_goal && !model.intended_impact.compiled_statement) {
-    gaps.push("long-term goal");
+  const impactState = deriveImpactFacetState(model);
+  if (!impactState.hasImpactDraft) {
+    gaps.push("intended impact statement");
+  } else {
+    if (!impactState.populationKnown) gaps.push("who the impact statement is about");
+    if (!impactState.geographyKnown) gaps.push("where the impact statement is anchored");
+    if (!impactState.concreteOutcomeKnown) gaps.push("the long-term change in the impact statement");
   }
   const { human, material, financial, knowledge } = model.implementation.resources;
   if (human.length === 0 && material.length === 0 && financial.length === 0 && knowledge.length === 0) {
@@ -192,4 +206,66 @@ export function describeGaps(model: LogicModel): string[] {
   if (model.outcomes.medium_term.length === 0) gaps.push("medium-term outcomes");
   if (model.outcomes.long_term.length === 0) gaps.push("long-term outcomes");
   return gaps;
+}
+
+function toRefinementDomain(path: BootstrapSuggestion["path"]): RefinementDomain {
+  if (path.startsWith("intended_impact.")) return "impact";
+  if (path.startsWith("implementation.resources.")) return "resources";
+  if (path === "implementation.activities") return "activities";
+  if (path.startsWith("outcomes.")) return "outcomes";
+  return "stakeholders";
+}
+
+function getRefinementQuestion(domain: RefinementDomain): string {
+  switch (domain) {
+    case "impact":
+      return "Could you restate the intended impact in one concrete sentence with who, where, and the long-term change?";
+    case "resources":
+      return "Which 2-3 resources are most essential for delivery right now?";
+    case "activities":
+      return "What are the top 1-2 recurring activities your team consistently delivers?";
+    case "outcomes":
+      return "What is one measurable short-term and one long-term outcome you most want to track?";
+    case "stakeholders":
+      return "Who are the primary stakeholders we should center first?";
+    default:
+      return "Which section would you like to sharpen first?";
+  }
+}
+
+export function buildRefinementCoaching(
+  suggestions: BootstrapSuggestion[]
+): BootstrapRefinementCoaching | null {
+  const weakSuggestions = suggestions.filter((s) => s.qualityRating === "Weak");
+  if (weakSuggestions.length === 0) return null;
+
+  const domainCounts = new Map<RefinementDomain, number>();
+  for (const suggestion of weakSuggestions) {
+    const domain = toRefinementDomain(suggestion.path);
+    domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+  }
+
+  const domainPriority: RefinementDomain[] = [
+    "impact",
+    "activities",
+    "outcomes",
+    "resources",
+    "stakeholders",
+  ];
+
+  const sortedByCount = Array.from(domainCounts.entries()).sort((a, b) => b[1] - a[1]);
+  const highestCountDomain = sortedByCount[0]?.[0];
+  const selectedDomain =
+    domainPriority.find((domain) => domainCounts.has(domain)) ?? highestCountDomain ?? "impact";
+
+  const broadRefinementNeeded =
+    weakSuggestions.length >= 4 || weakSuggestions.length / Math.max(1, suggestions.length) >= 0.5;
+
+  return {
+    note: broadRefinementNeeded
+      ? "I drafted this to reduce your workload. To keep this manageable, we can tighten one section at a time."
+      : "I drafted this to reduce your workload. We can quickly sharpen one section before moving on.",
+    question: getRefinementQuestion(selectedDomain),
+    broadRefinementNeeded,
+  };
 }

@@ -15,6 +15,10 @@ const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_MULTIPART_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_COMBINED_CHARS = 60000;
 const MAX_SUGGESTIONS = 16;
+const MAX_CRITIQUE_ITEMS = 20;
+const ENABLE_BOOTSTRAP_INLINE_DOC_PRIMARY =
+  process.env.ENABLE_BOOTSTRAP_INLINE_DOC_PRIMARY === "true";
+const ENABLE_BOOTSTRAP_CRITIQUE = process.env.ENABLE_BOOTSTRAP_CRITIQUE !== "false";
 
 const EXTRACTION_PROMPT = `You extract draft logic-model suggestions from uploaded program documents.
 
@@ -96,6 +100,28 @@ Rules:
 - If evidence is sparse, provide at least one conservative suggestion with confidence <= 0.55.
 - Keep values concise and schema-compatible.`;
 
+const CRITIQUE_SUGGESTIONS_PROMPT = `You evaluate extracted logic-model suggestions for practical quality.
+
+Return strict JSON only:
+{
+  "critiques": [
+    {
+      "id": "string",
+      "path": "string",
+      "label": "string",
+      "qualityRating": "Strong|Adequate|Weak",
+      "critique": "<=20 words"
+    }
+  ]
+}
+
+Rules:
+- Score quality, not truth certainty.
+- Strong: concrete, specific, and aligned to logic model conventions.
+- Adequate: usable but could be sharper.
+- Weak: vague, mismatched level, or likely misclassified.
+- Keep critiques concise and actionable.`;
+
 function normalizeDocumentText(text: string): string {
   return text
     .replace(/\r\n/g, "\n")
@@ -142,6 +168,50 @@ function parseExtractionResponse(raw: string): BootstrapExtractionResponse {
   }
 }
 
+function parseCritiqueResponse(raw: string): {
+  critiques: Array<{
+    id?: string;
+    path?: string;
+    label?: string;
+    qualityRating?: unknown;
+    critique?: unknown;
+  }>;
+} {
+  const jsonCandidate = extractJsonCandidate(raw);
+  if (!jsonCandidate) {
+    return { critiques: [] };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonCandidate) as {
+      critiques?: Array<{
+        id?: string;
+        path?: string;
+        label?: string;
+        qualityRating?: unknown;
+        critique?: unknown;
+      }>;
+    };
+    return {
+      critiques: Array.isArray(parsed.critiques) ? parsed.critiques : [],
+    };
+  } catch {
+    const noTrailingCommas = jsonCandidate.replace(/,\s*([}\]])/g, "$1");
+    const parsed = JSON.parse(noTrailingCommas) as {
+      critiques?: Array<{
+        id?: string;
+        path?: string;
+        label?: string;
+        qualityRating?: unknown;
+        critique?: unknown;
+      }>;
+    };
+    return {
+      critiques: Array.isArray(parsed.critiques) ? parsed.critiques : [],
+    };
+  }
+}
+
 function normalizeSuggestions(suggestions: unknown): BootstrapSuggestion[] {
   if (!Array.isArray(suggestions)) return [];
 
@@ -154,7 +224,58 @@ function normalizeSuggestions(suggestions: unknown): BootstrapSuggestion[] {
         typeof suggestion.confidence === "number"
           ? Math.max(0, Math.min(1, suggestion.confidence))
           : 0.5,
+      qualityRating:
+        suggestion.qualityRating === "Strong" ||
+        suggestion.qualityRating === "Adequate" ||
+        suggestion.qualityRating === "Weak"
+          ? suggestion.qualityRating
+          : undefined,
+      critique: typeof suggestion.critique === "string" ? suggestion.critique : undefined,
     } as BootstrapSuggestion;
+  });
+}
+
+function normalizeQualityRating(raw: unknown): "Strong" | "Adequate" | "Weak" {
+  if (raw === "Strong" || raw === "Adequate" || raw === "Weak") {
+    return raw;
+  }
+  return "Adequate";
+}
+
+function mergeSuggestionCritiques(
+  suggestions: BootstrapSuggestion[],
+  critiques: Array<{
+    id?: string;
+    path?: string;
+    label?: string;
+    qualityRating?: unknown;
+    critique?: unknown;
+  }>
+): BootstrapSuggestion[] {
+  return suggestions.map((suggestion) => {
+    const match = critiques.find((critique) => {
+      if (typeof critique.id === "string" && critique.id === suggestion.id) return true;
+      if (
+        typeof critique.path === "string" &&
+        typeof critique.label === "string" &&
+        critique.path === suggestion.path &&
+        critique.label.toLowerCase().trim() === suggestion.label.toLowerCase().trim()
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (!match) return suggestion;
+
+    return {
+      ...suggestion,
+      qualityRating: normalizeQualityRating(match.qualityRating),
+      critique:
+        typeof match.critique === "string" && match.critique.trim().length > 0
+          ? match.critique.trim()
+          : suggestion.critique,
+    };
   });
 }
 
@@ -339,42 +460,45 @@ export async function POST(req: NextRequest) {
       combined = combined.slice(0, MAX_COMBINED_CHARS);
     }
 
-    let inlineDocumentParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
-    if (lowTextSignal) {
-      const likelyDocumentFiles = files.filter(
-        (f) =>
-          f.type === "application/pdf" ||
-          f.name.toLowerCase().endsWith(".pdf") ||
-          f.name.toLowerCase().endsWith(".docx")
-      );
+    const likelyDocumentFiles = files.filter(
+      (f) =>
+        f.type === "application/pdf" ||
+        f.name.toLowerCase().endsWith(".pdf") ||
+        f.name.toLowerCase().endsWith(".docx")
+    );
 
-      inlineDocumentParts = await Promise.all(
-        likelyDocumentFiles.slice(0, 2).map(async (f) => {
-          const fileBytes = Buffer.from(await f.arrayBuffer());
-          return {
-            inlineData: {
-              mimeType:
-                f.type ||
-                (f.name.toLowerCase().endsWith(".docx")
-                  ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  : "application/pdf"),
-              data: fileBytes.toString("base64"),
-            },
-          };
-        })
-      );
-    }
+    const inlineDocumentParts: Array<{ inlineData: { mimeType: string; data: string } }> = await Promise.all(
+      likelyDocumentFiles.slice(0, 2).map(async (f) => {
+        const fileBytes = Buffer.from(await f.arrayBuffer());
+        return {
+          inlineData: {
+            mimeType:
+              f.type ||
+              (f.name.toLowerCase().endsWith(".docx")
+                ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                : "application/pdf"),
+            data: fileBytes.toString("base64"),
+          },
+        };
+      })
+    );
 
-    const primaryUserParts =
-      lowTextSignal && inlineDocumentParts.length > 0
-        ? [
-            {
-              text:
-                "The attached program document has low plain-text extraction quality. Read the document directly and extract logic model suggestions from the file content.",
-            },
-            ...inlineDocumentParts,
-          ]
-        : [{ text: combined }];
+    const useInlineAsPrimary =
+      inlineDocumentParts.length > 0 &&
+      (lowTextSignal || ENABLE_BOOTSTRAP_INLINE_DOC_PRIMARY);
+
+    const primaryUserParts = useInlineAsPrimary
+      ? [
+          {
+            text:
+              "Read the attached program document directly and extract logic model suggestions. Use the text excerpt as secondary support.",
+          },
+          {
+            text: `TEXT EXCERPT:\n${combined.slice(0, 12000)}`,
+          },
+          ...inlineDocumentParts,
+        ]
+      : [{ text: combined }];
 
     const payload = {
       system_instruction: { parts: [{ text: EXTRACTION_PROMPT }] },
@@ -547,6 +671,53 @@ export async function POST(req: NextRequest) {
           }
         } catch {
           // Keep existing empty suggestions if rescue parse fails.
+        }
+      }
+    }
+
+    if (ENABLE_BOOTSTRAP_CRITIQUE && safeSuggestions.length > 0) {
+      const critiquePayload = {
+        system_instruction: { parts: [{ text: CRITIQUE_SUGGESTIONS_PROMPT }] },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: JSON.stringify({
+                  suggestions: safeSuggestions.slice(0, MAX_CRITIQUE_ITEMS),
+                }),
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json",
+        },
+      };
+
+      const { response: critiqueRes } = await generateGeminiContentWithFallback(
+        apiKey,
+        critiquePayload,
+        "bootstrap"
+      );
+
+      if (critiqueRes.ok) {
+        try {
+          const critiqueData = await critiqueRes.json();
+          const critiqueRawText: string =
+            critiqueData.candidates?.[0]?.content?.parts
+              ?.map((part: { text?: string }) => (typeof part.text === "string" ? part.text : ""))
+              .join("\n")
+              .trim() ?? "";
+
+          const parsedCritique = parseCritiqueResponse(critiqueRawText);
+          if (parsedCritique.critiques.length > 0) {
+            safeSuggestions = mergeSuggestionCritiques(safeSuggestions, parsedCritique.critiques);
+          }
+        } catch {
+          // Keep suggestions unchanged if critique parsing fails.
         }
       }
     }

@@ -20,10 +20,15 @@ function isBlank(value: string | undefined): boolean {
 
 function phaseRank(intent: string | undefined): number {
   switch (intent) {
+    case "impact_statement":
+      return 1;
+    case "impact_population_facet":
     case "population_focus":
       return 1;
+    case "impact_geography_facet":
     case "geography":
       return 2;
+    case "impact_outcome_facet":
     case "impact_specificity":
       return 3;
     case "impact_review":
@@ -71,6 +76,26 @@ export function sanitizeAgentTurnResult(
       contradictionFlags.add("known_fact_overwrite");
     }
 
+    if (
+      impactPatch.population?.trim() &&
+      looksSpecificPopulation(snapshotImpact.population) &&
+      !looksSpecificPopulation(impactPatch.population)
+    ) {
+      delete impactPatch.population;
+      contradictionFlags.add("known_fact_overwrite");
+    }
+
+    if (
+      impactPatch.population?.trim() &&
+      looksSpecificPopulation(snapshotImpact.population) &&
+      !input.turnBrief.missingFields.includes("population") &&
+      !input.turnBrief.missingFields.includes("impact_population_facet") &&
+      hasConcreteImpactMarker(impactPatch.population)
+    ) {
+      delete impactPatch.population;
+      contradictionFlags.add("known_fact_overwrite");
+    }
+
     // Only block a blank overwrite of a confirmed geography; allow refinements through.
     if (
       isBlank(impactPatch.geography) &&
@@ -93,6 +118,8 @@ export function sanitizeAgentTurnResult(
       delete sanitizedPatch.intended_impact;
     }
   }
+
+  const questionPlan = result.questionPlan ? structuredClone(result.questionPlan) : undefined;
 
   let questionIntent = result.questionIntent;
   if (snapshot) {
@@ -128,10 +155,19 @@ export function sanitizeAgentTurnResult(
     missingFields: input.turnBrief.missingFields,
   };
 
+  if (questionPlan) {
+    questionPlan.shouldAsk = questionIntent !== "none";
+    if (questionIntent === "none") {
+      questionPlan.targetField = "none";
+      delete questionPlan.draftQuestion;
+    }
+  }
+
   return {
     ...result,
     questionIntent,
     modelPatch: sanitizedPatch && Object.keys(sanitizedPatch).length > 0 ? sanitizedPatch : null,
+    questionPlan,
     contradictionFlags: [...contradictionFlags],
     stateAssessment,
   };

@@ -12,6 +12,15 @@ export type GuardrailIntent =
   | "outcomes_review"
   | "section_refine";
 
+export interface ImpactFacetState {
+  draftText: string;
+  hasImpactDraft: boolean;
+  populationKnown: boolean;
+  geographyKnown: boolean;
+  concreteOutcomeKnown: boolean;
+  needsImpactReview: boolean;
+}
+
 export function looksSpecificPopulation(text: string): boolean {
   if (!text.trim()) return false;
 
@@ -62,8 +71,9 @@ export function looksSpecificGeography(text: string): boolean {
     return true;
   }
 
-  // Named schools: "Bethune Elementary", "Roosevelt Middle School", etc.
-  if (/\b\w[\w\s]*(?:elementary|middle|high)\s*(?:school)?\b/i.test(text)) {
+  // Named schools: "Bethune Elementary School", "Roosevelt Middle School", etc.
+  // Avoid treating generic phrases like "middle school students" as geography.
+  if (/\b(?:[a-z][\w'&.-]*\s+){1,3}(?:elementary|middle|high)\s+school\b/i.test(text)) {
     return true;
   }
   // Explicit school-list phrasing: "in these schools: …", "at these schools: …"
@@ -129,29 +139,79 @@ export function buildCompiledStatement(population: string, geography: string, lo
   return statement.charAt(0).toUpperCase() + statement.slice(1);
 }
 
+function hasAnchoredGeographyInImpactDraft(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+
+  const geographyMatch = normalized.match(/\bin\s+(.+?)\s+will\b/i);
+  if (!geographyMatch) return false;
+
+  return looksSpecificGeography(geographyMatch[1]);
+}
+
+export function deriveImpactFacetState(model: LogicModel | undefined): ImpactFacetState {
+  const impact = model?.intended_impact;
+  if (!impact) {
+    return {
+      draftText: "",
+      hasImpactDraft: false,
+      populationKnown: false,
+      geographyKnown: false,
+      concreteOutcomeKnown: false,
+      needsImpactReview: false,
+    };
+  }
+
+  const compiledStatement = impact.compiled_statement.trim();
+  const synthesizedStatement = buildCompiledStatement(
+    impact.population,
+    impact.geography,
+    impact.long_term_goal
+  );
+  const draftText = compiledStatement || synthesizedStatement || impact.long_term_goal.trim();
+  const populationKnown =
+    looksSpecificPopulation(impact.population) || looksSpecificPopulation(draftText);
+  const geographyKnown =
+    looksSpecificGeography(impact.geography) || hasAnchoredGeographyInImpactDraft(draftText);
+  const concreteOutcomeKnown = hasConcreteImpactMarker(impact.long_term_goal || draftText);
+  const hasImpactDraft = draftText.trim().length > 0;
+  const needsImpactReview =
+    populationKnown && geographyKnown && concreteOutcomeKnown && !compiledStatement;
+
+  return {
+    draftText,
+    hasImpactDraft,
+    populationKnown,
+    geographyKnown,
+    concreteOutcomeKnown,
+    needsImpactReview,
+  };
+}
+
 export function inferNextRequiredIntent(model: LogicModel | undefined): GuardrailIntent | undefined {
   if (!model) return undefined;
 
-  if (!looksSpecificPopulation(model.intended_impact.population)) {
+  const impactState = deriveImpactFacetState(model);
+
+  if (!impactState.populationKnown) {
     return "population_focus";
   }
 
-  if (!looksSpecificGeography(model.intended_impact.geography)) {
+  if (!impactState.geographyKnown) {
     return "geography";
   }
 
-  const impactMarker = model.intended_impact.long_term_goal || model.intended_impact.compiled_statement;
-  if (!hasConcreteImpactMarker(impactMarker)) {
+  if (!impactState.concreteOutcomeKnown) {
     // Also accept any substantive statement (15+ chars) even without specific outcome vocabulary.
     // The LLM can coach toward specificity at impact_review rather than blocking advancement.
-    if (!impactMarker || impactMarker.trim().length < 15) {
+    if (!impactState.draftText || impactState.draftText.trim().length < 15) {
       return "impact_specificity";
     }
   }
 
   // All three inputs are present and concrete — but the user has not yet confirmed the
   // synthesized statement. Hold at impact_review until compiled_statement is populated.
-  if (!model.intended_impact.compiled_statement?.trim()) {
+  if (impactState.needsImpactReview) {
     return "impact_review";
   }
 

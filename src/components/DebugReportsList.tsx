@@ -1,8 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import type { StoredDebugSnapshotRecord } from "@/lib/feedback/types";
+import { useMemo, useState } from "react";
+import type {
+  ConceptCodingReviewEntry,
+  StoredDebugSnapshotRecord,
+} from "@/lib/feedback/types";
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -10,15 +13,66 @@ function formatDate(value: string): string {
   return date.toLocaleString();
 }
 
+function reviewKey(spanText: string, chunkId: string): string {
+  return `${spanText}::${chunkId}`;
+}
+
+function buildReviewMap(entries: ConceptCodingReviewEntry[] = []): Record<string, ConceptCodingReviewEntry> {
+  const out: Record<string, ConceptCodingReviewEntry> = {};
+  for (const entry of entries) {
+    out[reviewKey(entry.spanText, entry.chunkId)] = entry;
+  }
+  return out;
+}
+
 function ReportCard({ entry }: { entry: StoredDebugSnapshotRecord }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [activeView, setActiveView] = useState<"table" | "relationships" | "timeline">("table");
+  const [reviewMap, setReviewMap] = useState<Record<string, ConceptCodingReviewEntry>>(
+    buildReviewMap(entry.capture.conceptCodingReview?.entries)
+  );
 
   const report = entry.capture.feedbackReport;
   const messageCount = entry.capture.session.messageCount;
   const quickReplyCount = entry.capture.ui.activeQuickReplies.length;
   const latestLlmCall = entry.capture.llm?.recentCalls?.[entry.capture.llm.recentCalls.length - 1];
+  const conceptEvents =
+    entry.capture.llm?.recentCalls
+      ?.filter((call) => call.trace?.conceptCoding)
+      .map((call) => ({
+        atIso: call.atIso,
+        path: call.path,
+        conceptCoding: call.trace!.conceptCoding!,
+      })) ?? [];
   const isAddressed = Boolean(entry.addressedAt);
+
+  const analytics = useMemo(() => {
+    const rows = conceptEvents.flatMap((event) => event.conceptCoding.spans);
+    const links = rows.flatMap((span) => span.matchedChunks);
+
+    const byTopic: Record<string, number> = {};
+    let noMatch = 0;
+    for (const link of links) {
+      byTopic[link.topic] = (byTopic[link.topic] ?? 0) + 1;
+      if (link.decision === "no-match") noMatch += 1;
+    }
+
+    const topTopics = Object.entries(byTopic)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return {
+      spanCount: rows.length,
+      linkCount: links.length,
+      noMatch,
+      topTopics,
+      unmatchedSpanCount: conceptEvents.reduce(
+        (sum, event) => sum + (event.conceptCoding.unmatchedSpans ?? 0),
+        0
+      ),
+    };
+  }, [conceptEvents]);
 
   async function handleToggleAddressed() {
     setBusy(true);
@@ -27,6 +81,38 @@ function ReportCard({ entry }: { entry: StoredDebugSnapshotRecord }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ addressed: !isAddressed }),
+      });
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateReview(spanText: string, chunkId: string, verdict: ConceptCodingReviewEntry["verdict"]) {
+    const key = reviewKey(spanText, chunkId);
+    const updated: ConceptCodingReviewEntry = {
+      spanText,
+      chunkId,
+      verdict,
+      reviewedAtIso: new Date().toISOString(),
+    };
+
+    const next = {
+      ...reviewMap,
+      [key]: updated,
+    };
+
+    setReviewMap(next);
+    setBusy(true);
+    try {
+      await fetch(`/api/feedback/debug/${entry.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          codingReview: {
+            entries: Object.values(next),
+          },
+        }),
       });
       router.refresh();
     } finally {
@@ -126,6 +212,128 @@ function ReportCard({ entry }: { entry: StoredDebugSnapshotRecord }) {
             <li>Timezone: {entry.capture.browser?.timeZone ?? "n/a"}</li>
           </ul>
         </div>
+      </div>
+
+      <div className="mt-3 rounded-md border border-[#d7e8f3] bg-white p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[#48617c]">
+            Concept Coding Traceability
+          </h2>
+          <div className="flex items-center gap-1">
+            {[
+              { key: "table", label: "Table" },
+              { key: "relationships", label: "Relationships" },
+              { key: "timeline", label: "Timeline" },
+            ].map((view) => (
+              <button
+                key={view.key}
+                className={`rounded px-2 py-1 text-xs ${
+                  activeView === view.key
+                    ? "bg-[#0b315b] text-white"
+                    : "bg-[#eef4f9] text-[#0b315b]"
+                }`}
+                onClick={() => setActiveView(view.key as "table" | "relationships" | "timeline")}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-2 rounded bg-[#f6fbff] p-2 text-xs text-[#0b315b]">
+          <p>
+            Spans: {analytics.spanCount} | Links: {analytics.linkCount} | Unmatched spans: {analytics.unmatchedSpanCount}
+          </p>
+          {analytics.topTopics.length > 0 && (
+            <p>
+              Top concepts: {analytics.topTopics.map(([topic, count]) => `${topic} (${count})`).join(", ")}
+            </p>
+          )}
+        </div>
+
+        {conceptEvents.length === 0 ? (
+          <p className="mt-3 text-sm text-[#48617c]">No concept coding traces captured in this report.</p>
+        ) : activeView === "table" ? (
+          <div className="mt-3 space-y-3">
+            {conceptEvents.map((event, eventIndex) => (
+              <div key={`${event.atIso}-${eventIndex}`} className="rounded border border-[#d7e8f3] p-2">
+                <p className="text-xs text-[#48617c]">
+                  {formatDate(event.atIso)} ({event.path})
+                </p>
+                {event.conceptCoding.spans.map((span, spanIndex) => (
+                  <div key={`${span.spanText}-${spanIndex}`} className="mt-2 rounded bg-[#fbfdff] p-2">
+                    <p className="text-sm text-[#0b315b]">{span.spanText}</p>
+                    <p className="mt-1 text-xs text-[#48617c]">{span.rationale}</p>
+                    <div className="mt-1 space-y-1">
+                      {span.matchedChunks.map((link) => {
+                        const existing = reviewMap[reviewKey(span.spanText, link.chunkId)];
+                        return (
+                          <div key={link.chunkId} className="rounded border border-[#e1edf5] bg-white p-2">
+                            <p className="text-xs text-[#0b315b]">
+                              {link.title} [{link.topic}] | decision: {link.decision} | retrieval: {link.score.toFixed(3)} | overlap: {link.matchScore}
+                            </p>
+                            <div className="mt-1 flex gap-1">
+                              {[
+                                { verdict: "confirmed", label: "Confirm" },
+                                { verdict: "rejected", label: "Reject" },
+                                { verdict: "needs-review", label: "Needs review" },
+                              ].map((option) => (
+                                <button
+                                  key={option.verdict}
+                                  disabled={busy}
+                                  onClick={() =>
+                                    updateReview(
+                                      span.spanText,
+                                      link.chunkId,
+                                      option.verdict as ConceptCodingReviewEntry["verdict"]
+                                    )
+                                  }
+                                  className={`rounded px-2 py-0.5 text-[11px] ${
+                                    existing?.verdict === option.verdict
+                                      ? "bg-[#0b315b] text-white"
+                                      : "bg-[#eef4f9] text-[#0b315b]"
+                                  }`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : activeView === "relationships" ? (
+          <div className="mt-3 space-y-2">
+            {conceptEvents.flatMap((event) => event.conceptCoding.spans).map((span, idx) => (
+              <div key={`${span.spanText}-${idx}`} className="rounded border border-[#d7e8f3] bg-[#fbfdff] p-2">
+                <p className="text-sm text-[#0b315b]">{span.spanText}</p>
+                <ul className="mt-1 text-xs text-[#48617c]">
+                  {span.matchedChunks.map((link) => (
+                    <li key={`${span.spanText}-${link.chunkId}`}>
+                      -> {link.topic} / {link.title} ({link.decision})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {conceptEvents.map((event, idx) => (
+              <div key={`${event.atIso}-${idx}`} className="rounded border border-[#d7e8f3] bg-[#fbfdff] p-2">
+                <p className="text-xs text-[#48617c]">{formatDate(event.atIso)} ({event.path})</p>
+                <p className="text-sm text-[#0b315b]">
+                  spans: {event.conceptCoding.spans.length}, unmatched: {event.conceptCoding.unmatchedSpans}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mt-3 rounded-md border border-[#d7e8f3] bg-white p-3">

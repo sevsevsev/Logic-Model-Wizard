@@ -10,6 +10,7 @@
     "test:guardrails": "tsx --test src/lib/chat/guardrails.test.ts",
     "rag:ingest": "tsx --env-file .env.local scripts/rag/ingest-knowledge.ts",
     "rag:ingest-export": "tsx --env-file .env.local scripts/rag/ingest-from-export.ts",
+    "rag:ingest-schools": "tsx --env-file .env.local scripts/rag/ingest-schools-csv.ts",
     "rag:reset-table": "tsx --env-file .env.local scripts/rag/reset-vector-table.ts",
     "rag:list": "tsx --env-file .env.local scripts/rag/list-chunks.ts"
   },

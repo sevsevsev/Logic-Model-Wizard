@@ -9,6 +9,7 @@ import {
 } from "@/lib/drafts/types";
 import {
   type FeedbackCapture,
+  type ConceptCodingReview,
   type DebugSnapshotCapture,
   type StoredFeedbackRecord,
   type StoredDebugSnapshotRecord,
@@ -386,6 +387,30 @@ async function markDebugSnapshotAddressedPostgres(id: string, addressed: boolean
   return result.rowCount ? mapDebugRow(result.rows[0]) : null;
 }
 
+async function updateDebugSnapshotCodingReviewPostgres(
+  id: string,
+  review: ConceptCodingReview
+): Promise<StoredDebugSnapshotRecord | null> {
+  await ensurePostgresSchema();
+  const pool = getPostgresPool();
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    created_at: Date | string;
+    addressed_at: Date | string | null;
+    capture: DebugSnapshotCapture;
+  }>(
+    `
+      UPDATE debug_snapshots
+      SET capture = jsonb_set(capture, '{conceptCodingReview}', $2::jsonb, true)
+      WHERE id = $1
+      RETURNING id, user_id, created_at, addressed_at, capture
+    `,
+    [id, JSON.stringify(review)]
+  );
+  return result.rowCount ? mapDebugRow(result.rows[0]) : null;
+}
+
 function resolveDbPath(): string {
   const configuredPath = process.env.CLOUD_DRAFT_DB_PATH?.trim();
   if (configuredPath) {
@@ -634,6 +659,24 @@ export async function markDebugSnapshotAddressed(
   const entry = db.debugSnapshots.find((s) => s.id === id);
   if (!entry) return null;
   entry.addressedAt = addressed ? new Date().toISOString() : null;
+  await writeDb(db);
+  return entry;
+}
+
+export async function updateDebugSnapshotCodingReview(
+  id: string,
+  review: ConceptCodingReview
+): Promise<StoredDebugSnapshotRecord | null> {
+  if (USE_POSTGRES) {
+    return updateDebugSnapshotCodingReviewPostgres(id, review);
+  }
+
+  const db = await readDb();
+  const entry = db.debugSnapshots.find((s) => s.id === id);
+  if (!entry) return null;
+  entry.capture.conceptCodingReview = {
+    entries: Array.isArray(review.entries) ? review.entries : [],
+  };
   await writeDb(db);
   return entry;
 }

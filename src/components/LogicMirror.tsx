@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useLogicModelStore } from "@/store/useLogicModelStore";
-import { Check, Plus, Users, MapPin, Target, Wrench, Zap, TrendingUp, X } from "lucide-react";
+import { Check, Plus, Target, Wrench, Zap, TrendingUp, X } from "lucide-react";
 import DraftControls from "@/components/DraftControls";
 
 const DEFAULT_ACTIVITY_GROUP = "__ungrouped__";
@@ -635,7 +635,9 @@ export default function LogicMirror() {
   const { intended_impact, implementation, outcomes } = model;
   const { resources, activities } = implementation;
   const [editingImpact, setEditingImpact] = useState(false);
-  const [impactDraft, setImpactDraft] = useState(intended_impact.compiled_statement);
+  const [impactDraft, setImpactDraft] = useState(
+    intended_impact.compiled_statement || intended_impact.long_term_goal
+  );
   const [editingActivityMeta, setEditingActivityMeta] = useState<number | null>(null);
   const [activityItemDraft, setActivityItemDraft] = useState("");
   const [activityCategoryDraft, setActivityCategoryDraft] = useState("");
@@ -696,29 +698,10 @@ export default function LogicMirror() {
             />
           }
         >
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <p className="text-[10px] font-semibold uppercase text-slate-400 mb-0.5 flex items-center gap-1">
-                <Users size={10} /> Population
-              </p>
-              <p className="text-sm text-slate-700">
-                {intended_impact.population || (
-                  <span className="italic text-slate-400">Not yet defined</span>
-                )}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase text-slate-400 mb-0.5 flex items-center gap-1">
-                <MapPin size={10} /> Geography
-              </p>
-              <p className="text-sm text-slate-700">
-                {intended_impact.geography || (
-                  <span className="italic text-slate-400">Not yet defined</span>
-                )}
-              </p>
-            </div>
-          </div>
-          {(intended_impact.compiled_statement || editingImpact) && (
+          <p className="text-xs text-slate-500">
+            Capture the intended impact as one clear statement. The assistant can derive supporting details like population and geography behind the scenes.
+          </p>
+          {(intended_impact.compiled_statement || intended_impact.long_term_goal || editingImpact) && (
             editingImpact ? (
               <div className="mt-2 p-2 bg-white border border-[#9fc3da] rounded-md space-y-2">
                 <textarea
@@ -739,7 +722,7 @@ export default function LogicMirror() {
                   </button>
                   <button
                     onClick={() => {
-                      setImpactDraft(intended_impact.compiled_statement);
+                      setImpactDraft(intended_impact.compiled_statement || intended_impact.long_term_goal);
                       setEditingImpact(false);
                     }}
                     className="inline-flex items-center gap-1 text-[11px] rounded-md border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100"
@@ -751,24 +734,24 @@ export default function LogicMirror() {
             ) : (
               <button
                 onClick={() => {
-                  setImpactDraft(intended_impact.compiled_statement);
+                  setImpactDraft(intended_impact.compiled_statement || intended_impact.long_term_goal);
                   setEditingImpact(true);
                 }}
                 className="mt-2 p-2 bg-[#edf3f8] border border-[#9fc3da] rounded-md text-xs text-[#0b315b] italic hover:bg-[#dcebf5] text-left w-full"
               >
-                &ldquo;{intended_impact.compiled_statement}&rdquo;
+                &ldquo;{intended_impact.compiled_statement || intended_impact.long_term_goal}&rdquo;
               </button>
             )
           )}
           {!intended_impact.compiled_statement && !editingImpact && (
             <button
               onClick={() => {
-                setImpactDraft("");
+                setImpactDraft(intended_impact.long_term_goal || "");
                 setEditingImpact(true);
               }}
               className="mt-2 inline-flex items-center gap-1 text-xs rounded-full border border-dashed border-[#47aad8] bg-white px-2.5 py-1 text-[#0b315b] hover:bg-[#edf3f8]"
             >
-              <Plus size={11} /> Add impact statement
+              <Plus size={11} /> Draft impact statement
             </button>
           )}
         </Card>

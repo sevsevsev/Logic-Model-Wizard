@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { FileUp, Loader2 } from "lucide-react";
 import {
+  getBootstrapStartOptions,
+  getBootstrapStartRecommendation,
   getNextGapQuestion,
   type BootstrapExtractionResponse,
 } from "@/lib/bootstrap/types";
 import { useLogicModelStore } from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import {
+  buildRefinementCoaching,
   buildPatchFromSuggestions,
   describeDetected,
   describeGaps,
@@ -126,17 +129,35 @@ export default function DocumentBootstrap() {
       const detected = describeDetected(patch);
       const gaps = describeGaps(model);
       const nextQuestion = getNextGapQuestion(model);
+      const startOptions = getBootstrapStartOptions(model, suggestions);
+      const startRecommendation = startOptions
+        ? getBootstrapStartRecommendation(model, suggestions)
+        : null;
+      const refinementCoaching = buildRefinementCoaching(suggestions);
 
       let message = "I reviewed your document and pre-filled your logic model";
       if (detected.length > 0) message += ` with **${detected.join(", ")}**`;
       message += ".";
+      if (refinementCoaching) {
+        message += ` ${refinementCoaching.note}`;
+      }
       if (gaps.length > 0) {
-        message += ` I'll ask follow-up questions to fill in what's still missing: ${gaps.join(", ")}.`;
+        if (gaps.length <= 3) {
+          message += ` I'll ask follow-up questions to fill in what's still missing: ${gaps.join(", ")}.`;
+        } else {
+          message += " I'll ask focused follow-up questions to fill in the highest-impact gaps, one section at a time.";
+        }
       } else {
         message += " Your logic model looks complete — nice work!";
       }
-      message += `\n\n${nextQuestion}`;
-      addMessage("assistant", message);
+      const followUpQuestion =
+        gaps.length > 0
+          ? startOptions
+            ? `${startRecommendation?.prompt ?? "I can suggest a practical place to start."} Where would you like to begin refining?`
+            : nextQuestion
+          : refinementCoaching?.question ?? nextQuestion;
+      message += `\n\n${followUpQuestion}`;
+      addMessage("assistant", message, startOptions ?? undefined);
 
       if (inputRef.current) inputRef.current.value = "";
     } catch (e) {

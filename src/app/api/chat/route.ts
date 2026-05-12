@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildSystemPrompt } from "@/lib/chat/prompt";
 import {
   buildCompiledStatement as guardrailBuildCompiledStatement,
+  deriveImpactFacetState,
   hasConcreteImpactMarker as guardrailHasConcreteImpactMarker,
   inferNextRequiredIntent,
-  isExplicitImpactAcceptance as guardrailIsExplicitImpactAcceptance,
   looksSpecificGeography as guardrailLooksSpecificGeography,
   looksSpecificPopulation as guardrailLooksSpecificPopulation,
 } from "@/lib/chat/guardrails";
@@ -12,10 +12,13 @@ import {
   assertIntentWithLatestUserEvidence,
   buildContextCoverageSummary,
 } from "@/lib/chat/agenticContext";
-import { applyImpactAcceptanceFromReply } from "@/lib/chat/impactAcceptance";
+import { applyCompiledStatementPolicy } from "@/lib/chat/impactAcceptance";
 import { sanitizeImpactPatchWhenDraftBlocked } from "@/lib/chat/impactDraftGate";
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { executeAgenticTurn } from "@/lib/agent/executeTurn";
+import { buildConceptCodingTrace } from "@/lib/rag/conceptCoding";
+import { retrieveKnowledge } from "@/lib/rag/retrieval";
+import { findSchoolReferenceMentions } from "@/lib/geo/referenceStore";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
 
@@ -338,7 +341,12 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     // Reject candidates that are too long to plausibly be a population description.
     // Long strings are typically goal sentences mis-matched by the regex.
     const validPopulationCandidates = dedupeStrings(populationCandidates).filter(
-      (c) => c.length <= 60
+      (c) =>
+        c.length <= 60 &&
+        // Avoid role fragments like "as mentors" from sentences such as
+        // "volunteers serve as mentors" being mistaken for target populations.
+        !/^as\s+(mentors?|volunteers?|staff|coaches?)\b/i.test(c) &&
+        !/^(mentors?|volunteers?|staff|coaches?)$/i.test(c)
     );
     if (validPopulationCandidates.length > 0) {
       const population = validPopulationCandidates[0];
@@ -634,6 +642,7 @@ export async function POST(req: NextRequest) {
         (m.role === "user" || m.role === "assistant") &&
         typeof m.content === "string"
     );
+  const responseDomain = inferUserResponseDomainFromHistory(safeHistory);
   // -------------------------------------------------------------------------
 
   let dualRunAgenticResult: Awaited<ReturnType<typeof executeAgenticTurn>> = null;
@@ -666,9 +675,13 @@ export async function POST(req: NextRequest) {
         let usedExtractionFallback = false;
         let usedHeuristicMerge = false;
         let modelPatch = agentic.modelPatch;
+        let patchSource: "agent" | "extraction_fallback" | "heuristic_merge" | "none" = modelPatch
+          ? "agent"
+          : "none";
+        const shouldUseFallbackMerge = (agentic.confidence ?? 0) < 0.6 || !modelPatch;
 
         // Agentic mode should preserve user-provided facts with the same resilience as legacy mode.
-        if (!modelPatch) {
+        if (!modelPatch && shouldUseFallbackMerge) {
           usedExtractionFallback = true;
           modelPatch = await extractModelPatchFallback({
             apiKey,
@@ -676,31 +689,110 @@ export async function POST(req: NextRequest) {
             userMessage: message.trim(),
             modelSnapshot,
           });
+          if (modelPatch) {
+            patchSource = "extraction_fallback";
+          }
         }
 
-        try {
-          const heuristicPatch = buildHeuristicNarrativePatch(message.trim());
-          usedHeuristicMerge = Boolean(heuristicPatch);
-          modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
-        } catch {
-          // Heuristic extraction failed — proceed with AI patch only
+        if (shouldUseFallbackMerge) {
+          try {
+            const heuristicPatch = buildHeuristicNarrativePatch(message.trim());
+            usedHeuristicMerge = Boolean(heuristicPatch);
+            if (heuristicPatch && !modelPatch) {
+              patchSource = "heuristic_merge";
+            }
+            modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
+          } catch {
+            // Heuristic extraction failed — proceed with AI patch only
+          }
         }
 
         modelPatch = normalizeMergedActivityPatch(modelPatch);
-        modelPatch = enforceCompiledStatementAcceptance(modelPatch, modelSnapshot, message.trim());
-        modelPatch = applyImpactAcceptanceFromReply(modelPatch, modelSnapshot, message.trim());
+        modelPatch = applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
+          synthesizeWhenComplete: false,
+        });
+        modelPatch = constrainPatchToResponseDomain(modelPatch, responseDomain);
+
+        const schoolMatches = await findSchoolReferenceMentions(message.trim(), 3);
+        const topSchoolMatch = schoolMatches[0];
+        const secondSchoolMatch = schoolMatches[1];
+
+        const patchGeography = modelPatch?.intended_impact?.geography ?? "";
+        const snapshotGeography = modelSnapshot?.intended_impact?.geography ?? "";
+        const hasSpecificGeography = guardrailLooksSpecificGeography(patchGeography || snapshotGeography);
+
+        const schoolMatchIsHighConfidence = Boolean(topSchoolMatch && topSchoolMatch.confidence >= 0.85);
+        const schoolMatchIsAmbiguous = Boolean(
+          topSchoolMatch &&
+            (!schoolMatchIsHighConfidence ||
+              (secondSchoolMatch && topSchoolMatch.confidence - secondSchoolMatch.confidence < 0.12))
+        );
+
+        let schoolResolverAction: "none" | "auto-applied" | "clarify" = "none";
+        let schoolResolverAppliedValue: string | null = null;
+        const hasAgentQuestionPlan = Boolean(agentic.questionPlan);
 
         let reply = agentic.reply;
         let questionIntent = normalizeQuestionIntent(agentic.questionIntent);
 
-        if (AGENTIC_ENABLE_ROUTE_REWRITES && shouldRequestImpactSpecificity(modelPatch)) {
+        if (!hasSpecificGeography && topSchoolMatch && schoolMatchIsHighConfidence && !schoolMatchIsAmbiguous) {
+          const resolvedGeography = [
+            topSchoolMatch.schoolName,
+            topSchoolMatch.city,
+            topSchoolMatch.state,
+            topSchoolMatch.zipCode,
+          ]
+            .filter(Boolean)
+            .join(", ");
+
+          if (!modelPatch) {
+            modelPatch = {};
+          }
+          modelPatch.intended_impact = {
+            population:
+              modelPatch.intended_impact?.population ?? modelSnapshot?.intended_impact.population ?? "",
+            geography: resolvedGeography,
+            long_term_goal:
+              modelPatch.intended_impact?.long_term_goal ?? modelSnapshot?.intended_impact.long_term_goal ?? "",
+            compiled_statement:
+              modelPatch.intended_impact?.compiled_statement ??
+              modelSnapshot?.intended_impact.compiled_statement ??
+              "",
+          };
+
+          schoolResolverAction = "auto-applied";
+          schoolResolverAppliedValue = resolvedGeography;
+        }
+
+        if (!hasSpecificGeography && topSchoolMatch && schoolMatchIsAmbiguous) {
+          const option1 = topSchoolMatch.schoolName;
+          const option2 = secondSchoolMatch?.schoolName;
+          const optionsText = option2 ? `${option1} or ${option2}` : option1;
+
+          reply = `I might be matching your school reference to ${optionsText}. Which school should I use to set the geography?`;
+          questionIntent = "geography";
+          schoolResolverAction = "clarify";
+        }
+
+        if (
+          AGENTIC_ENABLE_ROUTE_REWRITES &&
+          !hasAgentQuestionPlan &&
+          shouldRequestImpactSpecificity(modelPatch, {
+            currentIntent: questionIntent,
+            snapshot: modelSnapshot,
+          })
+        ) {
           reply = "Let's make that impact statement more specific. What exact long-term difference should we be able to point to in 10 years (for example, sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
           questionIntent = "impact_specificity";
         }
 
         const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
 
-        if (AGENTIC_ENABLE_ROUTE_REWRITES && shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
+        if (
+          AGENTIC_ENABLE_ROUTE_REWRITES &&
+          !hasAgentQuestionPlan &&
+          shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)
+        ) {
           reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
           questionIntent = "impact_aspiration";
         }
@@ -711,11 +803,7 @@ export async function POST(req: NextRequest) {
           message.trim()
         );
 
-        if (
-          AGENTIC_ENABLE_ROUTE_REWRITES &&
-          !impactDraftReadiness.ready &&
-          shouldBlockImpactDraft(reply, questionIntent, modelPatch)
-        ) {
+        if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
           modelPatch = sanitizeImpactPatchWhenDraftBlocked(modelPatch);
 
           questionIntent = impactDraftReadiness.missingIntent;
@@ -746,31 +834,51 @@ export async function POST(req: NextRequest) {
         reply = qualityClarified.reply;
         questionIntent = qualityClarified.questionIntent;
 
-        const deterministic = enforceDeterministicPhaseQuestion(
+        const planAligned = applyQuestionPlanGuard(
           reply,
           normalizeQuestionIntent(questionIntent),
-          stateIntent,
-          { strict: !AGENTIC_SOFT_PHASE_ENFORCEMENT }
+          agentic.questionPlan
+        );
+
+        const deterministic = hasAgentQuestionPlan
+          ? {
+              reply: planAligned.reply,
+              questionIntent: planAligned.questionIntent,
+            }
+          : enforceDeterministicPhaseQuestion(
+              planAligned.reply,
+              planAligned.questionIntent,
+              stateIntent,
+              { strict: !AGENTIC_SOFT_PHASE_ENFORCEMENT }
+            );
+
+        const conceptAdjusted = applyConceptTangentResumePrompt(
+          deterministic.reply,
+          message.trim()
         );
 
         const contextText = [
           ...safeHistory.map((msg) => msg.content),
           message.trim(),
-          deterministic.reply,
+          conceptAdjusted.reply,
         ].join("\n");
 
         const intentResolution = resolveQuickReplyIntent(
-          deterministic.reply,
+          conceptAdjusted.reply,
           deterministic.questionIntent
         );
 
-        const quickReplies = ENABLE_RESPONSE_CHIPS
-          ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
-          : undefined;
+        const quickReplies = conceptAdjusted.applied
+          ? getConceptTangentQuickReplies()
+          : ENABLE_RESPONSE_CHIPS
+            ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
+            : undefined;
 
         // Final-pass: deterministically synthesize compiled_statement when all
         // three core impact fields are present but the statement is still empty.
-        modelPatch = synthesizeCompiledStatementIfComplete(modelPatch, applyPatchToSnapshot(modelSnapshot, modelPatch));
+        modelPatch = applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
+          synthesizeWhenComplete: true,
+        });
 
         if (DEBUG_AGENTIC_CONTEXT) {
           console.info("[agentic-context-coverage]", {
@@ -783,7 +891,7 @@ export async function POST(req: NextRequest) {
         }
 
         return NextResponse.json({
-          reply: deterministic.reply,
+          reply: conceptAdjusted.reply,
           modelPatch,
           quickReplies,
           llmMeta: {
@@ -795,9 +903,24 @@ export async function POST(req: NextRequest) {
               initialIntent: normalizeQuestionIntent(agentic.questionIntent) ?? null,
               finalIntent: deterministic.questionIntent ?? null,
               contradictionFlags: agentic.contradictionFlags ?? [],
+              questionPlan: agentic.questionPlan ?? null,
+              questionPlanApplied: hasAgentQuestionPlan,
               decisionSummary: agentic.decisionSummary ?? null,
+              patchSource,
               usedExtractionFallback,
               usedHeuristicMerge,
+              schoolResolverAction,
+              schoolResolverAppliedValue,
+              schoolResolverTopMatches: schoolMatches.slice(0, 2).map((m) => ({
+                schoolName: m.schoolName,
+                confidence: m.confidence,
+              })),
+              conceptCoding: buildConceptCodingTrace({
+                userText: message.trim(),
+                retrievedChunks: agentic.retrievedEvidence ?? [],
+                evidenceRefs: agentic.evidenceRefs,
+              }),
+              conceptTangentHandled: conceptAdjusted.applied,
               routeRewritesEnabled: AGENTIC_ENABLE_ROUTE_REWRITES,
             },
           },
@@ -895,10 +1018,17 @@ export async function POST(req: NextRequest) {
   }
 
   modelPatch = normalizeMergedActivityPatch(modelPatch);
-  modelPatch = enforceCompiledStatementAcceptance(modelPatch, modelSnapshot, message.trim());
-  modelPatch = applyImpactAcceptanceFromReply(modelPatch, modelSnapshot, message.trim());
+  modelPatch = applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
+    synthesizeWhenComplete: false,
+  });
+  modelPatch = constrainPatchToResponseDomain(modelPatch, responseDomain);
 
-  if (shouldRequestImpactSpecificity(modelPatch)) {
+  if (
+    shouldRequestImpactSpecificity(modelPatch, {
+      currentIntent: questionIntent,
+      snapshot: modelSnapshot,
+    })
+  ) {
     if (modelPatch) {
       const { intended_impact: _omit, ...remainingPatch } = modelPatch;
       modelPatch = remainingPatch;
@@ -947,7 +1077,12 @@ export async function POST(req: NextRequest) {
   const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent, {
     strict: true,
   });
-  reply = deterministic.reply;
+
+  const conceptAdjusted = applyConceptTangentResumePrompt(
+    deterministic.reply,
+    message.trim()
+  );
+  reply = conceptAdjusted.reply;
   questionIntent = deterministic.questionIntent;
 
   const contextText = [
@@ -957,9 +1092,15 @@ export async function POST(req: NextRequest) {
   ].join("\n");
 
   const intentResolution = resolveQuickReplyIntent(reply, questionIntent);
-  const quickReplies = ENABLE_RESPONSE_CHIPS
-    ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
-    : undefined;
+  const quickReplies = conceptAdjusted.applied
+    ? getConceptTangentQuickReplies()
+    : ENABLE_RESPONSE_CHIPS
+      ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
+      : undefined;
+
+  const legacyRetrieved = await retrieveKnowledge(message.trim(), 5, {
+    userId,
+  });
 
   if (DEBUG_AGENTIC_CONTEXT) {
     console.info("[agentic-context-coverage]", {
@@ -1004,6 +1145,11 @@ export async function POST(req: NextRequest) {
         initialIntent: normalizeQuestionIntent(intentMatch?.[1]) ?? null,
         finalIntent: questionIntent ?? null,
         resolutionSource: intentResolution.source,
+        conceptCoding: buildConceptCodingTrace({
+          userText: message.trim(),
+          retrievedChunks: legacyRetrieved,
+        }),
+        conceptTangentHandled: conceptAdjusted.applied,
         routeRewritesEnabled: true,
       },
     },
@@ -1058,6 +1204,112 @@ function normalizeQuestionIntent(raw: string | undefined): ParsedQuestionIntent 
     default:
       return undefined;
   }
+}
+
+function inferUserResponseDomainFromHistory(history: ChatMessage[]): QuestionIntent | undefined {
+  const lastAssistantMessage = [...history]
+    .reverse()
+    .find(
+      (msg) =>
+        msg.role === "assistant" &&
+        typeof msg.content === "string" &&
+        msg.content.trim().length > 0
+    );
+
+  if (!lastAssistantMessage) return undefined;
+
+  const focus = getQuestionFocusText(lastAssistantMessage.content);
+  const sourceText = focus.text || lastAssistantMessage.content;
+  return detectQuickReplyIntent(sourceText);
+}
+
+function buildScopedImplementation(
+  implementation: Partial<LogicModel["implementation"]> | undefined,
+  allowed: Array<"resources" | "activities" | "quality_fidelity">
+): LogicModel["implementation"] | undefined {
+  if (!implementation) return undefined;
+
+  const scoped: Partial<LogicModel["implementation"]> = {};
+  if (allowed.includes("resources") && implementation.resources) {
+    scoped.resources = implementation.resources;
+  }
+  if (allowed.includes("activities") && implementation.activities) {
+    scoped.activities = implementation.activities;
+  }
+  if (allowed.includes("quality_fidelity") && implementation.quality_fidelity) {
+    scoped.quality_fidelity = implementation.quality_fidelity;
+  }
+
+  return Object.keys(scoped).length > 0 ? (scoped as LogicModel["implementation"]) : undefined;
+}
+
+function constrainPatchToResponseDomain(
+  patch: Partial<LogicModel> | null,
+  responseDomain: QuestionIntent | undefined
+): Partial<LogicModel> | null {
+  if (!patch || !responseDomain) return patch;
+
+  const constrained: Partial<LogicModel> = {};
+  if (patch.stakeholders?.length) {
+    constrained.stakeholders = patch.stakeholders;
+  }
+
+  switch (responseDomain) {
+    case "impact_aspiration":
+    case "impact_change_type":
+    case "impact_specificity":
+    case "impact_review":
+    case "long_term_help":
+    case "geography":
+    case "population_focus": {
+      if (patch.intended_impact) {
+        constrained.intended_impact = patch.intended_impact;
+      }
+      break;
+    }
+    case "resources": {
+      const implementation = buildScopedImplementation(patch.implementation, ["resources"]);
+      if (implementation) {
+        constrained.implementation = implementation;
+      }
+      break;
+    }
+    case "activities": {
+      const implementation = buildScopedImplementation(patch.implementation, ["activities"]);
+      if (implementation) {
+        constrained.implementation = implementation;
+      }
+      break;
+    }
+    case "outputs_metrics": {
+      // Outputs are nested under activity records, so keep activity updates only.
+      const implementation = buildScopedImplementation(patch.implementation, ["activities"]);
+      if (implementation) {
+        constrained.implementation = implementation;
+      }
+      break;
+    }
+    case "quality_evidence": {
+      const implementation = buildScopedImplementation(patch.implementation, ["quality_fidelity"]);
+      if (implementation) {
+        constrained.implementation = implementation;
+      }
+      break;
+    }
+    case "outcomes_review": {
+      if (patch.outcomes) {
+        constrained.outcomes = patch.outcomes;
+      }
+      break;
+    }
+    case "section_refine": {
+      return patch;
+    }
+    default:
+      return patch;
+  }
+
+  return Object.keys(constrained).length > 0 ? constrained : null;
 }
 
 function getQuestionFocusText(reply: string): { text: string; hasQuestion: boolean } {
@@ -1182,6 +1434,7 @@ function inferImpactDraftReadiness(
   safeHistory: ChatMessage[],
   latestUserMessage: string
 ): ImpactDraftReadiness {
+  const impactState = deriveImpactFacetState(modelSnapshot);
   const latestMessage = latestUserMessage.trim();
   const historyUserText = safeHistory
     .filter((msg) => msg.role === "user")
@@ -1189,20 +1442,18 @@ function inferImpactDraftReadiness(
     .join("\n");
 
   const contextText = `${historyUserText}\n${latestMessage}`;
-  const modelPopulation = modelSnapshot?.intended_impact.population ?? "";
-  const modelGeography = modelSnapshot?.intended_impact.geography ?? "";
   const modelOutcome = `${modelSnapshot?.intended_impact.long_term_goal ?? ""} ${
     modelSnapshot?.intended_impact.compiled_statement ?? ""
   }`;
 
   const populationKnown =
-    (isNonEmpty(modelPopulation) && looksSpecificPopulation(modelPopulation)) ||
+    impactState.populationKnown ||
     looksSpecificPopulation(contextText);
   const geographyKnown =
-    (isNonEmpty(modelGeography) && looksSpecificGeography(modelGeography)) ||
+    impactState.geographyKnown ||
     looksSpecificGeography(contextText);
   const concreteOutcomeKnown =
-    hasConcreteImpactMarker(modelOutcome) || hasConcreteImpactMarker(contextText);
+    impactState.concreteOutcomeKnown || hasConcreteImpactMarker(modelOutcome) || hasConcreteImpactMarker(contextText);
 
   const ready = populationKnown && geographyKnown && concreteOutcomeKnown;
 
@@ -1254,12 +1505,12 @@ function shouldBlockImpactDraft(
 function buildImpactMissingFollowUp(missingIntent: QuestionIntent | undefined): string {
   switch (missingIntent) {
     case "population_focus":
-      return "Before I draft an impact statement, who exactly is the primary population you serve?";
+      return "Before we lock the impact statement, who is that statement really about?";
     case "geography":
-      return "Before I draft an impact statement, what specific geography should we anchor it to (for example, citywide, neighborhoods, or specific schools)?";
+      return "Before we lock the impact statement, what place should we anchor that statement to (for example, citywide, neighborhoods, or specific schools)?";
     case "impact_specificity":
     default:
-      return "Before I draft an impact statement, what exact long-term difference should we be able to point to in 10 years (for example: sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
+      return "Before we lock the impact statement, what exact long-term difference should it point to in 10 years (for example: sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
   }
 }
 
@@ -1310,46 +1561,8 @@ function refineRepeatedQualityQuestion(
   };
 }
 
-function isExplicitImpactAcceptance(text: string): boolean {
-  return guardrailIsExplicitImpactAcceptance(text);
-}
-
 function buildCompiledStatement(population: string, geography: string, longTermGoal: string): string | undefined {
   return guardrailBuildCompiledStatement(population, geography, longTermGoal);
-}
-
-/**
- * Final-pass deterministic synthesis: if all three core impact fields are now
- * present in the merged snapshot but compiled_statement is still empty, write
- * it to the patch without waiting for explicit user acceptance.
- *
- * This is intentionally a server-side safety net so that field-capture is never
- * blocked by a missed acceptance-detection heuristic.
- */
-function synthesizeCompiledStatementIfComplete(
-  modelPatch: Partial<LogicModel> | null,
-  mergedSnapshot: LogicModel | undefined
-): Partial<LogicModel> | null {
-  const impact = mergedSnapshot?.intended_impact;
-  if (
-    !impact?.population?.trim() ||
-    !impact?.geography?.trim() ||
-    !impact?.long_term_goal?.trim() ||
-    impact?.compiled_statement?.trim()
-  ) {
-    return modelPatch;
-  }
-
-  const compiled = buildCompiledStatement(impact.population, impact.geography, impact.long_term_goal);
-  if (!compiled) return modelPatch;
-
-  return {
-    ...modelPatch,
-    intended_impact: {
-      ...(modelPatch?.intended_impact ?? {}),
-      compiled_statement: compiled,
-    },
-  } as Partial<LogicModel>;
 }
 
 /**
@@ -1385,42 +1598,6 @@ function logAgenticFallback(
   }));
 }
 
-function enforceCompiledStatementAcceptance(
-  modelPatch: Partial<LogicModel> | null,
-  modelSnapshot: LogicModel | undefined,
-  latestUserMessage: string
-): Partial<LogicModel> | null {
-  if (!modelPatch?.intended_impact) return modelPatch;
-
-  const accepted = isExplicitImpactAcceptance(latestUserMessage);
-  if (!accepted) {
-    if ("compiled_statement" in modelPatch.intended_impact) {
-      modelPatch.intended_impact.compiled_statement = "";
-    }
-    if (Object.keys(modelPatch.intended_impact).length === 0) {
-      delete modelPatch.intended_impact;
-    }
-    return modelPatch;
-  }
-
-  if (modelPatch.intended_impact.compiled_statement?.trim()) {
-    return modelPatch;
-  }
-
-  const population =
-    modelPatch.intended_impact.population ?? modelSnapshot?.intended_impact.population ?? "";
-  const geography =
-    modelPatch.intended_impact.geography ?? modelSnapshot?.intended_impact.geography ?? "";
-  const longTermGoal =
-    modelPatch.intended_impact.long_term_goal ?? modelSnapshot?.intended_impact.long_term_goal ?? "";
-
-  const compiled = buildCompiledStatement(population, geography, longTermGoal);
-  if (compiled) {
-    modelPatch.intended_impact.compiled_statement = compiled;
-  }
-
-  return modelPatch;
-}
 
 function isLogicModelShape(value: unknown): value is LogicModel {
   if (!value || typeof value !== "object") return false;
@@ -1487,11 +1664,11 @@ function applyPatchToSnapshot(
 function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undefined {
   switch (intent) {
     case "population_focus":
-      return "Who exactly is the primary population your program serves?";
+      return "Who is this intended impact statement really about?";
     case "geography":
-      return "What specific geography should anchor this logic model (for example, citywide, neighborhoods, or specific sites)?";
+      return "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites)?";
     case "impact_specificity":
-      return "If your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
+      return "What concrete long-term change should this intended impact statement point to in 10 years?";
     case "resources":
       return "What are the key resources needed to run this program (people, materials, funding, and expertise)?";
     case "activities":
@@ -1566,7 +1743,68 @@ function enforceDeterministicPhaseQuestion(
   };
 }
 
-function shouldRequestImpactSpecificity(modelPatch: Partial<LogicModel> | null): boolean {
+function applyQuestionPlanGuard(
+  reply: string,
+  questionIntent: ParsedQuestionIntent | undefined,
+  questionPlan:
+    | {
+        shouldAsk?: boolean;
+        draftQuestion?: string;
+      }
+    | undefined
+): { reply: string; questionIntent: ParsedQuestionIntent | undefined; planApplied: boolean } {
+  if (!questionPlan) {
+    return { reply, questionIntent, planApplied: false };
+  }
+
+  if (questionPlan.shouldAsk === false) {
+    return {
+      reply,
+      questionIntent: "none",
+      planApplied: true,
+    };
+  }
+
+  const focus = getQuestionFocusText(reply);
+  if (questionPlan.shouldAsk && !focus.hasQuestion && questionPlan.draftQuestion?.trim()) {
+    return {
+      reply: `${reply}\n\n${questionPlan.draftQuestion.trim()}`,
+      questionIntent,
+      planApplied: true,
+    };
+  }
+
+  return {
+    reply,
+    questionIntent,
+    planApplied: true,
+  };
+}
+
+function shouldRequestImpactSpecificity(
+  modelPatch: Partial<LogicModel> | null,
+  options?: {
+    currentIntent?: ParsedQuestionIntent;
+    snapshot?: LogicModel;
+  }
+): boolean {
+  const currentIntent = options?.currentIntent;
+  // Never rewind to impact-specificity if the flow is already in a non-impact section.
+  if (
+    currentIntent &&
+    !["impact_aspiration", "impact_change_type", "impact_specificity", "impact_review", "long_term_help", "none"].includes(
+      currentIntent
+    )
+  ) {
+    return false;
+  }
+
+  // If a compiled statement already exists on the snapshot, the impact statement was
+  // previously accepted and we should not regress back to this prompt.
+  if (options?.snapshot?.intended_impact?.compiled_statement?.trim()) {
+    return false;
+  }
+
   const impact = modelPatch?.intended_impact;
   if (!impact) return false;
 
@@ -1713,6 +1951,43 @@ function ensureTypeQuickReply(replies: QuickReply[]): QuickReply[] {
       action: "open-input",
     },
   ];
+}
+
+function isLogicModelConceptQuestion(userMessage: string): boolean {
+  const text = userMessage.trim();
+  if (!text) return false;
+
+  const asksConcept =
+    /\b(what|how|why|difference|different|explain|define|meaning|clarify|help me understand)\b/i.test(text) ||
+    text.includes("?");
+
+  if (!asksConcept) return false;
+
+  return /\b(logic model|outcomes?|outputs?|activities|resources|inputs?|fidelity|quality|stakeholders?|theory of change|impact statement|short-term|medium-term|long-term)\b/i.test(
+    text
+  );
+}
+
+function applyConceptTangentResumePrompt(reply: string, userMessage: string): { reply: string; applied: boolean } {
+  if (!isLogicModelConceptQuestion(userMessage)) {
+    return { reply, applied: false };
+  }
+
+  if (/continue\s+(?:populating|building)|proceed\s+with\s+populating|resume\s+the\s+logic\s+model/i.test(reply)) {
+    return { reply, applied: true };
+  }
+
+  return {
+    reply: `${reply}\n\nWould you like to continue populating your logic model now?`,
+    applied: true,
+  };
+}
+
+function getConceptTangentQuickReplies(): QuickReply[] {
+  return ensureTypeQuickReply([
+    { label: "Yes, continue the model", value: "Yes, let's continue populating the logic model." },
+    { label: "One more concept question", value: "I have one more logic model concept question." },
+  ]);
 }
 
 function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {

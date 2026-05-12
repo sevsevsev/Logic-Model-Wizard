@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import {
   buildCompiledStatement,
+  deriveImpactFacetState,
   inferNextRequiredIntent,
   isExplicitImpactAcceptance,
   looksSpecificGeography,
@@ -108,4 +109,16 @@ test("phase intent progression follows atomic sequence", () => {
 
   model.outcomes.short_term.push({ statement: "Improved program awareness" });
   assert.equal(inferNextRequiredIntent(model), "section_refine");
+});
+
+test("impact facet state can derive population and geography from a draft statement", () => {
+  const model = createModel();
+  model.intended_impact.long_term_goal =
+    "Middle school students in Kensington will graduate high school and avoid justice-system involvement";
+
+  const impactState = deriveImpactFacetState(model);
+  assert.equal(impactState.populationKnown, true);
+  assert.equal(impactState.geographyKnown, true);
+  assert.equal(impactState.concreteOutcomeKnown, true);
+  assert.equal(inferNextRequiredIntent(model), "impact_review");
 });

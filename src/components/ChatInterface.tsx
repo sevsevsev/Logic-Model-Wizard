@@ -5,7 +5,15 @@ import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download } from "lucide
 import { useLogicModelStore, QuickReply, ChatMessage } from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
-import type { DebugSnapshotCapture } from "@/lib/feedback/types";
+import type { DebugSnapshotCapture, LlmTraceMeta } from "@/lib/feedback/types";
+
+type LlmCallSummary = {
+  atIso: string;
+  model: string;
+  path: "agentic" | "legacy" | "unknown";
+  fallbackReason?: string | null;
+  trace?: LlmTraceMeta;
+};
 
 const FEEDBACK_REASONS = [
   "Incorrect or made up",
@@ -56,45 +64,9 @@ export default function ChatInterface() {
   const [exportBugError, setExportBugError] = useState<string | null>(null);
   const [exportSaving, setExportSaving] = useState(false);
   const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
-  const [llmTelemetry, setLlmTelemetry] = useState<
-    Array<{
-      atIso: string;
-      model: string;
-      path: "agentic" | "legacy" | "unknown";
-      fallbackReason?: string | null;
-      trace?: {
-        stateIntent?: string | null;
-        initialIntent?: string | null;
-        finalIntent?: string | null;
-        resolutionSource?: string | null;
-        contradictionFlags?: string[];
-        decisionSummary?: string | null;
-        usedExtractionFallback?: boolean;
-        usedHeuristicMerge?: boolean;
-        routeRewritesEnabled?: boolean;
-      };
-    }>
-  >([]);
+  const [llmTelemetry, setLlmTelemetry] = useState<LlmCallSummary[]>([]);
   const [traceByMessageId, setTraceByMessageId] = useState<
-    Record<
-      string,
-      {
-        model: string;
-        path: "agentic" | "legacy" | "unknown";
-        fallbackReason?: string | null;
-        trace?: {
-          stateIntent?: string | null;
-          initialIntent?: string | null;
-          finalIntent?: string | null;
-          resolutionSource?: string | null;
-          contradictionFlags?: string[];
-          decisionSummary?: string | null;
-          usedExtractionFallback?: boolean;
-          usedHeuristicMerge?: boolean;
-          routeRewritesEnabled?: boolean;
-        };
-      }
-    >
+    Record<string, Omit<LlmCallSummary, "atIso">>
   >({});
   const exportDescriptionRef = useRef<HTMLTextAreaElement>(null);
   const latestLlmCall = llmTelemetry.length > 0 ? llmTelemetry[llmTelemetry.length - 1] : null;
@@ -148,17 +120,7 @@ export default function ChatInterface() {
               model?: string | null;
               path?: string | null;
               fallbackReason?: string | null;
-              trace?: {
-                stateIntent?: string | null;
-                initialIntent?: string | null;
-                finalIntent?: string | null;
-                resolutionSource?: string | null;
-                contradictionFlags?: string[];
-                decisionSummary?: string | null;
-                usedExtractionFallback?: boolean;
-                usedHeuristicMerge?: boolean;
-                routeRewritesEnabled?: boolean;
-              } | null;
+              trace?: LlmTraceMeta | null;
             };
           }
         | null = null;
@@ -178,22 +140,7 @@ export default function ChatInterface() {
       const usedModel = data.llmMeta?.model?.trim();
       const usedPath = data.llmMeta?.path?.trim();
       let pendingTrace:
-        | {
-            model: string;
-            path: "agentic" | "legacy" | "unknown";
-            fallbackReason?: string | null;
-            trace?: {
-              stateIntent?: string | null;
-              initialIntent?: string | null;
-              finalIntent?: string | null;
-              resolutionSource?: string | null;
-              contradictionFlags?: string[];
-              decisionSummary?: string | null;
-              usedExtractionFallback?: boolean;
-              usedHeuristicMerge?: boolean;
-              routeRewritesEnabled?: boolean;
-            };
-          }
+        | Omit<LlmCallSummary, "atIso">
         | null = null;
       if (usedModel) {
         const normalizedPath: "agentic" | "legacy" | "unknown" =
@@ -365,6 +312,9 @@ export default function ChatInterface() {
       feedbackReport: {
         description: bugDescription,
         capturedAtIso: now.toISOString(),
+      },
+      conceptCodingReview: {
+        entries: [],
       },
       notes: [
         "Attach this file to your bug report chat.",

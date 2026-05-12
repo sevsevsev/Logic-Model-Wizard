@@ -1,4 +1,5 @@
 import type { LogicModel, ChatMessage } from "@/store/useLogicModelStore";
+import type { RetrievedChunk } from "@/lib/rag/types";
 
 export type AgentQuestionIntent =
   | "impact_aspiration"
@@ -33,6 +34,14 @@ export interface AgentStateAssessment {
   missingFields?: string[];
 }
 
+export interface AgentQuestionPlan {
+  shouldAsk?: boolean;
+  targetField?: string;
+  goal?: string;
+  draftQuestion?: string;
+  conceptualTopics?: string[];
+}
+
 export interface AgentTurnInput {
   apiKey: string;
   userMessage: string;
@@ -47,9 +56,11 @@ export interface AgentTurnResult {
   modelPatch: Partial<LogicModel> | null;
   confidence?: number;
   evidenceRefs?: string[];
+  questionPlan?: AgentQuestionPlan;
   stateAssessment?: AgentStateAssessment;
   contradictionFlags?: AgentContradictionFlag[];
   patchProvenance?: AgentPatchProvenance[];
   decisionSummary?: string;
   modelUsed?: string;
+  retrievedEvidence?: RetrievedChunk[];
 }

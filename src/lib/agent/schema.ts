@@ -1,6 +1,7 @@
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type {
   AgentContradictionFlag,
+  AgentQuestionPlan,
   AgentPatchProvenance,
   AgentQuestionIntent,
   AgentStateAssessment,
@@ -29,6 +30,7 @@ export interface AgentStructuredOutput {
   model_patch?: Partial<LogicModel>;
   confidence?: number;
   evidence_refs?: string[];
+  question_plan?: AgentQuestionPlan;
   decision_summary?: string;
   state_assessment?: AgentStateAssessment;
   contradiction_flags?: AgentContradictionFlag[];
@@ -133,6 +135,36 @@ const ALLOWED_PROVENANCE: Set<AgentPatchProvenance> = new Set([
   "assistant_inferred",
 ]);
 
+function parseQuestionPlan(raw: unknown): AgentQuestionPlan | undefined {
+  if (!isPlainObject(raw)) return undefined;
+
+  const questionPlan: AgentQuestionPlan = {};
+
+  if (typeof raw.shouldAsk === "boolean") {
+    questionPlan.shouldAsk = raw.shouldAsk;
+  }
+
+  if (typeof raw.targetField === "string" && raw.targetField.trim()) {
+    questionPlan.targetField = raw.targetField.trim();
+  }
+
+  if (typeof raw.goal === "string" && raw.goal.trim()) {
+    questionPlan.goal = raw.goal.trim();
+  }
+
+  if (typeof raw.draftQuestion === "string" && raw.draftQuestion.trim()) {
+    questionPlan.draftQuestion = raw.draftQuestion.trim();
+  }
+
+  if (Array.isArray(raw.conceptualTopics)) {
+    questionPlan.conceptualTopics = raw.conceptualTopics.filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    );
+  }
+
+  return Object.keys(questionPlan).length > 0 ? questionPlan : undefined;
+}
+
 export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutput | null {
   const cleaned = extractJsonObjectCandidate(rawText);
   if (!cleaned) return null;
@@ -166,6 +198,11 @@ export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutp
 
   if (Array.isArray(parsed.evidence_refs)) {
     output.evidence_refs = parsed.evidence_refs.filter((v): v is string => typeof v === "string");
+  }
+
+  const parsedQuestionPlan = parseQuestionPlan(parsed.question_plan);
+  if (parsedQuestionPlan) {
+    output.question_plan = parsedQuestionPlan;
   }
 
   if (typeof parsed.decision_summary === "string") {
@@ -241,6 +278,13 @@ export function salvageAgentStructuredOutput(rawText: string): AgentStructuredOu
 
   if (Array.isArray(object.evidence_refs)) {
     output.evidence_refs = object.evidence_refs.filter((v): v is string => typeof v === "string");
+  }
+
+  const parsedQuestionPlan = parseQuestionPlan(
+    object.question_plan ?? object.questionPlan ?? object.plan ?? null
+  );
+  if (parsedQuestionPlan) {
+    output.question_plan = parsedQuestionPlan;
   }
 
   if (typeof object.decision_summary === "string") {

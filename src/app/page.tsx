@@ -4,12 +4,18 @@ import { useState } from "react";
 import MainLayout from "@/components/MainLayout";
 import LandingPage, { LANDING_DESCRIPTION_DRAFT_KEY } from "@/components/LandingPage";
 import {
+  getBootstrapStartOptions,
+  getBootstrapStartRecommendation,
   getNextGapQuestion,
   type BootstrapExtractionResponse,
 } from "@/lib/bootstrap/types";
-import { buildPatchFromSuggestions, describeGaps } from "@/lib/bootstrap/patch";
-import type { LogicModel } from "@/store/useLogicModelStore";
+import {
+  buildPatchFromSuggestions,
+  buildRefinementCoaching,
+  describeGaps,
+} from "@/lib/bootstrap/patch";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
+import { useLogicModelStore, QuickReply, type LogicModel } from "@/store/useLogicModelStore";
 
 function buildQualityNote(patch: Partial<LogicModel>): string | null {
   const acts = patch.implementation?.activities ?? [];
@@ -30,7 +36,6 @@ function buildQualityNote(patch: Partial<LogicModel>): string | null {
   }
   return null;
 }
-import { useLogicModelStore, QuickReply } from "@/store/useLogicModelStore";
 
 const MAX_BOOTSTRAP_FILE_BYTES = 4 * 1024 * 1024;
 
@@ -118,16 +123,25 @@ export default function Home() {
 
     const patch = buildPatchFromSuggestions(suggestions);
     applyModelPatch(patch);
+    const refinementCoaching = buildRefinementCoaching(suggestions);
 
     const model = useLogicModelStore.getState().model;
     const gaps = describeGaps(model);
+    const startOptions = getBootstrapStartOptions(model, suggestions);
+    const startRecommendation = startOptions
+      ? getBootstrapStartRecommendation(model, suggestions)
+      : null;
 
     if (gaps.length === 0) {
       // Model is fully populated — offer a quality pass.
       const qualityNote = buildQualityNote(patch);
       const message = qualityNote
         ? `I reviewed your document and filled in your logic model. ${qualityNote}\n\nWant to take a closer look at that section, or does everything look good?`
-        : "I reviewed your document and filled in your logic model. Take a look and let me know if anything needs adjusting.";
+        : `I reviewed your document and filled in your logic model.${
+            refinementCoaching ? ` ${refinementCoaching.note}` : ""
+          } Take a look and let me know if anything needs adjusting.${
+            refinementCoaching ? `\n\n${refinementCoaching.question}` : ""
+          }`;
       addMessage("assistant", message, [
         { label: "Looks good", value: "Looks good — let's proceed." },
         { label: "Let me review it", value: "I'd like to review and refine the logic model." },
@@ -135,7 +149,14 @@ export default function Home() {
     } else {
       // Model has gaps — ask the next question without enumerating every missing field.
       const nextQuestion = getNextGapQuestion(model);
-      addMessage("assistant", `I reviewed your document and filled in what I could find.\n\n${nextQuestion}`);
+      const followUpQuestion = startOptions
+        ? `${startRecommendation?.prompt ?? "I can suggest a practical place to start."} Where would you like to begin refining?`
+        : nextQuestion;
+      addMessage(
+        "assistant",
+        `I reviewed your document and filled in what I could find.\n\n${followUpQuestion}`,
+        startOptions ?? undefined
+      );
     }
   }
 
@@ -195,7 +216,7 @@ export default function Home() {
         try {
           await runDocumentBootstrap(files);
           progressed = true;
-        } catch (error) {
+          const refinementCoaching = buildRefinementCoaching(suggestions);
           firstError = error instanceof Error ? error.message : "Could not analyze files.";
         }
       }
@@ -206,10 +227,9 @@ export default function Home() {
           progressed = true;
         } catch (error) {
           if (!firstError) {
-            firstError = error instanceof Error
-              ? error.message
-              : "Could not process your description.";
+                  refinementCoaching ? ` ${refinementCoaching.note}` : ""
           }
+                  refinementCoaching ? `\n\n${refinementCoaching.question}` : ""
         }
       }
 

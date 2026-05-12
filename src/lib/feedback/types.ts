@@ -2,6 +2,66 @@ import type { ChatMessage, LogicModel } from "@/store/useLogicModelStore";
 
 export type FeedbackRating = "up" | "down";
 
+export type ConceptCodingDecision = "direct-match" | "partial-match" | "weak-match" | "no-match";
+export type ConceptCodingActionHint = "ask-clarifying-question" | "accept-and-continue" | "defer-and-revisit";
+export type ConceptCodingVerdict = "confirmed" | "rejected" | "needs-review";
+
+export interface ConceptCodingChunkLink {
+  chunkId: string;
+  title: string;
+  topic: string;
+  source: string;
+  score: number;
+  matchScore: number;
+  decision: ConceptCodingDecision;
+}
+
+export interface ConceptCodingSpan {
+  spanText: string;
+  matchedChunks: ConceptCodingChunkLink[];
+  rationale: string;
+  actionHint: ConceptCodingActionHint;
+}
+
+export interface ConceptCodingTrace {
+  queryText: string;
+  spans: ConceptCodingSpan[];
+  retrievedChunkIds: string[];
+  unmatchedSpans: number;
+}
+
+export interface ConceptCodingReviewEntry {
+  spanText: string;
+  chunkId: string;
+  verdict: ConceptCodingVerdict;
+  reviewerNote?: string;
+  reviewedAtIso: string;
+}
+
+export interface ConceptCodingReview {
+  entries: ConceptCodingReviewEntry[];
+}
+
+export interface LlmTraceMeta {
+  stateIntent?: string | null;
+  initialIntent?: string | null;
+  finalIntent?: string | null;
+  resolutionSource?: string | null;
+  contradictionFlags?: string[];
+  questionPlan?: {
+    shouldAsk?: boolean;
+    targetField?: string | null;
+    goal?: string | null;
+    draftQuestion?: string | null;
+    conceptualTopics?: string[];
+  } | null;
+  decisionSummary?: string | null;
+  usedExtractionFallback?: boolean;
+  usedHeuristicMerge?: boolean;
+  routeRewritesEnabled?: boolean;
+  conceptCoding?: ConceptCodingTrace | null;
+}
+
 export interface FeedbackCapture {
   assistantMessageId: string;
   assistantMessage: string;
@@ -35,17 +95,7 @@ export interface DebugSnapshotCapture {
       model: string;
       path: "agentic" | "legacy" | "unknown";
       fallbackReason?: string | null;
-      trace?: {
-        stateIntent?: string | null;
-        initialIntent?: string | null;
-        finalIntent?: string | null;
-        resolutionSource?: string | null;
-        contradictionFlags?: string[];
-        decisionSummary?: string | null;
-        usedExtractionFallback?: boolean;
-        usedHeuristicMerge?: boolean;
-        routeRewritesEnabled?: boolean;
-      };
+      trace?: LlmTraceMeta;
     }>;
   };
   session: {
@@ -76,6 +126,7 @@ export interface DebugSnapshotCapture {
     description: string;
     capturedAtIso: string;
   };
+  conceptCodingReview?: ConceptCodingReview;
   notes: string[];
 }
 

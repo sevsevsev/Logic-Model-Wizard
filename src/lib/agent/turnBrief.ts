@@ -1,6 +1,7 @@
 import type { ChatMessage, LogicModel } from "@/store/useLogicModelStore";
 import { buildContextCoverageSummary } from "@/lib/chat/agenticContext";
 import {
+  deriveImpactFacetState,
   hasConcreteImpactMarker,
   inferNextRequiredIntent,
   looksSpecificGeography,
@@ -74,23 +75,26 @@ function buildConfirmedFacts(modelSnapshot: LogicModel | undefined): string[] {
 
 function buildMissingFields(modelSnapshot: LogicModel | undefined): string[] {
   if (!modelSnapshot) {
-    return ["population", "geography", "long_term_goal"];
+    return ["impact_statement", "population", "geography", "long_term_goal"];
   }
 
   const impact = modelSnapshot.intended_impact;
+  const impactState = deriveImpactFacetState(modelSnapshot);
   const missing: string[] = [];
 
-  if (!looksSpecificPopulation(impact.population)) missing.push("population");
-  if (!looksSpecificGeography(impact.geography)) missing.push("geography");
-  if (!hasConcreteImpactMarker(impact.long_term_goal || impact.compiled_statement)) {
-    missing.push("long_term_goal");
+  if (!impactState.hasImpactDraft) {
+    missing.push("impact_statement");
   }
-  if (
-    looksSpecificPopulation(impact.population) &&
-    looksSpecificGeography(impact.geography) &&
-    hasConcreteImpactMarker(impact.long_term_goal || impact.compiled_statement) &&
-    !impact.compiled_statement.trim()
-  ) {
+  if (!impactState.populationKnown) {
+    missing.push(impactState.hasImpactDraft ? "impact_population_facet" : "population");
+  }
+  if (!impactState.geographyKnown) {
+    missing.push(impactState.hasImpactDraft ? "impact_geography_facet" : "geography");
+  }
+  if (!impactState.concreteOutcomeKnown) {
+    missing.push(impactState.hasImpactDraft ? "impact_outcome_facet" : "long_term_goal");
+  }
+  if (impactState.needsImpactReview) {
     missing.push("impact_review_confirmation");
   }
 
@@ -136,10 +140,11 @@ function buildAvoidAskingFor(modelSnapshot: LogicModel | undefined): string[] {
 
   const avoid: string[] = [];
   const impact = modelSnapshot.intended_impact;
+  const impactState = deriveImpactFacetState(modelSnapshot);
 
-  if (looksSpecificPopulation(impact.population)) avoid.push("Do not ask again for the primary population unless the user explicitly revises it.");
-  if (looksSpecificGeography(impact.geography)) avoid.push("Do not ask again for geography unless the user explicitly revises it.");
-  if (hasConcreteImpactMarker(impact.long_term_goal || impact.compiled_statement)) {
+  if (impactState.populationKnown) avoid.push("Do not ask again for the primary population unless the user explicitly revises it.");
+  if (impactState.geographyKnown) avoid.push("Do not ask again for geography unless the user explicitly revises it.");
+  if (impactState.concreteOutcomeKnown) {
     avoid.push("Do not ask again for the long-term change unless the user explicitly revises it.");
   }
 

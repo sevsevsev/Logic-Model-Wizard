@@ -84,6 +84,33 @@ test("sanitizeAgentTurnResult seeds state assessment from turn brief when missin
   assert.deepEqual(sanitized.stateAssessment?.missingFields, brief.missingFields);
 });
 
+test("sanitizeAgentTurnResult suppresses question plan when asking for known information", () => {
+  const sanitized = sanitizeAgentTurnResult(
+    {
+      reply: "Which population are you serving?",
+      questionIntent: "population_focus",
+      modelPatch: null,
+      questionPlan: {
+        shouldAsk: true,
+        targetField: "population",
+        goal: "Clarify the primary population.",
+        draftQuestion: "Which population are you serving?",
+        conceptualTopics: ["population", "intended-impact"],
+      },
+    },
+    {
+      modelSnapshot: createModel(),
+      userMessage: "We serve middle school students in Kensington.",
+      turnBrief: createBrief(),
+    }
+  );
+
+  assert.equal(sanitized.questionIntent, "none");
+  assert.equal(sanitized.questionPlan?.shouldAsk, false);
+  assert.equal(sanitized.questionPlan?.targetField, "none");
+  assert.equal(sanitized.questionPlan?.draftQuestion, undefined);
+});
+
 test("sanitizeAgentTurnResult preserves prior impact fields when geography-only turn emits empty clears", () => {
   const model = createModel();
   const sanitized = sanitizeAgentTurnResult(
