@@ -216,7 +216,7 @@ export default function Home() {
         try {
           await runDocumentBootstrap(files);
           progressed = true;
-          const refinementCoaching = buildRefinementCoaching(suggestions);
+        } catch (error) {
           firstError = error instanceof Error ? error.message : "Could not analyze files.";
         }
       }
@@ -227,9 +227,9 @@ export default function Home() {
           progressed = true;
         } catch (error) {
           if (!firstError) {
-                  refinementCoaching ? ` ${refinementCoaching.note}` : ""
+            firstError =
+              error instanceof Error ? error.message : "Could not process project description.";
           }
-                  refinementCoaching ? `\n\n${refinementCoaching.question}` : ""
         }
       }
 

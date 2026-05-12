@@ -315,7 +315,7 @@ function ReportCard({ entry }: { entry: StoredDebugSnapshotRecord }) {
                 <ul className="mt-1 text-xs text-[#48617c]">
                   {span.matchedChunks.map((link) => (
                     <li key={`${span.spanText}-${link.chunkId}`}>
-                      -> {link.topic} / {link.title} ({link.decision})
+                      {"->"} {link.topic} / {link.title} ({link.decision})
                     </li>
                   ))}
                 </ul>
