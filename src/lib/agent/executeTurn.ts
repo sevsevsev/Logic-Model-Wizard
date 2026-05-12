@@ -97,6 +97,11 @@ Extraction guidance:
 - Keep extraction domain-aligned with current phase signals in turn_brief.
 - Avoid inferring new project facts from generic examples.
 - Do not clear existing fields unless the user explicitly corrects them.
+- For resources: classify user-stated items into human (people/roles), material (physical things), financial (funding), or knowledge (expertise/training) buckets. Common examples: 'volunteers' → human, 'curriculum' → material, 'grants' → financial, 'training' → knowledge.
+- For activities: extract verb-based descriptions from phrases like 'we run workshops', 'we provide tutoring', 'we offer mentoring', 'we connect students to services'.
+- For outcomes: extract short-term (knowledge/awareness), medium-term (behavior/skills), long-term (condition changes) from user statements about what will change.
+- Accept partial answers: if the user only names some resources/activities/outcomes, capture what they gave and ask one targeted follow-up about the most important missing piece.
+- If the user has already answered a question (even partially), do not ask the exact same open-ended question again — acknowledge what was captured and ask specifically about what is missing.
 
 ================================================================================
 USING RETRIEVED EVIDENCE

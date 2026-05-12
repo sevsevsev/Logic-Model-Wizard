@@ -42,6 +42,24 @@ const AGENT_POLICY_CHUNKS: AgentPolicyChunk[] = [
     text: "When population, geography, and long-term change are all present, synthesize the draft impact statement and confirm it before moving into resources or later sections.",
     tags: ["impact_review", "sequencing", "confirmation"],
   },
+  {
+    id: "policy-accept-partial-answers",
+    title: "Accept and capture partial answers, then ask a targeted follow-up",
+    text: "When a user provides a partial answer (e.g., only names the people involved but not funding or materials), capture what they gave and ask one specific follow-up about the most important missing piece. Do not re-ask the same open-ended question. Acknowledge what was shared before asking for more.",
+    tags: ["partial", "resources", "activities", "outcomes", "follow-up", "incomplete"],
+  },
+  {
+    id: "policy-extract-from-context",
+    title: "Extract model facts from conversational phrasing",
+    text: "Users often provide model facts in plain language rather than structured form. Extract resources from phrases like 'we need volunteers' or 'program staff', extract activities from phrases like 'we run workshops' or 'we provide tutoring', and extract outcomes from phrases like 'students gain skills' or 'families become stable'. Always populate model_patch with what the user stated, even if phrased informally.",
+    tags: ["extraction", "heuristic", "resources", "activities", "outcomes", "informal"],
+  },
+  {
+    id: "policy-advance-on-any-resource-answer",
+    title: "Advance past resources when at least one bucket is captured",
+    text: "Resources do not need to be exhaustive to move forward. If the user has named at least one person, material, funding source, or type of expertise, capture it and either ask about one specific missing bucket or advance to activities. Do not stay stuck on the same resources question if the user has already responded.",
+    tags: ["resources", "sequencing", "advance", "partial", "loop"],
+  },
 ];
 
 function tokenize(text: string): string[] {

@@ -49,13 +49,13 @@ function buildConfirmedFacts(modelSnapshot: LogicModel | undefined): string[] {
   }
 
   const resources = modelSnapshot.implementation.resources;
-  if (
-    resources.human.length > 0 ||
-    resources.material.length > 0 ||
-    resources.financial.length > 0 ||
-    resources.knowledge.length > 0
-  ) {
-    facts.push("At least one resource is already captured.");
+  const capturedBuckets: string[] = [];
+  if (resources.human.length > 0) capturedBuckets.push(`people: ${resources.human.join(", ")}`);
+  if (resources.material.length > 0) capturedBuckets.push(`materials: ${resources.material.join(", ")}`);
+  if (resources.financial.length > 0) capturedBuckets.push(`funding: ${resources.financial.join(", ")}`);
+  if (resources.knowledge.length > 0) capturedBuckets.push(`expertise: ${resources.knowledge.join(", ")}`);
+  if (capturedBuckets.length > 0) {
+    facts.push(`Resources already captured — ${capturedBuckets.join("; ")}. Do not ask for these again; ask only about missing buckets.`);
   }
 
   if (modelSnapshot.implementation.activities.length > 0) {
@@ -100,9 +100,20 @@ function buildMissingFields(modelSnapshot: LogicModel | undefined): string[] {
 
   const nextIntent = inferNextRequiredIntent(modelSnapshot);
   switch (nextIntent) {
-    case "resources":
-      missing.push("resources");
+    case "resources": {
+      // Report which specific resource buckets are still missing
+      const res = modelSnapshot.implementation.resources;
+      const missingBuckets: string[] = [];
+      if (!res.human.length) missingBuckets.push("people/roles");
+      if (!res.material.length) missingBuckets.push("materials/equipment");
+      if (!res.financial.length) missingBuckets.push("funding");
+      if (!res.knowledge.length) missingBuckets.push("expertise/training");
+      // Only add resources to missing if at least one bucket is still empty
+      if (missingBuckets.length > 0) {
+        missing.push(`resources (missing: ${missingBuckets.join(", ")})`);
+      }
       break;
+    }
     case "activities":
       missing.push("activities");
       break;
@@ -147,6 +158,13 @@ function buildAvoidAskingFor(modelSnapshot: LogicModel | undefined): string[] {
   if (impactState.concreteOutcomeKnown) {
     avoid.push("Do not ask again for the long-term change unless the user explicitly revises it.");
   }
+
+  // Avoid asking for specific resource buckets that are already captured
+  const res = modelSnapshot.implementation.resources;
+  if (res.human.length > 0) avoid.push(`Do not ask again for people/roles — already captured: ${res.human.join(", ")}.`);
+  if (res.material.length > 0) avoid.push(`Do not ask again for materials — already captured: ${res.material.join(", ")}.`);
+  if (res.financial.length > 0) avoid.push(`Do not ask again for funding — already captured: ${res.financial.join(", ")}.`);
+  if (res.knowledge.length > 0) avoid.push(`Do not ask again for expertise — already captured: ${res.knowledge.join(", ")}.`);
 
   return avoid;
 }

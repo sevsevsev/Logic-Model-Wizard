@@ -188,6 +188,227 @@ function appendOutputToMatchingActivity(
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Resource heuristic extractor — classify user-provided items into buckets
+// ---------------------------------------------------------------------------
+
+const RESOURCE_BUCKET_PATTERNS: Record<
+  "human" | "material" | "financial" | "knowledge",
+  RegExp[]
+> = {
+  human: [
+    /\b(volunteers?)\b/i,
+    /\b((?:program\s+)?staff)\b/i,
+    /\b(mentors?)\b/i,
+    /\b(facilitators?)\b/i,
+    /\b(coordinators?)\b/i,
+    /\b(directors?)\b/i,
+    /\b(social\s+workers?)\b/i,
+    /\b(counselors?)\b/i,
+    /\b(case\s+managers?)\b/i,
+    /\b(teachers?)\b/i,
+    /\b(coaches?)\b/i,
+    /\b(interns?)\b/i,
+    /\b(therapists?)\b/i,
+    /\b(nurses?)\b/i,
+    /\b(partners?)\b/i,
+    /\b(peer\s+(?:mentors?|leaders?|support))\b/i,
+    /\b(community\s+(?:members?|leaders?))\b/i,
+    /\b(service\s+providers?)\b/i,
+    /\b(administrators?)\b/i,
+    /\b(instructors?)\b/i,
+    /\b(specialists?)\b/i,
+  ],
+  material: [
+    /\b(curriculum(?:\s+materials?)?)\b/i,
+    /\b(materials?)\b/i,
+    /\b(supplies)\b/i,
+    /\b(equipment)\b/i,
+    /\b(technology)\b/i,
+    /\b(computers?|devices?|tablets?|laptops?)\b/i,
+    /\b(books?|workbooks?|textbooks?|handouts?)\b/i,
+    /\b(space|facilities?|office|classroom)\b/i,
+    /\b(vehicles?|vans?|transport(?:ation)?)\b/i,
+    /\b(software)\b/i,
+    /\b(printed\s+materials?|brochures?)\b/i,
+    /\b(physical\s+resources?)\b/i,
+  ],
+  financial: [
+    /\b(funding|funds?)\b/i,
+    /\b(grants?)\b/i,
+    /\b(donations?)\b/i,
+    /\b(budget)\b/i,
+    /\b(stipends?)\b/i,
+    /\b(fees?)\b/i,
+    /\b(revenue)\b/i,
+    /\b(money|dollars?)\b/i,
+    /\b(foundation\s+support)\b/i,
+    /\b(endowment)\b/i,
+    /\b(contracts?)\b/i,
+    /\b(government\s+(?:funding|contracts?))\b/i,
+    /\b(government\s+funding|state\s+funding|federal\s+funding)\b/i,
+    /\b(philanthropic\s+support|charitable\s+giving)\b/i,
+  ],
+  knowledge: [
+    /\b(training)\b/i,
+    /\b(expertise)\b/i,
+    /\b(skills?)\b/i,
+    /\b(experience)\b/i,
+    /\b(knowledge)\b/i,
+    /\b(credentials?|certifications?)\b/i,
+    /\b(research|data)\b/i,
+    /\b(best\s+practices?)\b/i,
+    /\b(curriculum\s+expertise)\b/i,
+    /\b(evidence[\s-]based\s+(?:model|practice|approach|curriculum))\b/i,
+    /\b(professional\s+development)\b/i,
+  ],
+};
+
+function classifyResourceItem(
+  raw: string
+): { bucket: "human" | "material" | "financial" | "knowledge"; label: string } | null {
+  // Normalize: strip leading filler words
+  const normalized = raw
+    .replace(/^(and|or|also|plus|including)\s+/i, "")
+    .replace(/^(we|our program|the program)\s+(need|have|use|rely on|depend on|utilize)\s+/i, "")
+    .replace(/^(we|our program)\s+/i, "")
+    .replace(/^(need|have|use)\s+/i, "")
+    .replace(/[.,;:!?]+$/, "")
+    .trim();
+
+  if (!normalized || normalized.length > 80) return null;
+
+  const buckets: Array<"human" | "material" | "financial" | "knowledge"> = [
+    "human", "material", "financial", "knowledge",
+  ];
+  for (const bucket of buckets) {
+    for (const pattern of RESOURCE_BUCKET_PATTERNS[bucket]) {
+      if (pattern.test(normalized)) {
+        // Capitalize first letter for display
+        const label = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+        return { bucket, label };
+      }
+    }
+  }
+  return null;
+}
+
+function extractResourcesHeuristic(text: string): {
+  human: string[];
+  material: string[];
+  financial: string[];
+  knowledge: string[];
+} | null {
+  // Split by sentence then by comma/semicolon to get candidate items
+  const rawItems: string[] = [];
+  const sentences = splitSentences(text);
+  for (const sentence of sentences) {
+    const parts = sentence.split(/[,;]+/).map((p) => p.trim()).filter(Boolean);
+    rawItems.push(...parts);
+  }
+
+  const human: string[] = [];
+  const material: string[] = [];
+  const financial: string[] = [];
+  const knowledge: string[] = [];
+
+  for (const raw of rawItems) {
+    const classified = classifyResourceItem(raw);
+    if (!classified) continue;
+    switch (classified.bucket) {
+      case "human": human.push(classified.label); break;
+      case "material": material.push(classified.label); break;
+      case "financial": financial.push(classified.label); break;
+      case "knowledge": knowledge.push(classified.label); break;
+    }
+  }
+
+  if (!human.length && !material.length && !financial.length && !knowledge.length) {
+    return null;
+  }
+
+  return {
+    human: dedupeStrings(human),
+    material: dedupeStrings(material),
+    financial: dedupeStrings(financial),
+    knowledge: dedupeStrings(knowledge),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Loop detection — identifies when the same phase question was asked N+ times
+// without progress, so the route can switch to a targeted follow-up.
+// ---------------------------------------------------------------------------
+
+function detectRepeatPhaseLoop(
+  history: ChatMessage[],
+  stateIntent: string,
+  lookback = 6,
+  threshold = 2
+): boolean {
+  const questionPatterns: Record<string, RegExp> = {
+    resources: /\b(key resources|resources needed|people[,.]?\s*materials?|funding|expertise)\b/i,
+    activities: /\b(activities|what do(?:es)? your (program|team) do|key (activities|services))\b/i,
+    outputs_metrics: /\b(outputs?|metrics?|how many|number of)\b/i,
+    quality_evidence: /\b(quality|fidelity|how do you (know|ensure|measure quality))\b/i,
+    outcomes_review: /\b(outcomes?|what change|what difference)\b/i,
+  };
+
+  const pattern = questionPatterns[stateIntent];
+  if (!pattern) return false;
+
+  const recentAssistant = history
+    .slice(-lookback)
+    .filter((m) => m.role === "assistant" && pattern.test(m.content));
+
+  return recentAssistant.length >= threshold;
+}
+
+function buildResourcesLoopFollowUp(
+  existingResources: LogicModel["implementation"]["resources"] | undefined,
+  userMessage: string
+): string {
+  const captured = {
+    human: existingResources?.human ?? [],
+    material: existingResources?.material ?? [],
+    financial: existingResources?.financial ?? [],
+    knowledge: existingResources?.knowledge ?? [],
+  };
+
+  // Determine which buckets are still empty
+  const missing: string[] = [];
+  if (!captured.material.length) missing.push("materials or equipment");
+  if (!captured.financial.length) missing.push("funding sources");
+  if (!captured.knowledge.length) missing.push("expertise or training");
+  if (!captured.human.length) missing.push("the people involved");
+
+  const humanList = captured.human.length
+    ? `**People:** ${captured.human.join(", ")}`
+    : null;
+  const matList = captured.material.length
+    ? `**Materials:** ${captured.material.join(", ")}`
+    : null;
+  const finList = captured.financial.length
+    ? `**Funding:** ${captured.financial.join(", ")}`
+    : null;
+  const knowList = captured.knowledge.length
+    ? `**Expertise:** ${captured.knowledge.join(", ")}`
+    : null;
+
+  const capturedLines = [humanList, matList, finList, knowList].filter(Boolean);
+
+  if (capturedLines.length > 0) {
+    const capturedSummary = capturedLines.join("\n");
+    if (missing.length === 0) {
+      return `Got it — here's what I've captured so far:\n\n${capturedSummary}\n\nDoes that look right, or would you like to add or change anything?`;
+    }
+    return `Got it — I've captured:\n\n${capturedSummary}\n\nDo you also have any ${missing.slice(0, 2).join(" or ")} to add? It's fine if not — just share what applies.`;
+  }
+
+  // Nothing captured yet — ask more specifically
+  return `No worries if you don't have all of this yet. Let's start simple: who are the main people involved in running the program (staff, volunteers, or partners)?`;
+}
+
 function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> | null {
   const text = userMessage.trim();
   if (!text) return null;
@@ -270,6 +491,40 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
         actions: [normalized.replace(/[.]+$/g, "")],
         outputs,
         stakeholderLabels: ["Students", "Classrooms"],
+      });
+    }
+
+    // Expanded activity patterns: general program delivery verbs
+    if (
+      /\b(run|hold|host|facilitate|conduct|lead|manage)\b.*(program|workshop|session|class|group|meeting|event|camp|club)/i.test(normalized) &&
+      !activities.some((a) => a.actions[0]?.toLowerCase() === normalized.toLowerCase())
+    ) {
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: [],
+      });
+    }
+
+    if (
+      /\b(offer|provide)\b.*(tutoring|coaching|mentoring|training|counseling|therapy|support|advising|job\s+prep|college\s+prep)/i.test(normalized) &&
+      !activities.some((a) => a.actions[0]?.toLowerCase() === normalized.toLowerCase())
+    ) {
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: [],
+      });
+    }
+
+    if (
+      /\b(connect|link|refer)\b.*(students?|participants?|youth|families?|clients?).*(to|with)\b.*(services?|resources?|support|agency|provider)/i.test(normalized) &&
+      !activities.some((a) => a.actions[0]?.toLowerCase() === normalized.toLowerCase())
+    ) {
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: [],
       });
     }
 
@@ -365,13 +620,27 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     patch.stakeholders = dedupedStakeholders;
   }
 
-  if (dedupedActivities.length > 0) {
+  // Extract resources from heuristic patterns — works independently of activity extraction
+  const heuristicResources = extractResourcesHeuristic(text);
+  if (heuristicResources) {
+    patch.implementation = {
+      ...(patch.implementation ?? {}),
+      activities: patch.implementation?.activities ?? [],
+      resources: {
+        human: heuristicResources.human,
+        material: heuristicResources.material,
+        financial: heuristicResources.financial,
+        knowledge: heuristicResources.knowledge,
+      },
+      quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
+    };
+  } else if (dedupedActivities.length > 0) {
     patch.implementation = {
       ...(patch.implementation ?? {}),
       activities: dedupedActivities,
-       resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
-       quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
-};
+      resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+      quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
+    };
   }
 
   if (shortOutcomes.length > 0 || mediumOutcomes.length > 0 || longOutcomes.length > 0) {
@@ -412,6 +681,17 @@ function mergeModelPatchPreferPrimary(
       (fallback.implementation.activities?.length ?? 0) > 0
     ) {
       merged.implementation.activities = fallback.implementation.activities;
+    }
+    // Merge resources bucket-by-bucket: prefer primary when non-empty, fill from fallback otherwise
+    if (fallback.implementation.resources) {
+      const primary = merged.implementation.resources ?? { human: [], material: [], financial: [], knowledge: [] };
+      const fallbackRes = fallback.implementation.resources;
+      merged.implementation.resources = {
+        human: (primary.human?.length ?? 0) > 0 ? primary.human : (fallbackRes.human ?? []),
+        material: (primary.material?.length ?? 0) > 0 ? primary.material : (fallbackRes.material ?? []),
+        financial: (primary.financial?.length ?? 0) > 0 ? primary.financial : (fallbackRes.financial ?? []),
+        knowledge: (primary.knowledge?.length ?? 0) > 0 ? primary.knowledge : (fallbackRes.knowledge ?? []),
+      };
     }
   }
 
@@ -825,6 +1105,17 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Detect when we've looped asking the same phase question without capturing the answer.
+        // Override with a targeted follow-up that acknowledges partial input and asks specifically.
+        if (stateIntent && detectRepeatPhaseLoop(safeHistory, stateIntent)) {
+          const loopFollowUp = buildResourcesLoopFollowUp(
+            patchedSnapshot?.implementation?.resources,
+            message.trim()
+          );
+          reply = loopFollowUp;
+          questionIntent = "resources";
+        }
+
         const qualityClarified = refineRepeatedQualityQuestion(
           reply,
           normalizedIntent,
@@ -1063,6 +1354,16 @@ export async function POST(req: NextRequest) {
       reply = `Based on what you've shared, here's a draft intended impact statement:\n\n${compiled}\n\nDoes this statement capture your ultimate goal for the students you serve?`;
       questionIntent = "impact_review";
     }
+  }
+
+  // Detect when we've looped asking the same phase question without capturing the answer.
+  if (stateIntent && detectRepeatPhaseLoop(safeHistory, stateIntent)) {
+    const loopFollowUp = buildResourcesLoopFollowUp(
+      patchedSnapshot?.implementation?.resources,
+      message.trim()
+    );
+    reply = loopFollowUp;
+    questionIntent = "resources";
   }
 
   const qualityClarified = refineRepeatedQualityQuestion(
