@@ -1,0 +1,360 @@
+{
+  "generatedAt": "2026-05-13T22:14:10.394Z",
+  "apiUrl": "http://localhost:3100/api/chat",
+  "results": [
+    {
+      "id": "full-e2e-green-haven",
+      "description": "A high-clarity user providing detailed, structured data across all logic model sections.",
+      "failures": [
+        "turn 1: finalIntent expected one of [impact], got 'analysis_gap_followup'",
+        "turn 1: modelPatch missing required path 'intended_impact.long_term_goal'",
+        "turn 1: reply did not contain any of [captured, resources]",
+        "turn 2: expected at least 4 non-empty resource buckets in modelPatch, got 2",
+        "turn 2: reply did not contain any of [activities]",
+        "turn 3: reply did not contain any of [quality, fidelity]",
+        "turn 4: modelPatch missing required path 'implementation.quality_fidelity.fidelity'",
+        "turn 4: reply did not contain any of [outcomes]",
+        "turn 5: modelPatch missing required path 'outcomes.medium_term'",
+        "turn 5: modelPatch missing required path 'outcomes.long_term'",
+        "turn 5: reply did not contain any of [summary, complete]",
+        "final: compiled_statement not captured",
+        "final: outcomes.long_term missing or empty"
+      ],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We are starting the Green Haven Community Garden in West Philadelphia. Our goal is to serve local residents by reducing food insecurity and providing a green space for community building.",
+          "reply": "This sounds like a wonderful project for West Philadelphia. Addressing both food insecurity and the need for community space is so important.\n\nTo help me understand your vision better, could you tell me a bit more about the \"local residents\" you are hoping to serve? For instance, are you focusing on families, seniors, or another specific group?",
+          "finalIntent": "analysis_gap_followup",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "finalIntent expected one of [impact], got 'analysis_gap_followup'",
+            "modelPatch missing required path 'intended_impact.long_term_goal'",
+            "reply did not contain any of [captured, resources]"
+          ]
+        },
+        {
+          "turn": 2,
+          "user": "We have two part-time coordinators, $5,000 in seed grants, donated tools from the city, and a partnership with a local horticulture expert for training.",
+          "reply": "Thank you for sharing that. It's really helpful to know what resources you have in place—the two coordinators, the grant funding, the donated tools, and especially the partnership with a horticulture expert. That's a strong foundation.\n\nI've made a note of those resources, as they are a key part of how you'll run the program.\n\nTo circle back to my previous question, could you tell me a bit more about the specific \"local residents\" you're hoping to serve in West Philadelphia? For instance, are you focusing on families with young children, seniors, or is the garden open to everyone in the neighborhood?",
+          "finalIntent": "resources",
+          "stateIntent": "population_focus",
+          "patchSource": null,
+          "responseDomain": "population_focus",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 2,
+          "failures": [
+            "expected at least 4 non-empty resource buckets in modelPatch, got 2",
+            "reply did not contain any of [activities]"
+          ]
+        },
+        {
+          "turn": 3,
+          "user": "We hold weekly planting workshops, maintain 20 raised beds, and run a bi-weekly harvest distribution stand.",
+          "reply": "Those sound like fantastic, hands-on activities. The weekly workshops, maintaining the beds, and the harvest distribution are all very concrete actions. I've noted these as the core of what you do.\n\nIt seems we're jumping around a little, which is completely fine! You've shared your resources and your activities. To make sure I'm building a clear picture, I'd like to return to the very first piece: the people you serve.\n\nUnderstanding the specific residents you're focused on helps connect all these activities to your ultimate goal. So, for the Green Haven Community Garden, is the plan to be open to everyone in the neighborhood, or are you making a special effort to reach certain groups, like seniors or families with kids?",
+          "finalIntent": "activities",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "geography",
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 2,
+          "failures": [
+            "reply did not contain any of [quality, fidelity]"
+          ]
+        },
+        {
+          "turn": 4,
+          "user": "We maintain quality by using organic-only soil standards. For fidelity, we use a weekly checklist to ensure every bed is watered and weeded according to the garden manual.",
+          "reply": "That's a fantastic system for ensuring the garden is well-cared for. Using organic-only soil speaks to the quality of the food you'll produce, and the weekly checklist is a perfect way to ensure a consistent standard of care for every bed. These are excellent details about how you maintain the quality of your work.\n\nIt seems you have a very clear vision for the day-to-day operations and standards of the garden. Thank you for sharing all these pieces.\n\nTo help me connect everything you've told me—the resources, the activities, and these quality standards—let's go back to the very first piece of the puzzle. Everything a program does is ultimately in service of the people it's for.\n\nSo, could you tell me one more time about the residents in West Philadelphia you are hoping to serve? Is the garden intended for absolutely everyone in the neighborhood, or are you making a special effort to reach certain groups?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "geography",
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 2,
+          "failures": [
+            "modelPatch missing required path 'implementation.quality_fidelity.fidelity'",
+            "reply did not contain any of [outcomes]"
+          ]
+        },
+        {
+          "turn": 5,
+          "user": "Short term, we want residents to learn basic gardening. Medium term, we expect 200lbs of produce per season. Long term, we hope to see a 10% decrease in reported food insecurity among regular members.",
+          "reply": "Thank you, this is incredibly helpful. Seeing your goals laid out like this—from learning basic gardening skills in the short term, to producing a significant amount of food, to a long-term reduction in food insecurity—shows a very clear and logical path. It really connects the dots between the garden's activities and the change you want to see.\n\nI appreciate you sharing all these different pieces of your plan with me. I've noted your activities, your resources, your quality standards, and now these outcomes.\n\nThe one piece that I'm still missing is the \"who.\" Everything you've described is in service of a specific group of people, and understanding them is the key that connects everything else together. For example, your long-term goal is to reduce food insecurity among \"regular members.\"\n\nSo, could you tell me a little more about these \"regular members\" or \"local residents\"? Are you hoping to attract anyone and everyone in the neighborhood, or are you making a special effort to reach a particular group, like low-income families or seniors?",
+          "finalIntent": "outcomes_review",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "geography",
+          "effectiveResponseDomain": "outcomes_review",
+          "resourceBucketsInPatch": 2,
+          "failures": [
+            "modelPatch missing required path 'outcomes.medium_term'",
+            "modelPatch missing required path 'outcomes.long_term'",
+            "reply did not contain any of [summary, complete]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "full-e2e-stepup-mentorship",
+      "description": "A user providing partial/vague info requiring agent follow-ups and coaching.",
+      "failures": [
+        "turn 1: finalIntent expected one of [impact], got 'analysis_gap_followup'",
+        "turn 2: modelPatch missing required path 'intended_impact.long_term_goal'",
+        "turn 2: reply did not contain any of [resources]",
+        "turn 3: reply did not contain any of [materials, expertise]",
+        "turn 4: expected at least 3 non-empty resource buckets in modelPatch, got 0",
+        "turn 4: reply did not contain any of [activities]",
+        "turn 5: reply did not contain any of [describe, detail]",
+        "turn 6: reply did not contain any of [quality]",
+        "turn 7: reply did not contain any of [fidelity, standard]",
+        "turn 8: reply did not contain any of [outcomes]",
+        "turn 9: finalIntent expected one of [outcomes], got 'analysis_summary'",
+        "turn 9: reply did not contain any of [short term, look like]",
+        "turn 10: modelPatch missing required path 'outcomes.medium_term'",
+        "turn 10: reply did not contain any of [finish, summarize]",
+        "final: resources.material missing or empty"
+      ],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We work with high schoolers in the city to help them get jobs.",
+          "reply": "Thanks for sharing that. It sounds like really important work, helping high schoolers connect with jobs.\n\nTo get a clearer picture, could you tell me a bit more about where this work happens? Are you in specific neighborhoods or schools, or do you work across the entire city?",
+          "finalIntent": "analysis_gap_followup",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "finalIntent expected one of [impact], got 'analysis_gap_followup'"
+          ]
+        },
+        {
+          "turn": 2,
+          "user": "Our long-term goal is 100% college or trade school enrollment for our seniors.",
+          "reply": "Thank you for sharing that. A goal of 100% college or trade school enrollment for your seniors is incredibly clear and powerful. That really helps define the ultimate success you're working toward.\n\nTo help me understand the full scope, could we go back for a moment to the \"where\"? You mentioned you work \"in the city\" — does your program operate in a few specific high schools, or is it open to students from across the entire city?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "geography",
+          "effectiveResponseDomain": "geography",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "modelPatch missing required path 'intended_impact.long_term_goal'",
+            "reply did not contain any of [resources]"
+          ]
+        },
+        {
+          "turn": 3,
+          "user": "We have mentors and some funding from a local bank.",
+          "reply": "That's great to know. Having dedicated mentors and a local funding partner are huge assets for any program. It sounds like you have some strong community support.\n\nI'll make a note of those as key resources. To help me finish painting the picture of who you serve and where, could we circle back to my last question for just a moment? Do you work with students from specific high schools, or can any student in the city participate?",
+          "finalIntent": "resources",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "reply did not contain any of [materials, expertise]"
+          ]
+        },
+        {
+          "turn": 4,
+          "user": "Oh, we also use a local library for meeting space and a licensed curriculum.",
+          "reply": "Okay, a local library for meeting space and a licensed curriculum. Those are fantastic resources to have. Having a dedicated space and a proven curriculum really adds structure and consistency to your work.\n\nI've noted those down along with the mentors and the bank funding you mentioned earlier. It seems you have a solid foundation of resources.\n\nTo make sure I fully understand the big picture of who your program serves, could we just clarify that one point about the students? It helps me understand how young people can access your services. Are you based in a few specific high schools, or is your program open to any high schooler from across the city?",
+          "finalIntent": "resources",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "expected at least 3 non-empty resource buckets in modelPatch, got 0",
+            "reply did not contain any of [activities]"
+          ]
+        },
+        {
+          "turn": 5,
+          "user": "We do mentorship meetings.",
+          "reply": "Got it. So, mentorship meetings are a central activity for your program. That connects directly with the mentors you mentioned earlier. It sounds like that's where the real work happens between the students and their mentors.\n\nI'm getting a great picture of the *how* of your program. Just to quickly recap what I've noted so far on the implementation side: you have dedicated mentors, funding from a local bank, you use a library for meeting space, you use a licensed curriculum, and you facilitate mentorship meetings.\n\nThis is a really solid foundation. Now, to help me understand how a young person gets to be part of one of those meetings, could you tell me how students typically join your program? For example, do school counselors refer them, or can any high schooler in the city sign up?",
+          "finalIntent": "activities",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "reply did not contain any of [describe, detail]"
+          ]
+        },
+        {
+          "turn": 6,
+          "user": "Each student meets with a mentor for 2 hours a week to work on college apps and career goals.",
+          "reply": "Okay, that's incredibly helpful. So, two hours a week per student, focused specifically on college applications and career goals. That's a significant and focused commitment.\n\nIt sounds like those dedicated mentoring sessions are the core of how you help seniors move toward that 100% college or trade school enrollment goal you mentioned earlier. The connection between that activity and your goal is very clear.\n\nI have a really strong picture now of what happens *inside* the program. To complete that picture, I'm still just a little fuzzy on how a student gets to your door in the first place. For instance, if I were a high schooler in the city who wanted to join, how would I find out about you and sign up?",
+          "finalIntent": "activities",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "reply did not contain any of [quality]"
+          ]
+        },
+        {
+          "turn": 7,
+          "user": "We check in with the mentors often.",
+          "reply": "That's a really important practice. Checking in with mentors regularly is a great way to ensure they feel supported and that the students are getting a consistently positive experience. It speaks to the quality of your program.\n\nI'm getting a very clear picture of the strong support system you've built. To recap, you have:\n*   **A clear goal:** 100% of seniors enrolling in college or trade school.\n*   **Key activities:** Two-hour weekly mentorship meetings focused on college apps and career goals.\n*   **Strong resources:** Mentors, funding, a library for space, and a licensed curriculum.\n*   **A quality check:** You regularly check in with your mentors.\n\nNow, I'd love to understand the very first step of a student's journey with you. How does a high schooler in the city actually get connected with one of your mentors in the first place? For example, do they fill out a form online, or do teachers recommend them?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "reply did not contain any of [fidelity, standard]"
+          ]
+        },
+        {
+          "turn": 8,
+          "user": "We use a standardized mentor handbook (fidelity) and require all mentors to have background checks and 10 hours of training (quality).",
+          "reply": "Wow, that's incredibly thorough. A standardized handbook, background checks, and mandatory training for all mentors are hallmarks of a high-quality program. It shows you're deeply committed to providing a safe and consistent experience for the students.\n\nThis is all fantastic information that speaks to the strength of your program's design. Let me quickly recap what I'm understanding about the \"how\" of your work:\n\n*   **Your core activity** is two-hour weekly mentorship meetings focused on college apps and career goals.\n*   **You ensure quality** through a mentor handbook, background checks, 10 hours of required training, and regular check-ins with your mentors.\n*   **You have strong resources,** including the mentors themselves, funding, a library for space, and a licensed curriculum.\n\nThis gives me a crystal-clear picture of what happens once a student is in your program. Now, to connect all the dots, could you tell me how that student gets there? For example, do you partner with specific high schools to recruit students, or can any student in the city apply to join?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "reply did not contain any of [outcomes]"
+          ]
+        },
+        {
+          "turn": 9,
+          "user": "We want them to succeed.",
+          "reply": "Of course, that's the heart of it all. Everything you've described—the mentors, the training, the curriculum—is clearly designed because you want these students to succeed. That powerful motivation is the engine driving your entire program.\n\nIt seems we now have a very detailed understanding of what happens *inside* your program to make that success happen.\n\nTo complete this picture, I'm just missing that very first step: how a student finds you. Could you tell me how you recruit the high schoolers who participate in your mentorship meetings? For example, do you work with specific schools or do students apply directly?",
+          "finalIntent": "analysis_summary",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "finalIntent expected one of [outcomes], got 'analysis_summary'",
+            "reply did not contain any of [short term, look like]"
+          ]
+        },
+        {
+          "turn": 10,
+          "user": "Short term is completing one college app. Medium term is getting an acceptance letter. Long term is that enrollment goal I mentioned.",
+          "reply": "That is a fantastic and logical progression. It shows exactly *how* you help them move from your program's activities toward that ultimate success. Thank you for laying it out so clearly.\n\nSo, if I'm understanding correctly, the pathway of change for a student looks like this:\n\n*   **Short-term:** They successfully complete at least one college application.\n*   **Medium-term:** They receive an acceptance letter from a college or trade school.\n*   **Long-term:** They achieve that ultimate goal of enrolling.\n\nThis is a really powerful chain of results. Now, thinking about the students who are achieving these incredible outcomes, could you tell me a little more about them? For instance, are you primarily serving students from specific neighborhoods, or perhaps students who would be the first in their families to go to college?",
+          "finalIntent": "outcomes_review",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "outcomes_review",
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "modelPatch missing required path 'outcomes.medium_term'",
+            "reply did not contain any of [finish, summarize]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "impact-happy-path",
+      "description": "All-in-one impact statement is captured and confirmed.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transition successfully to high school.",
+          "reply": "Thank you for sharing that. It's great to have such a clear starting point. So, you're focused on helping middle school students in North Philadelphia improve their reading and make a smooth transition into high school.\n\nTo help me get a better sense of the scale of your work, could you tell me roughly how many students you serve each year?",
+          "finalIntent": "analysis_gap_followup",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Yes, that captures it.",
+          "reply": "Got it. Before we move on, I just want to circle back to my last question to make sure I didn't miss it.\n\nCould you tell me roughly how many students you serve each year?",
+          "finalIntent": "outputs_metrics",
+          "stateIntent": "outputs_metrics",
+          "patchSource": null,
+          "responseDomain": "outputs_metrics",
+          "effectiveResponseDomain": "outputs_metrics",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-list-capture",
+      "description": "When user provides a resource list, the patch captures multiple resource buckets.",
+      "failures": [
+        "turn 1: expected at least 2 non-empty resource buckets in modelPatch, got 1"
+      ],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training.",
+          "reply": "That's a great, clear list. It sounds like you have a strong foundation with your staff, volunteers, and partners, as well as the specific materials and funding needed to run the program.\n\nNow, let's talk about what you *do* with all of those resources. Could you describe the main activities or services that your program provides?",
+          "finalIntent": "resources",
+          "stateIntent": "resources",
+          "patchSource": null,
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 1,
+          "failures": [
+            "expected at least 2 non-empty resource buckets in modelPatch, got 1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resources-no-silent-drop",
+      "description": "Resource response should not be ignored across turns and should keep resources in model state.",
+      "failures": [
+        "turn 1: expected at least 2 non-empty resource buckets in modelPatch, got 1",
+        "final: model retained only 1 resource buckets after multi-turn flow"
+      ],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "Staff mentors, school partners, donated laptops, grant funding, and evidence-based training.",
+          "reply": "Thank you, that gives me a clear picture of the key resources you rely on: your staff mentors and school partners, the technology like laptops, the grant funding, and the specialized training.\n\nYou mentioned \"evidence-based training,\" which sounds really important. Could you tell me a bit more about what that training involves?",
+          "finalIntent": "resources",
+          "stateIntent": "resources",
+          "patchSource": null,
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 1,
+          "failures": [
+            "expected at least 2 non-empty resource buckets in modelPatch, got 1"
+          ]
+        },
+        {
+          "turn": 2,
+          "user": "Anything else you need from me on resources?",
+          "reply": "That's a fair question. The list you gave me—staff mentors, school partners, donated laptops, grant funding, and evidence-based training—is actually a really strong and comprehensive start. It covers all the major categories.\n\nThe only reason I asked about the training is that \"knowledge\" is a key resource, and understanding that piece a little better helps connect the dots later.\n\nSo, if you don't mind, could you tell me a little more about what that \"evidence-based training\" involves? For instance, what topics does it cover for your mentors?",
+          "finalIntent": "analysis_gap_followup",
+          "stateIntent": null,
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 1,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

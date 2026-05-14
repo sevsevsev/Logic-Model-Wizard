@@ -5,6 +5,7 @@ import {
   assertIntentWithLatestUserEvidence,
   buildContextCoverageSummary,
 } from "@/lib/chat/agenticContext";
+import { looksLikeBroadProgramFrame } from "@/lib/chat/intakeSignals";
 
 function createModel(): LogicModel {
   return {
@@ -53,8 +54,17 @@ test("context coverage recognizes captured population and activities", () => {
     {
       intended_impact: {
         population: "elementary students",
+        geography: "",
+        long_term_goal: "",
+        compiled_statement: "",
       },
       implementation: {
+        resources: {
+          human: [],
+          material: [],
+          financial: [],
+          knowledge: [],
+        },
         activities: [
           {
             item: "Mentoring",
@@ -62,6 +72,10 @@ test("context coverage recognizes captured population and activities", () => {
             outputs: [],
           },
         ],
+        quality_fidelity: {
+          fidelity: [],
+          quality: [],
+        },
       },
     }
   );
@@ -69,6 +83,28 @@ test("context coverage recognizes captured population and activities", () => {
   assert.equal(summary.patch.hasPopulationCue, true);
   assert.equal(summary.patch.hasActivityCue, true);
   assert.ok(!summary.missingCaptures.includes("population"));
+});
+
+test("broad program framing is not treated as an activity cue", () => {
+  const text = "We provide mentoring to students in North Philadelphia.";
+  const summary = buildContextCoverageSummary(text, null);
+
+  assert.equal(looksLikeBroadProgramFrame(text), true);
+  assert.equal(summary.user.hasPopulationCue, true);
+  assert.equal(summary.user.hasGeographyCue, true);
+  assert.equal(summary.user.hasActivityCue, false);
+  assert.ok(!summary.missingCaptures.includes("activities"));
+});
+
+test("mission/theory narrative with noisy unicode preserves activity and outcome cues", () => {
+  const text = "Musicopia's mission is to inspire, educate, and connect children, youth, and their extended communi􀆟es through collabora􀆟ve music and dance experiences. Theory of Change: Musicopia delivers sustained, culturally responsive music and dance learning experiences that build students' self-efficacy and social-emo􀆟onal learning. Programs strengthen classroom climate, school culture, and family engagement. Through consistent presence in under-resourced neighborhoods, Musicopia contributes to safer, more vibrant communi􀆟es where arts learning is embedded in daily life.";
+  const summary = buildContextCoverageSummary(text, null);
+
+  assert.equal(looksLikeBroadProgramFrame(text), false);
+  assert.equal(summary.user.hasPopulationCue, true);
+  assert.equal(summary.user.hasGeographyCue, true);
+  assert.equal(summary.user.hasActivityCue, true);
+  assert.equal(summary.user.hasOutcomeCue, true);
 });
 
 test("intent assertion advances from population to geography when user already gave population", () => {

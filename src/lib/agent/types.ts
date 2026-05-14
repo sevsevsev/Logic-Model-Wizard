@@ -28,6 +28,25 @@ export type AgentPatchProvenance =
   | "retrieved_guidance"
   | "assistant_inferred";
 
+export interface AgentRevisionProposal {
+  shouldRevise?: boolean;
+  originalText?: string;
+  revisedText?: string;
+  rationale?: string;
+  evidenceRefs?: string[];
+  confidence?: number;
+}
+
+export type AgentRevisionLifecycleStatus = "none" | "pending" | "accepted" | "dismissed";
+
+export interface AgentRevisionLifecycle {
+  status: AgentRevisionLifecycleStatus;
+  originalText?: string;
+  revisedText?: string;
+  rationale?: string;
+  updatedAt?: number;
+}
+
 export interface AgentStateAssessment {
   currentPhase?: string;
   knownFacts?: string[];
@@ -47,6 +66,8 @@ export interface AgentTurnInput {
   userMessage: string;
   history: ChatMessage[];
   modelSnapshot?: LogicModel;
+  revisionLifecycle?: AgentRevisionLifecycle;
+  retentionContext?: string;
   userId?: string;
 }
 
@@ -57,6 +78,7 @@ export interface AgentTurnResult {
   confidence?: number;
   evidenceRefs?: string[];
   questionPlan?: AgentQuestionPlan;
+  revisionProposal?: AgentRevisionProposal;
   stateAssessment?: AgentStateAssessment;
   contradictionFlags?: AgentContradictionFlag[];
   patchProvenance?: AgentPatchProvenance[];

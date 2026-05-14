@@ -64,7 +64,7 @@ export function looksSpecificGeography(text: string): boolean {
   }
 
   // Administrative / directional geography terms
-  if (/\b(north|south|east|west|citywide|neighborhood|region|district|zip|borough|county|school\s+district|campus|site|statewide)\b/i.test(text)) {
+  if (/\b(north|south|east|west|citywide|neighborhoods?|region|district|zip|borough|county|school\s+district|campus|site|statewide)\b/i.test(text)) {
     return true;
   }
 
@@ -204,7 +204,17 @@ export function inferNextRequiredIntent(model: LogicModel | undefined): Guardrai
     return "population_focus";
   }
 
-  if (!impactState.geographyKnown) {
+  const resources = model.implementation.resources;
+  const hasResources =
+    resources.human.length > 0 ||
+    resources.material.length > 0 ||
+    resources.financial.length > 0 ||
+    resources.knowledge.length > 0;
+
+  const activities = model.implementation.activities;
+  const hasImplementationProgress = hasResources || activities.length > 0;
+
+  if (!impactState.geographyKnown && !hasImplementationProgress) {
     return "geography";
   }
 
@@ -222,24 +232,12 @@ export function inferNextRequiredIntent(model: LogicModel | undefined): Guardrai
     return "impact_review";
   }
 
-  const resources = model.implementation.resources;
-  const hasResources =
-    resources.human.length > 0 ||
-    resources.material.length > 0 ||
-    resources.financial.length > 0 ||
-    resources.knowledge.length > 0;
   if (!hasResources) {
     return "resources";
   }
 
-  const activities = model.implementation.activities;
   if (activities.length === 0) {
     return "activities";
-  }
-
-  const hasOutputs = activities.some((activity) => Array.isArray(activity.outputs) && activity.outputs.length > 0);
-  if (!hasOutputs) {
-    return "outputs_metrics";
   }
 
   const qualityFidelity = model.implementation.quality_fidelity ?? {

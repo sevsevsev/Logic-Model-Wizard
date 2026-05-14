@@ -1,0 +1,281 @@
+{
+  "generatedAt": "2026-05-13T18:04:49.560Z",
+  "apiUrl": "http://localhost:3100/api/chat",
+  "results": [
+    {
+      "id": "full-e2e-green-haven",
+      "description": "A high-clarity user providing detailed, structured data across all logic model sections.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We are starting the Green Haven Community Garden in West Philadelphia. Our goal is to serve local residents by reducing food insecurity and providing a green space for community building.",
+          "reply": "Great, I captured that impact direction. What are the key resources needed to run this program (people, materials, funding, and expertise)?",
+          "finalIntent": "resources",
+          "stateIntent": "resources",
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "We have two part-time coordinators, $5,000 in seed grants, donated tools from the city, and a partnership with a local horticulture expert for training.",
+          "reply": "Got it — here's what I've captured so far:\n\n**People:** Two part-time coordinators\n**Materials:** Donated tools from the city\n**Funding:** $5,000 in seed grants, 000 in seed grants\n**Expertise:** Partnership with a local horticulture expert for training, A partnership with a local horticulture expert for training\n\nWhat are the main activities your team delivers in a typical cycle?",
+          "finalIntent": "resources",
+          "stateIntent": "activities",
+          "patchSource": null,
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 3,
+          "user": "We hold weekly planting workshops, maintain 20 raised beds, and run a bi-weekly harvest distribution stand.",
+          "reply": "Great, I captured those activities. How will you ensure quality and fidelity as they are delivered?",
+          "finalIntent": "activities",
+          "stateIntent": "quality_evidence",
+          "patchSource": null,
+          "responseDomain": "activities",
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 4,
+          "user": "We maintain quality by using organic-only soil standards. For fidelity, we use a weekly checklist to ensure every bed is watered and weeded according to the garden manual.",
+          "reply": "Great, I captured those quality and fidelity standards. What outcomes should we expect next: what should short term, medium term, and long term results look like?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": "outcomes_review",
+          "patchSource": "agent",
+          "responseDomain": "quality_evidence",
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 5,
+          "user": "Short term, we want residents to learn basic gardening. Medium term, we expect 200lbs of produce per season. Long term, we hope to see a 10% decrease in reported food insecurity among regular members.",
+          "reply": "Great, I captured those outcomes. We can summarize the full model now, or refine any section before we mark this complete.",
+          "finalIntent": "outcomes_review",
+          "stateIntent": "section_refine",
+          "patchSource": null,
+          "responseDomain": "quality_evidence",
+          "effectiveResponseDomain": "outcomes_review",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "full-e2e-stepup-mentorship",
+      "description": "A user providing partial/vague info requiring agent follow-ups and coaching.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We work with high schoolers in the city to help them get jobs.",
+          "reply": "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites) before we lock resources?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Our long-term goal is 100% college or trade school enrollment for our seniors.",
+          "reply": "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites) before we lock resources?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "geography",
+          "effectiveResponseDomain": "geography",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 3,
+          "user": "We have mentors and some funding from a local bank.",
+          "reply": "Got it — I've captured:\n\n**People:** Mentors, Mentors and some funding from a local bank\n**Funding:** Funding from a local bank\n\nDo you also have any materials or equipment or expertise or training to add? It's fine if not — just share what applies.",
+          "finalIntent": "resources",
+          "stateIntent": "activities",
+          "patchSource": null,
+          "responseDomain": "geography",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 2,
+          "failures": []
+        },
+        {
+          "turn": 4,
+          "user": "Oh, we also use a local library for meeting space and a licensed curriculum.",
+          "reply": "Got it — here's what I've captured so far:\n\n**People:** Mentors, Mentors and some funding from a local bank\n**Materials:** Local library for meeting space, Also use a local library for meeting space and a licensed curriculum\n**Funding:** Funding from a local bank\n**Expertise:** Licensed curriculum\n\nWhat are the main activities your team delivers in a typical cycle?",
+          "finalIntent": "resources",
+          "stateIntent": "activities",
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 5,
+          "user": "We do mentorship meetings.",
+          "reply": "Great, I captured that activity. Can you describe it in more detail (for example cadence, duration, and what participants do)?",
+          "finalIntent": "activities",
+          "stateIntent": "quality_evidence",
+          "patchSource": null,
+          "responseDomain": "activities",
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 6,
+          "user": "Each student meets with a mentor for 2 hours a week to work on college apps and career goals.",
+          "reply": "Great, I captured those activities. How will you ensure quality and fidelity as they are delivered?",
+          "finalIntent": "activities",
+          "stateIntent": "quality_evidence",
+          "patchSource": null,
+          "responseDomain": "outputs_metrics",
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 7,
+          "user": "We check in with the mentors often.",
+          "reply": "Great, I captured those quality and fidelity standards. What outcomes should we expect next: what should short term, medium term, and long term results look like?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": "outcomes_review",
+          "patchSource": null,
+          "responseDomain": "quality_evidence",
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 8,
+          "user": "We use a standardized mentor handbook (fidelity) and require all mentors to have background checks and 10 hours of training (quality).",
+          "reply": "Great, I captured those quality and fidelity standards. What outcomes should we expect next: what should short term, medium term, and long term results look like?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": "outcomes_review",
+          "patchSource": null,
+          "responseDomain": "quality_evidence",
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 9,
+          "user": "We want them to succeed.",
+          "reply": "What should short term outcomes look like first, then medium term and long term outcomes?",
+          "finalIntent": "outcomes_review",
+          "stateIntent": "section_refine",
+          "patchSource": null,
+          "responseDomain": "quality_evidence",
+          "effectiveResponseDomain": "outcomes_review",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 10,
+          "user": "Short term is completing one college app. Medium term is getting an acceptance letter. Long term is that enrollment goal I mentioned.",
+          "reply": "Great, I captured those outcomes. We can summarize the full model now, or refine any section before we mark this complete.",
+          "finalIntent": "outcomes_review",
+          "stateIntent": "section_refine",
+          "patchSource": null,
+          "responseDomain": "outcomes_review",
+          "effectiveResponseDomain": "outcomes_review",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "impact-happy-path",
+      "description": "All-in-one impact statement is captured and confirmed.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transition successfully to high school.",
+          "reply": "Based on what you've shared, here's a draft intended impact statement:\n\nMiddle school students in North Philadelphia will read on grade level and transition successfully to high school\n\nDoes this statement capture your ultimate goal for the students you serve?",
+          "finalIntent": "impact_review",
+          "stateIntent": "impact_review",
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Yes, that captures it.",
+          "reply": "Great. Now, let's think about what you need to run your program. What are the key resources—like staff, funding, materials, or specific expertise—that make your work possible?",
+          "finalIntent": "resources",
+          "stateIntent": "resources",
+          "patchSource": "none",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-list-capture",
+      "description": "When user provides a resource list, the patch captures multiple resource buckets.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training.",
+          "reply": "Got it — here's what I've captured so far:\n\n**People:** program staff, volunteers, partner counselors, Staff training\n**Materials:** curriculum materials, laptops\n**Funding:** grant funding\n**Expertise:** staff training\n\nWhat are the main activities your team delivers in a typical cycle?",
+          "finalIntent": "resources",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-no-silent-drop",
+      "description": "Resource response should not be ignored across turns and should keep resources in model state.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "Staff mentors, school partners, donated laptops, grant funding, and evidence-based training.",
+          "reply": "Got it — here's what I've captured so far:\n\n**People:** Staff mentors, School partners\n**Materials:** Donated laptops\n**Funding:** Grant funding\n**Expertise:** Evidence-based training\n\nWhat are the main activities your team delivers in a typical cycle?",
+          "finalIntent": "resources",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Anything else you need from me on resources?",
+          "reply": "Great, I captured that activity. Can you describe it in more detail (for example cadence, duration, and what participants do)?\n\nWould you like to continue populating your logic model now?",
+          "finalIntent": "activities",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "activities",
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

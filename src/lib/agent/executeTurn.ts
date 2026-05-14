@@ -11,6 +11,16 @@ import type { AgentTurnInput, AgentTurnResult } from "@/lib/agent/types";
 
 const DEBUG_AGENTIC_TURN = process.env.DEBUG_AGENTIC_TURN === "true";
 
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const AGENTIC_USER_RETRIEVAL_TOP_K = parsePositiveInt(process.env.RAG_AGENT_USER_TOP_K, 8);
+const AGENTIC_PLANNING_RETRIEVAL_TOP_K = parsePositiveInt(process.env.RAG_AGENT_PLAN_TOP_K, 6);
+const AGENTIC_MERGED_RETRIEVAL_TOP_K = parsePositiveInt(process.env.RAG_AGENT_MERGED_TOP_K, 12);
+
 function buildQuestionPlanningQuery(turnBrief: AgentTurnBrief): string {
   const phaseQueries: Record<AgentTurnBrief["currentPhase"], string> = {
     unknown: "logic model intake question framing for missing population geography and long-term change",
@@ -71,6 +81,14 @@ OUTPUT FORMAT — return STRICT JSON only, exactly this shape:
     "draftQuestion": "single focused question if shouldAsk is true",
     "conceptualTopics": ["topic names from retrieved evidence"]
   },
+  "revision_proposal": {
+    "shouldRevise": true,
+    "originalText": "the user's close-but-imperfect wording if needed",
+    "revisedText": "a careful rewrite that preserves meaning and improves alignment",
+    "rationale": "why the rewrite is better aligned",
+    "evidenceRefs": ["chunk-id"],
+    "confidence": 0.0
+  },
   "decision_summary": "one sentence rationale",
   "state_assessment": {
     "currentPhase": "string",
@@ -90,13 +108,33 @@ CORE OPERATING PRINCIPLES
 - Ask at most one focused follow-up question when clarification is needed.
 - Prefer forward progress and avoid repeating already confirmed prompts.
 - Decide explicitly whether this turn should answer only, confirm a draft, or ask one focused next-step question.
+- When the user's answer is close but not ideal, you may propose a revision that preserves the user's meaning while tightening clarity and framework alignment; do not invent facts or drift away from the original intent.
 - Keep assistant_reply consistent with question_plan. If question_plan.shouldAsk is false, do not end with a new question.
+- Use turn_brief.revision_lifecycle to guide rewrite behavior:
+  - status "pending": avoid generating a second rewrite for the same text; ask for accept/reject or continue only if user moves on.
+  - status "dismissed": do not re-propose the same rewrite unless the user explicitly asks for rewriting help.
+  - status "accepted": treat revised text as settled wording unless the user asks to change it.
 
 Extraction guidance:
 - Populate model_patch only with data the user provided or explicitly revised this turn.
 - Keep extraction domain-aligned with current phase signals in turn_brief.
 - Avoid inferring new project facts from generic examples.
 - Do not clear existing fields unless the user explicitly corrects them.
+
+FIRST-TURN BROAD NARRATIVE INTAKE (High Priority):
+- When the user provides a rich, multi-sentence program description on turn 1 (empty history), treat this as a comprehensive intake opportunity.
+- Extract ALL semantic chunks into appropriate model_patch fields:
+  * Population: "children and youth," "students," "families," etc.
+  * Geography: "neighborhoods," "Philadelphia," "schools," district scope, etc.
+  * Activities: verb phrases like "run workshops," "provide tutoring," "offer mentoring," "deliver instruction," etc.
+  * Intended long-term outcome: phrases like "students will graduate," "families become stable," "lasting change," "long-term educational pathways," etc.
+  * Quality/fidelity signals: "high quality," "with fidelity," "to standards," "adherence to design," etc.
+  * Short/medium/long-term outcomes: look for outcome sequencing like "students will gain skills → demonstrate behavior → achieve condition change"
+- Even if confidence is medium (0.4-0.7), return a populated model_patch. First-turn narrative extraction is probabilistic and iterative.
+- Populate MULTIPLE fields in the patch — do not restrict to a single domain. Broad narrative contains multi-domain signals.
+- Ask a follow-up to clarify the most important missing field (usually confirming one key facet of intended impact) rather than re-asking the whole narrative.
+
+Other extraction guidance:
 - For resources: classify user-stated items into human (people/roles), material (physical things), financial (funding), or knowledge (expertise/training) buckets. Common examples: 'volunteers' → human, 'curriculum' → material, 'grants' → financial, 'training' → knowledge.
 - For activities: extract verb-based descriptions from phrases like 'we run workshops', 'we provide tutoring', 'we offer mentoring', 'we connect students to services'.
 - For outcomes: extract short-term (knowledge/awareness), medium-term (behavior/skills), long-term (condition changes) from user statements about what will change.
@@ -125,6 +163,7 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
     userMessage: input.userMessage,
     history: input.history.slice(-20),
     modelSnapshot: input.modelSnapshot,
+    revisionLifecycle: input.revisionLifecycle,
   });
   const behaviorGuidance = retrieveAgentPolicy(
     [
@@ -136,13 +175,13 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
     4
   );
 
-  const retrievedFromUserTurn = await retrieveKnowledge(input.userMessage, 5, {
+  const retrievedFromUserTurn = await retrieveKnowledge(input.userMessage, AGENTIC_USER_RETRIEVAL_TOP_K, {
     userId: input.userId,
   });
-  const retrievedFromQuestionPlanning = await retrieveKnowledge(buildQuestionPlanningQuery(turnBrief), 3, {
+  const retrievedFromQuestionPlanning = await retrieveKnowledge(buildQuestionPlanningQuery(turnBrief), AGENTIC_PLANNING_RETRIEVAL_TOP_K, {
     userId: input.userId,
   });
-  const retrieved = mergeRetrievedEvidence(retrievedFromUserTurn, retrievedFromQuestionPlanning, 6);
+  const retrieved = mergeRetrievedEvidence(retrievedFromUserTurn, retrievedFromQuestionPlanning, AGENTIC_MERGED_RETRIEVAL_TOP_K);
 
   const schoolMatches = await findSchoolReferenceMentions(input.userMessage, 5);
   const schoolHintBlock = formatSchoolReferenceHints(schoolMatches);
@@ -165,6 +204,7 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
               turn_brief: formatAgentTurnBrief(turnBrief),
               behavior_guidance: formatAgentPolicy(behaviorGuidance),
               question_planning_query: buildQuestionPlanningQuery(turnBrief),
+              retained_facts_context: input.retentionContext ?? "",
               geo_reference_hints: schoolHintBlock,
               retrieved_evidence: evidenceBlock,
             }),
@@ -213,6 +253,7 @@ export async function executeAgenticTurn(input: AgentTurnInput): Promise<AgentTu
     confidence: output.confidence,
     evidenceRefs: output.evidence_refs,
     questionPlan: output.question_plan,
+    revisionProposal: output.revision_proposal,
     stateAssessment: output.state_assessment,
     contradictionFlags: output.contradiction_flags,
     patchProvenance: output.patch_provenance,

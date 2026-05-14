@@ -148,6 +148,14 @@ Success metrics:
 - Fewer turns that bundle multiple asks into one reply.
 - Better match between missing-field state and the question actually asked.
 
+Revision lifecycle policy (implemented):
+- The turn brief now carries `revision_lifecycle` status (`none|pending|accepted|dismissed`).
+- Prompt behavior should respect that state:
+  - `pending`: avoid stacking additional rewrites for the same wording.
+  - `dismissed`: do not re-propose the same rewrite unless user explicitly asks.
+  - `accepted`: treat revised wording as settled unless user reopens it.
+- Rewrite suggestions remain explicit proposals, never silent replacements.
+
 ### 2B) Canonical Impact Statement, Derived Facets
 
 Objective: Reduce brittle extraction bugs by making the impact statement the primary artifact and treating population/geography as internal derived memory rather than primary conversation fields.
@@ -318,6 +326,22 @@ Mitigation: hard token budget for retrieved context and compact static prompt mo
 
 Risk: Over-prescriptive prompts causing brittle behavior regressions.
 Mitigation: minimal prompt baseline, with deterministic route-level controls for progression and patch scoping.
+
+## Workspace Hygiene
+
+Objective: keep working tree signal high and reduce local artifact churn.
+
+Repository conventions:
+- Ignore generated build artifacts (`*.tsbuildinfo`) and local debug exports/scratch files.
+- Keep ad hoc local debug scripts and exports out of tracked history unless intentionally promoted.
+
+Operational support:
+- A local cleanup helper exists at `scripts/local-workspace-clean.ps1`.
+- Preview mode: `npm run workspace:clean`
+- Apply mode: `npm run workspace:clean:apply`
+
+Safety rule:
+- Cleanup commands should target known local artifacts only and must not delete source, docs, or committed datasets.
 
 ## Immediate Next Tasks
 

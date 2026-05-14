@@ -2,10 +2,11 @@
 
 import { useRef, useEffect, useState } from "react";
 import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download } from "lucide-react";
-import { useLogicModelStore, QuickReply, ChatMessage } from "@/store/useLogicModelStore";
+import { useLogicModelStore, QuickReply, ChatMessage, RetentionMemory } from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
 import type { DebugSnapshotCapture, LlmTraceMeta } from "@/lib/feedback/types";
+import type { ConversationTranscript } from "@/lib/chat/transcript";
 
 type LlmCallSummary = {
   atIso: string;
@@ -42,10 +43,17 @@ function limitMessagesForSnapshot(messages: ChatMessage[]): ChatMessage[] {
 export default function ChatInterface() {
   const messages = useLogicModelStore((s) => s.messages);
   const model = useLogicModelStore((s) => s.model);
+  const retentionMemory = useLogicModelStore((s) => s.retentionMemory);
+  const transcript = useLogicModelStore((s) => s.transcript);
   const isLoading = useLogicModelStore((s) => s.isLoading);
   const addMessage = useLogicModelStore((s) => s.addMessage);
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
+  const applyRetentionMemory = useLogicModelStore((s) => s.applyRetentionMemory);
   const setLoading = useLogicModelStore((s) => s.setLoading);
+  const setActiveRevisionProposal = useLogicModelStore((s) => s.setActiveRevisionProposal);
+  const revisionLifecycle = useLogicModelStore((s) => s.revisionLifecycle);
+  const setRevisionLifecycle = useLogicModelStore((s) => s.setRevisionLifecycle);
+  const setTranscript = useLogicModelStore((s) => s.setTranscript);
   const resetModel = useLogicModelStore((s) => s.resetModel);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -96,6 +104,15 @@ export default function ChatInterface() {
   // Core fetch — sends a message string to the API
   async function sendToApi(text: string) {
     addMessage("user", text);
+    if (revisionLifecycle.status === "pending") {
+      setRevisionLifecycle({
+        status: "dismissed",
+        originalText: revisionLifecycle.originalText,
+        revisedText: revisionLifecycle.revisedText,
+        rationale: revisionLifecycle.rationale,
+      });
+    }
+    setActiveRevisionProposal(null);
     setLoading(true);
 
     try {
@@ -106,7 +123,7 @@ export default function ChatInterface() {
           "Content-Type": "application/json",
           ...(collaboratorId ? { "x-user-id": collaboratorId } : {}),
         },
-        body: JSON.stringify({ message: text, history: messages, model }),
+        body: JSON.stringify({ message: text, history: messages, model, revisionLifecycle, retentionMemory, transcript }),
       });
 
       const raw = await res.text();
@@ -114,6 +131,14 @@ export default function ChatInterface() {
         | {
             reply?: string;
             modelPatch?: unknown;
+            revisionProposal?: {
+              shouldRevise?: boolean;
+              originalText?: string;
+              revisedText?: string;
+              rationale?: string;
+              evidenceRefs?: string[];
+              confidence?: number;
+            } | null;
             quickReplies?: QuickReply[];
             error?: string;
             llmMeta?: {
@@ -122,6 +147,8 @@ export default function ChatInterface() {
               fallbackReason?: string | null;
               trace?: LlmTraceMeta | null;
             };
+            retentionMemory?: unknown;
+            transcript?: unknown;
           }
         | null = null;
 
@@ -175,12 +202,29 @@ export default function ChatInterface() {
           }));
         }
       }
+      const proposal = data.revisionProposal ?? null;
+      setActiveRevisionProposal(proposal);
+      if (proposal?.revisedText) {
+        setRevisionLifecycle({
+          status: "pending",
+          originalText: proposal.originalText,
+          revisedText: proposal.revisedText,
+          rationale: proposal.rationale,
+        });
+      }
       if (data.modelPatch) {
         applyModelPatch(data.modelPatch);
+      }
+      if (data.retentionMemory) {
+        applyRetentionMemory(data.retentionMemory as RetentionMemory);
+      }
+      if (data.transcript) {
+        setTranscript(data.transcript as ConversationTranscript);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error.";
       addMessage("assistant", `Sorry, something went wrong. ${message}`);
+      setActiveRevisionProposal(null);
     } finally {
       setLoading(false);
     }

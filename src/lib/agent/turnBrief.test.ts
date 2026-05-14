@@ -66,3 +66,29 @@ test("buildAgentTurnBrief treats full draft statements as known impact context",
   assert.ok(brief.avoidAskingFor.some((entry) => entry.includes("geography")));
   assert.ok(brief.missingFields.includes("impact_review_confirmation"));
 });
+
+test("buildAgentTurnBrief defaults revision lifecycle to none", () => {
+  const brief = buildAgentTurnBrief({
+    userMessage: "We serve middle school students.",
+    history: [],
+    modelSnapshot: createModel(),
+  });
+
+  assert.equal(brief.revisionLifecycle.status, "none");
+});
+
+test("buildAgentTurnBrief carries revision lifecycle from input", () => {
+  const brief = buildAgentTurnBrief({
+    userMessage: "That rewrite works.",
+    history: [],
+    modelSnapshot: createModel(),
+    revisionLifecycle: {
+      status: "accepted",
+      originalText: "We serve middle school students in Kensington to help them do better.",
+      revisedText: "Middle school students in Kensington sustain school progression and graduate high school.",
+    },
+  });
+
+  assert.equal(brief.revisionLifecycle.status, "accepted");
+  assert.equal(brief.revisionLifecycle.revisedText, "Middle school students in Kensington sustain school progression and graduate high school.");
+});

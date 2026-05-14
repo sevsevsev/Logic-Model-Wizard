@@ -36,6 +36,7 @@ function createBrief(): AgentTurnBrief {
       "Do not ask again for the primary population unless the user explicitly revises it.",
       "Do not ask again for geography unless the user explicitly revises it.",
     ],
+    revisionLifecycle: { status: "none" },
   };
 }
 
@@ -47,6 +48,9 @@ test("sanitizeAgentTurnResult removes unintended population overwrite", () => {
       modelPatch: {
         intended_impact: {
           population: "help them build SEL skills so that they go on to lead stable and healthy lives",
+          geography: "Kensington",
+          long_term_goal: "lead stable and healthy lives",
+          compiled_statement: "",
         },
       },
     },
@@ -122,6 +126,7 @@ test("sanitizeAgentTurnResult preserves prior impact fields when geography-only 
           geography: "Philadelphia",
           population: "",
           long_term_goal: "",
+          compiled_statement: "",
         },
       },
     },
@@ -141,4 +146,51 @@ test("sanitizeAgentTurnResult preserves prior impact fields when geography-only 
   assert.equal(sanitized.questionIntent, "none");
   assert.ok((sanitized.contradictionFlags ?? []).includes("known_fact_overwrite"));
   assert.ok((sanitized.contradictionFlags ?? []).includes("asks_for_known_information"));
+});
+
+test("sanitizeAgentTurnResult keeps a close revision proposal and drops a drifting one", () => {
+  const brief = createBrief();
+  const kept = sanitizeAgentTurnResult(
+    {
+      reply: "Here is a polished version of your statement.",
+      questionIntent: "impact_review",
+      modelPatch: null,
+      revisionProposal: {
+        shouldRevise: true,
+        originalText: "We serve students.",
+        revisedText: "We serve middle school students in Kensington.",
+        rationale: "Adds the missing specificity.",
+      },
+    },
+    {
+      modelSnapshot: createModel(),
+      userMessage: "We serve students.",
+      turnBrief: brief,
+    }
+  );
+
+  assert.equal(kept.revisionProposal?.revisedText, "We serve middle school students in Kensington.");
+  assert.equal(kept.revisionProposal?.shouldRevise, true);
+
+  const dropped = sanitizeAgentTurnResult(
+    {
+      reply: "Here is a polished version of your statement.",
+      questionIntent: "impact_review",
+      modelPatch: null,
+      revisionProposal: {
+        shouldRevise: true,
+        originalText: "We serve students.",
+        revisedText: "We build a citywide systems-change coalition.",
+        rationale: "Moves to a more strategic framing.",
+      },
+    },
+    {
+      modelSnapshot: createModel(),
+      userMessage: "We serve students.",
+      turnBrief: brief,
+    }
+  );
+
+  assert.equal(dropped.revisionProposal, undefined);
+  assert.ok((dropped.contradictionFlags ?? []).includes("unsupported_patch"));
 });

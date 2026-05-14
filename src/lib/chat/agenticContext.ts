@@ -1,6 +1,7 @@
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { GuardrailIntent } from "@/lib/chat/guardrails";
 import { looksSpecificGeography, looksSpecificPopulation } from "@/lib/chat/guardrails";
+import { classifyIntakeSignals } from "@/lib/chat/intakeSignals";
 
 type KnowledgePatch = Partial<LogicModel> | null;
 
@@ -30,16 +31,13 @@ function detectSignalsFromText(text: string): ContextSignalSummary {
     };
   }
 
+  const intake = classifyIntakeSignals(normalized);
   const hasResourceCue =
     /\b(staff|volunteers?|partners?|funding|budget|grant|technology|curriculum|space|expertise|inputs?)\b/i.test(
       normalized
     );
-  const hasActivityCue =
-    /\b(provide|deliver|facilitate|mentor|tutor|train|coach|run|conduct|hold|offer)\b/i.test(normalized);
-  const hasOutcomeCue =
-    /\b(graduate|employment|job|wage|income|housing|health|attendance|reading|justice|safety|improve|increase|reduce)\b/i.test(
-      normalized
-    );
+  const hasActivityCue = intake.isBroadProgramFrame ? false : intake.hasGenericActivityCue || intake.hasSpecificActivityCue;
+  const hasOutcomeCue = intake.hasOutcomeCue;
 
   return {
     hasPopulationCue: looksSpecificPopulation(normalized),

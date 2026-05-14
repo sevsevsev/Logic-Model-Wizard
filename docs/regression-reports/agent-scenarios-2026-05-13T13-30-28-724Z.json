@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2026-05-13T13:30:28.730Z",
+  "apiUrl": "http://localhost:3100/api/chat",
+  "results": [
+    {
+      "id": "impact-happy-path",
+      "description": "All-in-one impact statement is captured and confirmed.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transition successfully to high school.",
+          "reply": "Based on what you've shared, here's a draft intended impact statement:\n\nMiddle school students in North Philadelphia will read on grade level and transition successfully to high school\n\nDoes this statement capture your ultimate goal for the students you serve?",
+          "finalIntent": "impact_review",
+          "stateIntent": "impact_review",
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Yes, that captures it.",
+          "reply": "Great. Now let's move on to the 'how.' What resources, or inputs, are essential for your program to operate? Think about things like staff and volunteers, funding, or key materials like curriculum.",
+          "finalIntent": "impact_review",
+          "stateIntent": "resources",
+          "patchSource": "none",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-list-capture",
+      "description": "When user provides a resource list, the patch captures multiple resource buckets.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training.",
+          "reply": "Got it — here's what I've captured so far:\n\n**People:** program staff, volunteers, partner counselors, Staff training\n**Materials:** curriculum materials, laptops\n**Funding:** grant funding\n**Expertise:** staff training\n\nDoes that look right, or would you like to add or change anything?",
+          "finalIntent": "resources",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-no-silent-drop",
+      "description": "Resource response should not be ignored across turns and should keep resources in model state.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "Staff mentors, school partners, donated laptops, grant funding, and evidence-based training.",
+          "reply": "Got it — here's what I've captured so far:\n\n**People:** Staff mentors, School partners\n**Materials:** Donated laptops\n**Funding:** Grant funding\n**Expertise:** Evidence-based training\n\nDoes that look right, or would you like to add or change anything?",
+          "finalIntent": "resources",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Anything else you need from me on resources?",
+          "reply": "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites)?\n\nWould you like to continue populating your logic model now?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

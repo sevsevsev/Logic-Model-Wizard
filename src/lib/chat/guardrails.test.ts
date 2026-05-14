@@ -99,7 +99,7 @@ test("phase intent progression follows atomic sequence", () => {
     actions: ["Provide weekly mentoring"],
     outputs: [],
   });
-  assert.equal(inferNextRequiredIntent(model), "outputs_metrics");
+  assert.equal(inferNextRequiredIntent(model), "quality_evidence");
 
   model.implementation.activities[0].outputs.push({ text: "100 sessions delivered" });
   assert.equal(inferNextRequiredIntent(model), "quality_evidence");

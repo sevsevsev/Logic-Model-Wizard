@@ -18,6 +18,64 @@ function isBlank(value: string | undefined): boolean {
   return (value ?? "").trim().length === 0;
 }
 
+const REVISION_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "is",
+  "it",
+  "of",
+  "on",
+  "or",
+  "our",
+  "the",
+  "their",
+  "to",
+  "we",
+  "with",
+]);
+
+function normalizeForRevision(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]+/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1 && !REVISION_STOP_WORDS.has(token));
+}
+
+function isCloseEnoughForRevision(userMessage: string, revisedText: string): boolean {
+  const userTokens = normalizeForRevision(userMessage);
+  const revisedTokens = normalizeForRevision(revisedText);
+
+  if (userTokens.length === 0 || revisedTokens.length === 0) return false;
+  if (revisedText.trim().length < 12) return false;
+
+  const userTokenSet = new Set(userTokens);
+  const revisedTokenSet = new Set(revisedTokens);
+  let sharedTokens = 0;
+  for (const token of userTokenSet) {
+    if (revisedTokenSet.has(token)) {
+      sharedTokens += 1;
+    }
+  }
+
+  const sharedCoverage = sharedTokens / Math.max(1, userTokenSet.size);
+  const novelCoverage = [...revisedTokenSet].filter((token) => !userTokenSet.has(token)).length /
+    Math.max(1, revisedTokenSet.size);
+  const lengthRatio = revisedText.trim().length / Math.max(1, userMessage.trim().length);
+
+  return sharedTokens >= 2 && sharedCoverage >= 0.3 && novelCoverage <= 0.75 && lengthRatio >= 0.45 && lengthRatio <= 3;
+}
+
 function phaseRank(intent: string | undefined): number {
   switch (intent) {
     case "impact_statement":
@@ -120,6 +178,7 @@ export function sanitizeAgentTurnResult(
   }
 
   const questionPlan = result.questionPlan ? structuredClone(result.questionPlan) : undefined;
+  const revisionProposal = result.revisionProposal ? structuredClone(result.revisionProposal) : undefined;
 
   let questionIntent = result.questionIntent;
   if (snapshot) {
@@ -155,6 +214,20 @@ export function sanitizeAgentTurnResult(
     missingFields: input.turnBrief.missingFields,
   };
 
+  let sanitizedRevisionProposal = revisionProposal;
+  if (sanitizedRevisionProposal?.revisedText) {
+    if (!isCloseEnoughForRevision(message, sanitizedRevisionProposal.revisedText)) {
+      sanitizedRevisionProposal = undefined;
+      contradictionFlags.add("unsupported_patch");
+    } else {
+      sanitizedRevisionProposal.shouldRevise = sanitizedRevisionProposal.shouldRevise ?? true;
+      sanitizedRevisionProposal.originalText = sanitizedRevisionProposal.originalText ?? message.trim();
+    }
+  } else if (sanitizedRevisionProposal) {
+    sanitizedRevisionProposal = undefined;
+    contradictionFlags.add("unsupported_patch");
+  }
+
   if (questionPlan) {
     questionPlan.shouldAsk = questionIntent !== "none";
     if (questionIntent === "none") {
@@ -168,6 +241,7 @@ export function sanitizeAgentTurnResult(
     questionIntent,
     modelPatch: sanitizedPatch && Object.keys(sanitizedPatch).length > 0 ? sanitizedPatch : null,
     questionPlan,
+    revisionProposal: sanitizedRevisionProposal,
     contradictionFlags: [...contradictionFlags],
     stateAssessment,
   };

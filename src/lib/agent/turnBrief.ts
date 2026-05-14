@@ -1,5 +1,6 @@
 import type { ChatMessage, LogicModel } from "@/store/useLogicModelStore";
 import { buildContextCoverageSummary } from "@/lib/chat/agenticContext";
+import type { AgentRevisionLifecycle } from "@/lib/agent/types";
 import {
   deriveImpactFacetState,
   hasConcreteImpactMarker,
@@ -16,6 +17,7 @@ export interface AgentTurnBrief {
   missingFields: string[];
   latestUserSignals: string[];
   avoidAskingFor: string[];
+  revisionLifecycle: AgentRevisionLifecycle;
 }
 
 function getLastAssistantQuestion(history: ChatMessage[]): string | null {
@@ -173,6 +175,7 @@ export function buildAgentTurnBrief(input: {
   userMessage: string;
   history: ChatMessage[];
   modelSnapshot?: LogicModel;
+  revisionLifecycle?: AgentRevisionLifecycle;
 }): AgentTurnBrief {
   const nextIntent = inferNextRequiredIntent(input.modelSnapshot);
 
@@ -183,6 +186,7 @@ export function buildAgentTurnBrief(input: {
     missingFields: buildMissingFields(input.modelSnapshot),
     latestUserSignals: buildLatestUserSignals(input.userMessage),
     avoidAskingFor: buildAvoidAskingFor(input.modelSnapshot),
+    revisionLifecycle: input.revisionLifecycle ?? { status: "none" },
   };
 }
 
@@ -195,6 +199,7 @@ export function formatAgentTurnBrief(brief: AgentTurnBrief): string {
       missing_fields: brief.missingFields,
       latest_user_signals: brief.latestUserSignals,
       avoid_asking_for: brief.avoidAskingFor,
+      revision_lifecycle: brief.revisionLifecycle,
     },
     null,
     2

@@ -121,6 +121,7 @@ export interface DebugSnapshotCapture {
   draftSnapshot: {
     model: LogicModel;
     messages: ChatMessage[];
+    retentionMemory?: unknown;
   };
   feedbackReport: {
     description: string;

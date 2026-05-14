@@ -44,7 +44,7 @@ function buildModel(overrides?: Partial<LogicModel>): LogicModel {
 test("getBootstrapStartRecommendation prioritizes intended impact when impact is incomplete", () => {
   const model = buildModel({
     implementation: {
-      resources: { human: ["Coach"] },
+      resources: { human: ["Coach"], material: [], financial: [], knowledge: [] },
       activities: [{ item: "Tutoring", actions: [], outputs: [] }],
       quality_fidelity: { fidelity: [], quality: [] },
     },
@@ -89,7 +89,7 @@ test("getBootstrapStartOptions includes a recommendation choice when multiple pa
       compiled_statement: "Middle school students in Philadelphia will graduate high school",
     },
     implementation: {
-      resources: { human: ["Coach"] },
+      resources: { human: ["Coach"], material: [], financial: [], knowledge: [] },
       activities: [{ item: "Tutoring", actions: [], outputs: [] }],
       quality_fidelity: { fidelity: [], quality: [] },
     },
@@ -110,7 +110,7 @@ test("getBootstrapStartRecommendation uses uncertainty signals to prioritize sec
       compiled_statement: "Middle school students in Philadelphia will graduate high school",
     },
     implementation: {
-      resources: { human: ["Coach"] },
+      resources: { human: ["Coach"], material: [], financial: [], knowledge: [] },
       activities: [{ item: "Tutoring", actions: [], outputs: [] }],
       quality_fidelity: { fidelity: [], quality: [] },
     },
@@ -157,7 +157,7 @@ test("getBootstrapStartRecommendation falls back to guide order when uncertainty
       compiled_statement: "Middle school students in Philadelphia will graduate high school",
     },
     implementation: {
-      resources: { human: [] },
+      resources: { human: [], material: [], financial: [], knowledge: [] },
       activities: [],
       quality_fidelity: { fidelity: [], quality: [] },
     },

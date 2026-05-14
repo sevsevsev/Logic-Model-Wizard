@@ -1,0 +1,224 @@
+# Example Scenarios (YAML)
+# These show how to use the template for different test patterns.
+
+---
+# Example 1: Happy Path - All Info Upfront + Confirm
+id: "impact-happy-path-all-upfront"
+section: "impact"
+description: "User provides all impact fields in first turn; agent confirms and moves on."
+focus: "assertion"
+
+turns:
+  - user: "We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transition successfully to high school."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      modelPatchMustHavePath:
+        - "intended_impact"
+      replyMustContainAny:
+        - "captured"
+        - "understood"
+        - "confirmed"
+  
+  - user: "Yes, that captures it."
+    expect:
+      replyMustNotMatch:
+        - "/tell me more/i"
+        - "/can you expand/i"
+
+finalCheck:
+  - path: "intended_impact.population"
+    expectNonEmpty: true
+  - path: "intended_impact.geography"
+    expectNonEmpty: true
+  - path: "intended_impact.long_term_goal"
+    expectNonEmpty: true
+
+---
+# Example 2: Deviation Recovery - Partial → Agent Asks → User Completes
+id: "impact-partial-then-clarify"
+section: "impact"
+description: "User provides only population + geography; agent clarifies asking for long-term goal; user provides it."
+focus: "deviation-recovery"
+
+turns:
+  - user: "We work with teenagers in Philadelphia."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      modelPatchMustHavePath:
+        - "intended_impact"
+      replyMustContainAny:
+        - "long-term goal"
+        - "long-term"
+        - "what's the goal"
+        - "outcome"
+
+  - user: "The goal is students graduate high school on time."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      modelPatchMustHavePath:
+        - "intended_impact.long_term_goal"
+      replyMustNotMatch:
+        - "/tell me about your program/i"
+        - "/what's your long-term goal/i"
+
+finalCheck:
+  - path: "intended_impact.population"
+    expectNonEmpty: true
+  - path: "intended_impact.geography"
+    expectNonEmpty: true
+  - path: "intended_impact.long_term_goal"
+    expectNonEmpty: true
+
+---
+# Example 3: Multi-Bucket Capture - Resource List
+id: "resources-list-capture-multi-bucket"
+section: "resources"
+description: "User provides resource list with multiple buckets (human, material, financial); agent captures all."
+focus: "assertion"
+
+seedHistory:
+  - role: "assistant"
+    content: "What key resources does your program rely on (people, materials, funding, expertise)?"
+
+turns:
+  - user: "We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training."
+    expect:
+      finalIntentOneOf:
+        - "resources"
+      modelPatchMustHavePath:
+        - "implementation.resources"
+      modelPatchResourceBucketsAtLeast: 3
+      replyMustContainAny:
+        - "captured"
+        - "noted"
+        - "understand"
+      replyMustNotMatch:
+        - "/what key resources/i"
+        - "/can you tell me/i"
+
+finalCheck:
+  - path: "implementation.resources"
+    expectResourceBucketsAtLeast: 3
+
+---
+# Example 4: No Silent Drop - User Confirms, Model Retains State
+id: "resources-no-silent-drop-multi-turn"
+section: "resources"
+description: "User lists resources; confirms 'that's it'; agent must not drop state or re-ask in subsequent turns."
+focus: "multi-turn-retention"
+
+seedHistory:
+  - role: "assistant"
+    content: "Please list the people, materials, funding, and expertise your program depends on."
+
+turns:
+  - user: "Staff mentors, school partners, donated laptops, grant funding, and evidence-based training."
+    expect:
+      finalIntentOneOf:
+        - "resources"
+      modelPatchMustHavePath:
+        - "implementation.resources"
+      modelPatchResourceBucketsAtLeast: 2
+
+  - user: "That's everything on resources."
+    expect:
+      replyMustNotMatch:
+        - "/what key resources/i"
+        - "/please list/i"
+
+  - user: "Can we talk about activities next?"
+    expect:
+      replyMustNotMatch:
+        - "/resources?/i"
+        - "/anything else.*resource/i"
+
+finalCheck:
+  - path: "implementation.resources"
+    expectResourceBucketsAtLeast: 2
+    description: "Resources must persist across multi-turn flow"
+
+---
+# Example 5: Partial Resource Bucket → Agent Probes → User Completes
+id: "resources-missing-bucket-recovery"
+section: "resources"
+description: "User lists 3 buckets (human, material, financial) but omits knowledge/training; agent asks; user provides."
+focus: "deviation-recovery"
+
+seedHistory:
+  - role: "assistant"
+    content: "What resources does your program depend on—people, materials, funding, and expertise?"
+
+turns:
+  - user: "We have staff, donated laptops, and grant money."
+    expect:
+      finalIntentOneOf:
+        - "resources"
+      modelPatchMustHavePath:
+        - "implementation.resources"
+      modelPatchResourceBucketsAtLeast: 2
+      replyMustContainAny:
+        - "expertise"
+        - "training"
+        - "knowledge"
+
+  - user: "Yes, we have staff training and partner expertise in evidence-based practices."
+    expect:
+      finalIntentOneOf:
+        - "resources"
+      modelPatchMustHavePath:
+        - "implementation.resources"
+      modelPatchResourceBucketsAtLeast: 3
+      replyMustNotMatch:
+        - "/what resources/i"
+        - "/do you have/i"
+
+finalCheck:
+  - path: "implementation.resources.human"
+    expectNonEmpty: true
+  - path: "implementation.resources.material"
+    expectNonEmpty: true
+  - path: "implementation.resources.financial"
+    expectNonEmpty: true
+  - path: "implementation.resources.knowledge"
+    expectNonEmpty: true
+
+---
+# Example 6: Cross-Section Handoff - No Backtrack
+id: "resources-to-activities-no-backtrack"
+section: "cross-section"
+description: "After resources captured and confirmed, agent moves to activities; must not backtrack to resources."
+focus: "multi-turn-retention"
+
+seedHistory:
+  - role: "assistant"
+    content: "What key resources does your program rely on?"
+
+turns:
+  - user: "Staff, materials, funding, training."
+    expect:
+      finalIntentOneOf:
+        - "resources"
+      modelPatchMustHavePath:
+        - "implementation.resources"
+      modelPatchResourceBucketsAtLeast: 3
+
+  - user: "That's all for resources."
+    expect:
+      replyMustNotMatch:
+        - "/what resources/i"
+
+  - user: "What should I tell you about next?"
+    expect:
+      replyMustNotMatch:
+        - "/resources/i"
+      replyMustContainAny:
+        - "activities"
+        - "implementation"
+
+finalCheck:
+  - path: "implementation.resources"
+    expectResourceBucketsAtLeast: 2
+    description: "Resources retained as conversation moves to next section"

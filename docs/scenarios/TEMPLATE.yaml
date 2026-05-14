@@ -1,0 +1,97 @@
+# Scenario Template (YAML)
+# Copy this file and fill in the details for your scenario.
+# Then convert to TypeScript and add to scripts/agent-regression.ts
+
+---
+# === METADATA ===
+id: "scenario-slug"                  # Use format: <section>-<focus> (e.g., "resources-list-capture")
+section: "impact"                    # One of: impact, resources, activities, quality, outcomes, cross-section
+description: "Brief human-readable description of what this scenario tests."
+focus: "assertion"                   # One of: assertion, deviation-recovery, multi-turn-retention, edge-case
+
+# === SEED HISTORY (OPTIONAL) ===
+# Use this to pre-populate the conversation with agent's opening question for this section.
+# Omit this for end-to-end (happy-path) flows where agent should ask the opening question.
+
+seedHistory:
+  - role: "assistant"
+    content: "Agent's opening question or contextual message for this section."
+
+# === TURNS ===
+# Each turn has a user input and optional expectations about agent response.
+# The harness will assert these expectations against the API response.
+
+turns:
+  # TURN 1: Initial user input
+  - user: "User message describing their program or input for this section."
+    
+    # EXPECT: Assertions about agent's response to this turn
+    expect:
+      # (Optional) Agent's final intent classification must be one of these.
+      # Common intents: "impact", "resources", "activities", "quality", "outcomes", "clarify", "confirm"
+      finalIntentOneOf:
+        - "resources"
+      
+      # (Optional) Model patch MUST contain these paths if data was captured.
+      # Common paths: "intended_impact", "implementation.resources", "implementation.activities", "outcomes.short_term", etc.
+      modelPatchMustHavePath:
+        - "implementation.resources"
+      
+      # (Optional) If resources section: minimum number of resource buckets captured in the patch.
+      # Buckets: human, material, financial, knowledge
+      modelPatchResourceBucketsAtLeast: 2
+      
+      # (Optional) Agent's reply must contain at least one of these patterns.
+      # Use for validating agent acknowledged or understood the input.
+      replyMustContainAny:
+        - "captured"
+        - "understood"
+        - "noted"
+      
+      # (Optional) Agent's reply must NOT match these regex patterns.
+      # Use for ensuring agent does not repeat questions or show confusion.
+      replyMustNotMatch:
+        - "/what resources/i"
+        - "/can you tell me/i"
+
+  # TURN 2: Follow-up user input (multi-turn scenarios)
+  - user: "Second user message (e.g., user confirms, clarifies, or adds more info)."
+    
+    expect:
+      finalIntentOneOf:
+        - "confirm"
+      replyMustNotMatch:
+        - "/what resources/i"     # Agent should NOT re-ask the resource question
+
+  # TURN 3+: Additional turns as needed
+  # (Follow same pattern as Turn 2)
+
+# === FINAL CHECK (OPTIONAL) ===
+# Complex validation on the final model state after all turns.
+# In TypeScript, this is a callback function that inspects the LogicModel.
+# Example:
+#   finalCheck: ({ model }) => {
+#     const failures: string[] = [];
+#     if (!model.intended_impact.population) {
+#       failures.push("population not captured");
+#     }
+#     return failures;
+#   }
+#
+# In YAML, describe what should be validated:
+
+finalCheck:
+  - path: "implementation.resources.human"
+    expectNonEmpty: true
+    description: "Human resources must be captured"
+  
+  - path: "implementation.resources"
+    expectResourceBucketsAtLeast: 2
+    description: "At least 2 resource buckets must be present"
+
+# === NOTES ===
+# - For happy-path scenarios: user provides complete info unprompted; agent confirms and moves on.
+# - For deviation-recovery: user provides partial info; agent clarifies; user completes; agent should NOT re-ask.
+# - For multi-turn retention: validate that model state persists across turns (no silent drops).
+# - Use seedHistory when testing mid-flow or recovery scenarios.
+# - Omit seedHistory for fresh, end-to-end flows.

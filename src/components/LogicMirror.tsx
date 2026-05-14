@@ -625,6 +625,7 @@ function OutputList({
 
 export default function LogicMirror() {
   const model = useLogicModelStore((s) => s.model);
+  const activeRevisionProposal = useLogicModelStore((s) => s.activeRevisionProposal);
   const addActivity = useLogicModelStore((s) => s.addActivity);
   const removeResourceItem = useLogicModelStore((s) => s.removeResourceItem);
   const removeOutcomeItem = useLogicModelStore((s) => s.removeOutcomeItem);
@@ -632,6 +633,8 @@ export default function LogicMirror() {
   const updateResources = useLogicModelStore((s) => s.updateResources);
   const updateOutcomes = useLogicModelStore((s) => s.updateOutcomes);
   const updateIntendedImpact = useLogicModelStore((s) => s.updateIntendedImpact);
+  const setActiveRevisionProposal = useLogicModelStore((s) => s.setActiveRevisionProposal);
+  const setRevisionLifecycle = useLogicModelStore((s) => s.setRevisionLifecycle);
   const { intended_impact, implementation, outcomes } = model;
   const { resources, activities } = implementation;
   const [editingImpact, setEditingImpact] = useState(false);
@@ -687,6 +690,82 @@ export default function LogicMirror() {
         </div>
 
         <DraftControls />
+
+        {activeRevisionProposal?.revisedText && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/90 p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  Proposed rewrite
+                </p>
+                <p className="text-xs text-slate-700">
+                  The assistant found a close fit and is suggesting a cleaner version that stays close to your wording.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setRevisionLifecycle({
+                    status: "dismissed",
+                    originalText: activeRevisionProposal.originalText,
+                    revisedText: activeRevisionProposal.revisedText,
+                    rationale: activeRevisionProposal.rationale,
+                  });
+                  setActiveRevisionProposal(null);
+                }}
+                className="rounded-full px-2 py-1 text-[11px] text-amber-900 hover:bg-amber-100"
+              >
+                Dismiss
+              </button>
+            </div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <div className="rounded-md border border-amber-200 bg-white p-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Original</p>
+                <p className="mt-1 text-xs text-slate-700">{activeRevisionProposal.originalText || "Your last wording"}</p>
+              </div>
+              <div className="rounded-md border border-amber-300 bg-white p-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8f5a00]">Suggested</p>
+                <p className="mt-1 text-xs text-[#0b315b]">{activeRevisionProposal.revisedText}</p>
+              </div>
+            </div>
+
+            {activeRevisionProposal.rationale && (
+              <p className="mt-2 text-[11px] text-slate-600">Why: {activeRevisionProposal.rationale}</p>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => {
+                  updateIntendedImpact({ compiled_statement: activeRevisionProposal.revisedText?.trim() ?? "" });
+                  setRevisionLifecycle({
+                    status: "accepted",
+                    originalText: activeRevisionProposal.originalText,
+                    revisedText: activeRevisionProposal.revisedText,
+                    rationale: activeRevisionProposal.rationale,
+                  });
+                  setActiveRevisionProposal(null);
+                }}
+                className="inline-flex items-center gap-1 rounded-md bg-[#0b315b] px-2.5 py-1 text-[11px] text-white hover:bg-[#082746]"
+              >
+                <Check size={11} /> Accept rewrite
+              </button>
+              <button
+                onClick={() => {
+                  setRevisionLifecycle({
+                    status: "dismissed",
+                    originalText: activeRevisionProposal.originalText,
+                    revisedText: activeRevisionProposal.revisedText,
+                    rationale: activeRevisionProposal.rationale,
+                  });
+                  setActiveRevisionProposal(null);
+                }}
+                className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] text-amber-900 hover:bg-amber-100"
+              >
+                Keep my wording
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Intended Impact */}
         <Card

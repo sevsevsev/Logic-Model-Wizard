@@ -7,7 +7,26 @@ export interface RetrievalOptions {
   userId?: string;
 }
 
-const ENABLE_RAG_RETRIEVAL = process.env.ENABLE_RAG_RETRIEVAL === "true";
+export interface RetrievalTrace {
+  mode: "vector" | "keyword";
+  reason:
+    | "vector_disabled"
+    | "missing_runtime_config"
+    | "empty_embedding"
+    | "vector_error"
+    | "vector_no_matches"
+    | "keyword_success"
+    | "vector_success";
+  topK: number;
+}
+
+export interface RetrievalResult {
+  chunks: RetrievedChunk[];
+  trace: RetrievalTrace;
+}
+
+// Prefer vector retrieval by default; allow explicit opt-out with ENABLE_RAG_RETRIEVAL=false.
+const ENABLE_RAG_RETRIEVAL = process.env.ENABLE_RAG_RETRIEVAL !== "false";
 
 function tokenize(text: string): string[] {
   return text
@@ -42,25 +61,34 @@ function retrieveKnowledgeKeyword(query: string, topK = 5): RetrievedChunk[] {
     .slice(0, topK);
 }
 
-export async function retrieveKnowledge(
+export async function retrieveKnowledgeWithTrace(
   query: string,
   topK = 5,
   options?: RetrievalOptions
-): Promise<RetrievedChunk[]> {
+): Promise<RetrievalResult> {
   if (!ENABLE_RAG_RETRIEVAL) {
-    return retrieveKnowledgeKeyword(query, topK);
+    return {
+      chunks: retrieveKnowledgeKeyword(query, topK),
+      trace: { mode: "keyword", reason: "vector_disabled", topK },
+    };
   }
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (!apiKey || !databaseUrl) {
-    return retrieveKnowledgeKeyword(query, topK);
+    return {
+      chunks: retrieveKnowledgeKeyword(query, topK),
+      trace: { mode: "keyword", reason: "missing_runtime_config", topK },
+    };
   }
 
   try {
     const embedding = await embedText(apiKey, query);
     if (!embedding || embedding.length === 0) {
-      return retrieveKnowledgeKeyword(query, topK);
+      return {
+        chunks: retrieveKnowledgeKeyword(query, topK),
+        trace: { mode: "keyword", reason: "empty_embedding", topK },
+      };
     }
 
     const knowledgeBaseResults = await queryVectorChunks(embedding, topK, {
@@ -79,11 +107,29 @@ export async function retrieveKnowledge(
       .slice(0, topK);
 
     if (merged.length > 0) {
-      return merged;
+      return {
+        chunks: merged,
+        trace: { mode: "vector", reason: "vector_success", topK },
+      };
     }
   } catch {
-    // Fall back to keyword retrieval on vector or embedding failures.
+    return {
+      chunks: retrieveKnowledgeKeyword(query, topK),
+      trace: { mode: "keyword", reason: "vector_error", topK },
+    };
   }
 
-  return retrieveKnowledgeKeyword(query, topK);
+  return {
+    chunks: retrieveKnowledgeKeyword(query, topK),
+    trace: { mode: "keyword", reason: "vector_no_matches", topK },
+  };
+}
+
+export async function retrieveKnowledge(
+  query: string,
+  topK = 5,
+  options?: RetrievalOptions
+): Promise<RetrievedChunk[]> {
+  const result = await retrieveKnowledgeWithTrace(query, topK, options);
+  return result.chunks;
 }

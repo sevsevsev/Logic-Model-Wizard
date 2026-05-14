@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-05-13T13:25:13.595Z",
+  "apiUrl": "http://localhost:3100/api/chat",
+  "results": [
+    {
+      "id": "impact-happy-path",
+      "description": "All-in-one impact statement is captured and confirmed.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transition successfully to high school.",
+          "reply": "Based on what you've shared, here's a draft intended impact statement:\n\nMiddle school students in North Philadelphia will read on grade level and successfully transition to high school\n\nDoes this statement capture your ultimate goal for the students you serve?",
+          "finalIntent": "impact_review",
+          "stateIntent": "impact_review",
+          "patchSource": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Yes, that captures it.",
+          "reply": "What are the key resources needed to run this program (people, materials, funding, and expertise)?",
+          "finalIntent": "resources",
+          "stateIntent": "resources",
+          "patchSource": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-list-capture",
+      "description": "When user provides a resource list, the patch captures multiple resource buckets.",
+      "failures": [
+        "turn 1: finalIntent expected one of [resources], got 'geography'",
+        "turn 1: modelPatch missing required path 'implementation.resources'",
+        "turn 1: expected at least 2 non-empty resource buckets in modelPatch, got 0"
+      ],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training.",
+          "reply": "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites)?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "finalIntent expected one of [resources], got 'geography'",
+            "modelPatch missing required path 'implementation.resources'",
+            "expected at least 2 non-empty resource buckets in modelPatch, got 0"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resources-no-silent-drop",
+      "description": "Resource response should not be ignored across turns and should keep resources in model state.",
+      "failures": [
+        "turn 1: modelPatch missing required path 'implementation.resources'",
+        "turn 1: expected at least 2 non-empty resource buckets in modelPatch, got 0"
+      ],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "Staff mentors, school partners, donated laptops, grant funding, and evidence-based training.",
+          "reply": "Excellent, that's a clear list of the key resources your program relies on.\n\nNow, let's define the scope. What specific community or geographic area does your program serve?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "resourceBucketsInPatch": 0,
+          "failures": [
+            "modelPatch missing required path 'implementation.resources'",
+            "expected at least 2 non-empty resource buckets in modelPatch, got 0"
+          ]
+        },
+        {
+          "turn": 2,
+          "user": "Anything else you need from me on resources?",
+          "reply": "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites)?\n\nWould you like to continue populating your logic model now?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
+          "patchSource": null,
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

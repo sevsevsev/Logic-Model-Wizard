@@ -1,5 +1,8 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import type { AgentRevisionLifecycle, AgentRevisionProposal } from "@/lib/agent/types";
+import type { ConversationTranscript } from "@/lib/chat/transcript";
+import { createEmptyTranscript } from "@/lib/chat/transcript";
 
 // ---------------------------------------------------------------------------
 // Domain types — mirror schema-definition.json
@@ -34,6 +37,7 @@ export interface OutcomeEntry {
 export interface Implementation {
   resources: Resource;
   activities: Activity[];
+  outputs_metrics?: string[];
   quality_fidelity: {
     fidelity: string[];
     quality: string[];
@@ -60,6 +64,59 @@ export interface LogicModel {
   outcomes: Outcomes;
 }
 
+export type RetentionSection =
+  | "impact"
+  | "resources"
+  | "activities"
+  | "outputs_metrics"
+  | "quality_fidelity"
+  | "outcomes"
+  | "stakeholders";
+
+export type RetentionClaimStatus = "proposed" | "confirmed" | "conflicted" | "superseded";
+
+export interface RetentionClaimRecord {
+  id: string;
+  turnIndex: number;
+  section: RetentionSection;
+  fieldPath: string;
+  value: string;
+  normalizedValue: string;
+  confidence: number;
+  provenance: "user_stated" | "assistant_inferred" | "retrieved_guidance";
+  status: RetentionClaimStatus;
+  sourceText: string;
+}
+
+export interface RetentionConflict {
+  id: string;
+  fieldPath: string;
+  section: RetentionSection;
+  existingValue: string;
+  incomingValue: string;
+  status: "open" | "resolved";
+  createdTurnIndex: number;
+  resolvedTurnIndex?: number;
+}
+
+export interface RetentionQuestion {
+  id: string;
+  section: RetentionSection;
+  prompt: string;
+  reason: "conflict" | "confirmation";
+  status: "open" | "resolved";
+  conflictId?: string;
+  createdTurnIndex: number;
+  resolvedTurnIndex?: number;
+}
+
+export interface RetentionMemory {
+  claims: RetentionClaimRecord[];
+  conflicts: RetentionConflict[];
+  questions: RetentionQuestion[];
+  lastUpdatedTurnIndex: number;
+}
+
 type ResourcePatch = {
   [K in keyof Resource]?: Resource[K] | string;
 };
@@ -82,6 +139,7 @@ interface LogicModelPatch {
           stakeholderLabels?: string[];
         }
     >;
+    outputs_metrics?: string[];
     quality_fidelity?: {
       fidelity?: string[];
       quality?: string[];
@@ -119,6 +177,8 @@ export interface ChatMessage {
 export interface LogicModelDraft {
   model: LogicModel;
   messages: ChatMessage[];
+  retentionMemory?: RetentionMemory;
+  transcript?: ConversationTranscript;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +188,11 @@ export interface LogicModelDraft {
 interface LogicModelState {
   model: LogicModel;
   messages: ChatMessage[];
+  retentionMemory: RetentionMemory;
+  transcript: ConversationTranscript; // New: conversation transcript for analysis
   isLoading: boolean;
+  activeRevisionProposal: AgentRevisionProposal | null;
+  revisionLifecycle: AgentRevisionLifecycle;
 
   // Domain-level partial update actions
   updateIntendedImpact: (patch: Partial<IntendedImpact>) => void;
@@ -145,10 +209,17 @@ interface LogicModelState {
 
   // Chat actions
   addMessage: (role: MessageRole, content: string, quickReplies?: QuickReply[]) => void;
+  applyRetentionMemory: (memory: RetentionMemory) => void;
   setLoading: (loading: boolean) => void;
+  setActiveRevisionProposal: (proposal: AgentRevisionProposal | null) => void;
+  setRevisionLifecycle: (lifecycle: AgentRevisionLifecycle) => void;
   getDraftSnapshot: () => LogicModelDraft;
   restoreDraft: (draft: LogicModelDraft) => void;
   resetModel: () => void;
+
+  // Transcript actions (new)
+  addTranscriptTurn: (role: "user" | "assistant", content: string, domain?: string) => void;
+  setTranscript: (transcript: ConversationTranscript) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +242,7 @@ const defaultModel: LogicModel = {
       knowledge: [],
     },
     activities: [],
+    outputs_metrics: [],
     quality_fidelity: {
       fidelity: [],
       quality: [],
@@ -189,6 +261,26 @@ const welcomeMessage: ChatMessage = {
   content: "Tell me about your program — what does it do, and who does it serve?",
   timestamp: 0,
 };
+
+function createEmptyRetentionMemory(): RetentionMemory {
+  return {
+    claims: [],
+    conflicts: [],
+    questions: [],
+    lastUpdatedTurnIndex: 0,
+  };
+}
+
+function isRetentionMemory(value: unknown): value is RetentionMemory {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Array.isArray(v.claims) &&
+    Array.isArray(v.conflicts) &&
+    Array.isArray(v.questions) &&
+    typeof v.lastUpdatedTurnIndex === "number"
+  );
+}
 
 function getWelcomeMessages(): ChatMessage[] {
   return [structuredClone(welcomeMessage)];
@@ -274,20 +366,13 @@ function normalizeActivity(
   if (!incoming || typeof incoming !== "object") return null;
   const maybe = incoming as {
     item?: unknown;
-    category?: unknown;
-    subcategory?: unknown;
     actions?: unknown;
     outputs?: unknown;
     stakeholderIds?: unknown;
     stakeholderLabels?: unknown;
   };
 
-  const item =
-    typeof maybe.item === "string" && maybe.item.trim().length > 0
-      ? maybe.item.trim()
-      : typeof maybe.category === "string" && maybe.category.trim().length > 0
-        ? maybe.category.trim()
-        : "";
+  const item = typeof maybe.item === "string" && maybe.item.trim().length > 0 ? maybe.item.trim() : "";
   if (!item) return null;
 
   const actions = Array.isArray(maybe.actions)
@@ -301,24 +386,14 @@ function normalizeActivity(
             return text ? { text } : null;
           }
           if (v && typeof v === "object") {
-            const o = v as { text?: unknown; category?: unknown; subcategory?: unknown };
+            const o = v as { text?: unknown };
             const text = typeof o.text === "string" ? o.text.trim() : "";
             if (!text) return null;
-            return {
-              text,
-              category:
-                typeof o.category === "string" && o.category.trim().length > 0
-                  ? o.category.trim()
-                  : typeof o.subcategory === "string" && o.subcategory.trim().length > 0
-                    ? o.subcategory.trim()
-                  : undefined,
-            };
+            return { text };
           }
           return null;
         })
-        .filter(
-          (v): v is { text: string; category?: string } => Boolean(v)
-        )
+        .filter((v): v is { text: string } => Boolean(v))
     : [];
 
   const stakeholderIds = new Set<string>();
@@ -337,12 +412,7 @@ function normalizeActivity(
 
   return {
     item,
-    category:
-      typeof maybe.category === "string" && maybe.category.trim().length > 0
-        ? maybe.category.trim()
-        : typeof maybe.subcategory === "string" && maybe.subcategory.trim().length > 0
-          ? maybe.subcategory.trim()
-        : undefined,
+    category: undefined,
     actions,
     outputs,
     stakeholderIds: Array.from(stakeholderIds),
@@ -370,19 +440,19 @@ function mergeUniqueStringValues(base: string[] = [], incoming: string[] = []): 
 }
 
 function mergeUniqueOutputs(
-  base: Array<{ text: string; category?: string }> = [],
-  incoming: Array<{ text: string; category?: string }> = []
-): Array<{ text: string; category?: string }> {
+  base: Array<{ text: string }> = [],
+  incoming: Array<{ text: string }> = []
+): Array<{ text: string }> {
   const seen = new Set<string>();
-  const merged: Array<{ text: string; category?: string }> = [];
+  const merged: Array<{ text: string }> = [];
 
   for (const output of [...base, ...incoming]) {
     const text = output.text?.trim();
     if (!text) continue;
-    const key = `${normalizeKey(text)}::${normalizeKey(output.category)}`;
+    const key = normalizeKey(text);
     if (seen.has(key)) continue;
     seen.add(key);
-    merged.push({ text, category: output.category?.trim() || undefined });
+    merged.push({ text });
   }
 
   return merged;
@@ -425,7 +495,6 @@ function mergeActivities(existing: Activity[], incoming: Activity[]): Activity[]
     }
 
     const target = merged[matchIndex];
-    target.category = target.category || activity.category;
     target.actions = mergeUniqueStringValues(target.actions, activity.actions);
     target.outputs = mergeUniqueOutputs(target.outputs, activity.outputs);
     target.stakeholderIds = mergeUniqueStringValues(
@@ -462,7 +531,11 @@ export const useLogicModelStore = create<LogicModelState>()(
   immer((set, get) => ({
     model: structuredClone(defaultModel),
     messages: getWelcomeMessages(),
+    retentionMemory: createEmptyRetentionMemory(),
+    transcript: createEmptyTranscript(), // New: empty transcript
     isLoading: false,
+    activeRevisionProposal: null,
+    revisionLifecycle: { status: "none" },
 
     // ---- Intended Impact --------------------------------------------------
     updateIntendedImpact: (patch) =>
@@ -567,6 +640,12 @@ export const useLogicModelStore = create<LogicModelState>()(
               incomingActivities
             );
           }
+          if (Array.isArray(patch.implementation.outputs_metrics)) {
+            state.model.implementation.outputs_metrics = mergeUniqueStringValues(
+              state.model.implementation.outputs_metrics ?? [],
+              patch.implementation.outputs_metrics
+            );
+          }
           if (patch.implementation.quality_fidelity) {
             const qualityPatch = patch.implementation.quality_fidelity;
             if (Array.isArray(qualityPatch.fidelity)) {
@@ -615,14 +694,36 @@ export const useLogicModelStore = create<LogicModelState>()(
         });
       }),
 
+    applyRetentionMemory: (memory) =>
+      set((state) => {
+        state.retentionMemory = isRetentionMemory(memory)
+          ? structuredClone(memory)
+          : createEmptyRetentionMemory();
+      }),
+
     setLoading: (loading) =>
       set((state) => {
         state.isLoading = loading;
       }),
 
+    setActiveRevisionProposal: (proposal) =>
+      set((state) => {
+        state.activeRevisionProposal = proposal ? structuredClone(proposal) : null;
+      }),
+
+    setRevisionLifecycle: (lifecycle) =>
+      set((state) => {
+        state.revisionLifecycle = {
+          ...structuredClone(lifecycle),
+          updatedAt: lifecycle.updatedAt ?? Date.now(),
+        };
+      }),
+
     getDraftSnapshot: () => ({
       model: structuredClone(get().model),
       messages: structuredClone(get().messages),
+      retentionMemory: structuredClone(get().retentionMemory),
+      transcript: structuredClone(get().transcript),
     }),
 
     restoreDraft: (draft) =>
@@ -639,6 +740,9 @@ export const useLogicModelStore = create<LogicModelState>()(
 
         if (!restored.implementation.quality_fidelity) {
           restored.implementation.quality_fidelity = { fidelity: [], quality: [] };
+        }
+        if (!Array.isArray(restored.implementation.outputs_metrics)) {
+          restored.implementation.outputs_metrics = [];
         }
         if (!Array.isArray(restored.implementation.quality_fidelity.fidelity)) {
           restored.implementation.quality_fidelity.fidelity = [];
@@ -660,12 +764,40 @@ export const useLogicModelStore = create<LogicModelState>()(
           draft.messages.length > 0
             ? structuredClone(draft.messages)
             : getWelcomeMessages();
+        state.retentionMemory = isRetentionMemory(draft.retentionMemory)
+          ? structuredClone(draft.retentionMemory)
+          : createEmptyRetentionMemory();
+        state.transcript = draft.transcript
+          ? structuredClone(draft.transcript)
+          : createEmptyTranscript();
+        state.activeRevisionProposal = null;
+        state.revisionLifecycle = { status: "none" };
       }),
 
     resetModel: () =>
       set((state) => {
         state.model = structuredClone(defaultModel);
         state.messages = getWelcomeMessages();
+        state.retentionMemory = createEmptyRetentionMemory();
+        state.transcript = createEmptyTranscript();
+        state.activeRevisionProposal = null;
+        state.revisionLifecycle = { status: "none" };
+      }),
+
+    // ---- Transcript -------------------------------------------------------
+    addTranscriptTurn: (role, content, domain?) =>
+      set((state) => {
+        state.transcript.turns.push({
+          role,
+          content,
+          timestamp: Date.now(),
+          domain,
+        });
+      }),
+
+    setTranscript: (transcript) =>
+      set((state) => {
+        state.transcript = structuredClone(transcript);
       }),
   }))
 );

@@ -1,6 +1,9 @@
 node_modules/
 .next/
 
+# Build and TypeScript incremental artifacts
+*.tsbuildinfo
+
 # Local environment files — NEVER commit these
 .env.local
 .env.*.local
@@ -9,3 +12,13 @@ node_modules/
 *.log
 .vercel
 .env*.local
+
+# Local debug exports and scratch files
+vector-export-*.json
+rag_list.txt
+last_two_feedback.json
+test_ref.ts
+test-scenarios.ts
+
+# Local workspace scratch data
+.data/

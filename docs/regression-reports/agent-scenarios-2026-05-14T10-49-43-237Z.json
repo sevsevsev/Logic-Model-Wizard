@@ -1,0 +1,281 @@
+{
+  "generatedAt": "2026-05-14T10:49:43.242Z",
+  "apiUrl": "http://localhost:3100/api/chat",
+  "results": [
+    {
+      "id": "full-e2e-green-haven",
+      "description": "A high-clarity user providing detailed, structured data across all logic model sections.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We are starting the Green Haven Community Garden in West Philadelphia. Our goal is to serve local residents by reducing food insecurity and providing a green space for community building.",
+          "reply": "That sounds like a wonderful initiative for West Philadelphia. Reducing food insecurity and building community are powerful long-term goals.\n\nThinking a few years down the road, what is the ultimate change you hope to see in the neighborhood as a result of the garden?",
+          "finalIntent": "impact",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 1,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "We have two part-time coordinators, $5,000 in seed grants, donated tools from the city, and a partnership with a local horticulture expert for training.",
+          "reply": "That's a great set of resources to start with. The coordinators, funding, tools, and expert partnership create a solid foundation.\n\nWhat about the physical space itself—do you have the land secured for the garden?",
+          "finalIntent": "resources",
+          "stateIntent": "long_term_help",
+          "patchSource": "analysis_only",
+          "responseDomain": "long_term_help",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 3,
+          "user": "We hold weekly planting workshops, maintain 20 raised beds, and run a bi-weekly harvest distribution stand.",
+          "reply": "Thanks, that gives a clear picture of the garden's operations. For the bi-weekly harvest distribution stand, about how many residents do you typically serve?",
+          "finalIntent": "activities",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 4,
+          "user": "We maintain quality by using organic-only soil standards. For fidelity, we use a weekly checklist to ensure every bed is watered and weeded according to the garden manual.",
+          "reply": "That's a very clear way to manage the garden's quality and consistency. The organic standards and weekly checklist are great examples of that.\n\nThinking about the harvest itself, do you happen to track the amount of produce you collect from the 20 beds?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": "outputs_metrics",
+          "patchSource": "analysis_only",
+          "responseDomain": "outputs_metrics",
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 5,
+          "user": "Short term, we want residents to learn basic gardening. Medium term, we expect 200lbs of produce per season. Long term, we hope to see a 10% decrease in reported food insecurity among regular members.",
+          "reply": "Those are fantastic goals, showing a clear path from residents learning new skills all the way to a meaningful reduction in food insecurity.\n\nThat 200lbs of produce per season is a really tangible target. As residents begin receiving that produce, do you also hope to see a change in their daily eating or cooking habits?",
+          "finalIntent": "outcomes_review",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": "outcomes_review",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "full-e2e-stepup-mentorship",
+      "description": "A user providing partial/vague info requiring agent follow-ups and coaching.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We work with high schoolers in the city to help them get jobs.",
+          "reply": "That sounds like important work. If your program is successful, what's the long-term difference you hope to see in the lives of those high schoolers?",
+          "finalIntent": "impact",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Our long-term goal is 100% college or trade school enrollment for our seniors.",
+          "reply": "That's a powerful goal. Having 100% of your seniors enroll in college or trade school is a clear and ambitious target for your program's impact.\n\nTo help them get there, what are some of the key changes you'd expect to see in students while they're still in your program? For example, are there specific skills or behaviors you work on developing?",
+          "finalIntent": "impact",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 3,
+          "user": "We have mentors and some funding from a local bank.",
+          "reply": "It's great that you have mentors and local bank funding to support your work. Those are valuable resources.\n\nWhat kinds of activities do the mentors do with the students?",
+          "finalIntent": "resources",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 3,
+          "failures": []
+        },
+        {
+          "turn": 4,
+          "user": "Oh, we also use a local library for meeting space and a licensed curriculum.",
+          "reply": "Thanks for adding that. A dedicated meeting space and a licensed curriculum are great resources to have.\n\nWhat do the mentors and students typically do with that curriculum during their meetings?",
+          "finalIntent": "resources",
+          "stateIntent": "activities",
+          "patchSource": "analysis_only",
+          "responseDomain": "activities",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 5,
+          "user": "We do mentorship meetings.",
+          "reply": "Got it. And what does a typical mentorship meeting look like for a student and their mentor?",
+          "finalIntent": "activities",
+          "stateIntent": "resources",
+          "patchSource": "analysis_only",
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 6,
+          "user": "Each student meets with a mentor for 2 hours a week to work on college apps and career goals.",
+          "reply": "That's a great, clear structure for the meetings. After a student spends that time working on applications and career goals with a mentor, what's a key skill or piece of knowledge you hope they walk away with?",
+          "finalIntent": "activities",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 7,
+          "user": "We check in with the mentors often.",
+          "reply": "That's a great way to ensure things are on track. When you check in, what are you typically looking for to know the mentorship is going well?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": "outcomes_review",
+          "patchSource": "analysis_only",
+          "responseDomain": "outcomes_review",
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 8,
+          "user": "We use a standardized mentor handbook (fidelity) and require all mentors to have background checks and 10 hours of training (quality).",
+          "reply": "That handbook and the training requirements are great ways to ensure the mentorship is consistently high-quality.\n\nTo get a sense of the program's scale, about how many students are you able to serve in a typical year?",
+          "finalIntent": "quality_evidence",
+          "stateIntent": "outcomes_review",
+          "patchSource": "analysis_only",
+          "responseDomain": "outcomes_review",
+          "effectiveResponseDomain": "quality_evidence",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 9,
+          "user": "We want them to succeed.",
+          "reply": "Absolutely, their success is the whole point of the program.\n\nThinking about all those weekly meetings you mentioned, about how many students are you able to serve in a typical year?",
+          "finalIntent": "outputs_metrics",
+          "stateIntent": "outputs_metrics",
+          "patchSource": "analysis_only",
+          "responseDomain": "outputs_metrics",
+          "effectiveResponseDomain": "outputs_metrics",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 10,
+          "user": "Short term is completing one college app. Medium term is getting an acceptance letter. Long term is that enrollment goal I mentioned.",
+          "reply": "That's a great way to break it down. So the key steps for a student are completing an application, getting an acceptance letter, and finally enrolling.\n\nTo get a sense of the program's reach, about how many students do you typically work with each year?",
+          "finalIntent": "outcomes_review",
+          "stateIntent": "outputs_metrics",
+          "patchSource": "analysis_only",
+          "responseDomain": "outputs_metrics",
+          "effectiveResponseDomain": "outcomes_review",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "impact-happy-path",
+      "description": "All-in-one impact statement is captured and confirmed.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transition successfully to high school.",
+          "reply": "That's a great goal to have for your students.\n\nThinking about the bigger picture, if those students are reading on grade level and successfully moving on to high school, what kind of long-term change does that create for the North Philadelphia community?",
+          "finalIntent": "impact",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Yes, that captures it.",
+          "reply": "Great. Let's shift to think about what makes this work possible. What are the key resources—like staff, funding, or partners—that you need to run the program?",
+          "finalIntent": "resources",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 0,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-list-capture",
+      "description": "When user provides a resource list, the patch captures multiple resource buckets.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training.",
+          "reply": "Thanks for listing those out. It's helpful to see all the components you have in place.\n\nLooking at the big picture, what is the ultimate, long-term change you hope this program achieves?",
+          "finalIntent": "resources",
+          "stateIntent": "resources",
+          "patchSource": "analysis_only",
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "resources-no-silent-drop",
+      "description": "Resource response should not be ignored across turns and should keep resources in model state.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "Staff mentors, school partners, donated laptops, grant funding, and evidence-based training.",
+          "reply": "Got it. So you have the people, technology, funding, and knowledge in place.\n\nWith all of that working together, what is the ultimate, long-term change you hope to see?",
+          "finalIntent": "resources",
+          "stateIntent": "resources",
+          "patchSource": "analysis_only",
+          "responseDomain": "resources",
+          "effectiveResponseDomain": "resources",
+          "resourceBucketsInPatch": 3,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Anything else you need from me on resources?",
+          "reply": "Thanks for checking. That's a great list for now. We can always come back to it.\n\nSo, thinking big picture, what is that ultimate, long-term change you hope your program will achieve?",
+          "finalIntent": "impact",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 3,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import mammoth from "mammoth";
 import type { BootstrapExtractionResponse, BootstrapSuggestion } from "@/lib/bootstrap/types";
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { ingestUserDocument } from "@/lib/rag/userIngest";
+import { looksLikeBroadProgramFrame } from "@/lib/chat/intakeSignals";
 
 const require = createRequire(import.meta.url);
 const PDFParser = require("pdf2json");
@@ -292,6 +293,14 @@ function looksLikeMeaningfulText(text: string): boolean {
   return alphaWords.length >= 20 && lines.length >= 4;
 }
 
+function looksLikeGenericActivitySuggestion(suggestion: BootstrapSuggestion): boolean {
+  if (suggestion.path !== "implementation.activities") return false;
+
+  const raw = JSON.stringify(suggestion.value).toLowerCase();
+  return /\b(provide|offer|support|serve|mentor|tutor|coach|help|guide)\b/.test(raw) &&
+    !/\b(weekly|bi-weekly|daily|sessions?|workshops?|classes?|meetings?|events?|dosage|frequency|duration|hours?|curriculum|checklist|output|outputs|deliver(?:ed|ing)?)\b/.test(raw);
+}
+
 async function extractPdfTextWithPdf2json(bytes: Buffer): Promise<string> {
   return await new Promise((resolve, reject) => {
     const parser = new PDFParser(null, (err: any) => {
@@ -551,6 +560,11 @@ export async function POST(req: NextRequest) {
     }
 
     let safeSuggestions = normalizeSuggestions(parsed.suggestions);
+
+    const broadProgramFrame = looksLikeBroadProgramFrame(combined);
+    if (broadProgramFrame) {
+      safeSuggestions = safeSuggestions.filter((suggestion) => !looksLikeGenericActivitySuggestion(suggestion));
+    }
 
     // Recovery pass: if key fields are missing, ask specifically for those fields.
     const missingPaths: Array<BootstrapSuggestion["path"]> = [];

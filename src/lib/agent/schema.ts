@@ -4,6 +4,7 @@ import type {
   AgentQuestionPlan,
   AgentPatchProvenance,
   AgentQuestionIntent,
+  AgentRevisionProposal,
   AgentStateAssessment,
 } from "@/lib/agent/types";
 
@@ -31,6 +32,7 @@ export interface AgentStructuredOutput {
   confidence?: number;
   evidence_refs?: string[];
   question_plan?: AgentQuestionPlan;
+  revision_proposal?: AgentRevisionProposal;
   decision_summary?: string;
   state_assessment?: AgentStateAssessment;
   contradiction_flags?: AgentContradictionFlag[];
@@ -165,6 +167,40 @@ function parseQuestionPlan(raw: unknown): AgentQuestionPlan | undefined {
   return Object.keys(questionPlan).length > 0 ? questionPlan : undefined;
 }
 
+function parseRevisionProposal(raw: unknown): AgentRevisionProposal | undefined {
+  if (!isPlainObject(raw)) return undefined;
+
+  const revisionProposal: AgentRevisionProposal = {};
+
+  if (typeof raw.shouldRevise === "boolean") {
+    revisionProposal.shouldRevise = raw.shouldRevise;
+  }
+
+  if (typeof raw.originalText === "string" && raw.originalText.trim()) {
+    revisionProposal.originalText = raw.originalText.trim();
+  }
+
+  if (typeof raw.revisedText === "string" && raw.revisedText.trim()) {
+    revisionProposal.revisedText = raw.revisedText.trim();
+  }
+
+  if (typeof raw.rationale === "string" && raw.rationale.trim()) {
+    revisionProposal.rationale = raw.rationale.trim();
+  }
+
+  if (Array.isArray(raw.evidenceRefs)) {
+    revisionProposal.evidenceRefs = raw.evidenceRefs.filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    );
+  }
+
+  if (typeof raw.confidence === "number") {
+    revisionProposal.confidence = Math.max(0, Math.min(1, raw.confidence));
+  }
+
+  return Object.keys(revisionProposal).length > 0 ? revisionProposal : undefined;
+}
+
 export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutput | null {
   const cleaned = extractJsonObjectCandidate(rawText);
   if (!cleaned) return null;
@@ -203,6 +239,11 @@ export function parseAgentStructuredOutput(rawText: string): AgentStructuredOutp
   const parsedQuestionPlan = parseQuestionPlan(parsed.question_plan);
   if (parsedQuestionPlan) {
     output.question_plan = parsedQuestionPlan;
+  }
+
+  const parsedRevisionProposal = parseRevisionProposal(parsed.revision_proposal);
+  if (parsedRevisionProposal) {
+    output.revision_proposal = parsedRevisionProposal;
   }
 
   if (typeof parsed.decision_summary === "string") {
@@ -285,6 +326,18 @@ export function salvageAgentStructuredOutput(rawText: string): AgentStructuredOu
   );
   if (parsedQuestionPlan) {
     output.question_plan = parsedQuestionPlan;
+  }
+
+  const parsedRevisionProposal = parseRevisionProposal(
+    object.revision_proposal ??
+      object.revisionProposal ??
+      object.rewrite_proposal ??
+      object.rewriteProposal ??
+      object.polished_reply ??
+      null
+  );
+  if (parsedRevisionProposal) {
+    output.revision_proposal = parsedRevisionProposal;
   }
 
   if (typeof object.decision_summary === "string") {

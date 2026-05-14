@@ -53,6 +53,7 @@ export function isValidLogicModel(value: unknown): value is LogicModel {
 
   const resources = implementation.resources as Record<string, unknown> | undefined;
   const activities = implementation.activities;
+  const outputsMetrics = implementation.outputs_metrics;
 
   if (!resources || !Array.isArray(activities)) return false;
 
@@ -66,6 +67,9 @@ export function isValidLogicModel(value: unknown): value is LogicModel {
     );
   });
 
+  const outputsMetricsAreValid =
+    outputsMetrics === undefined || isStringArray(outputsMetrics);
+
   return (
     typeof intended.population === "string" &&
     typeof intended.geography === "string" &&
@@ -76,6 +80,7 @@ export function isValidLogicModel(value: unknown): value is LogicModel {
     isStringArray(resources.financial) &&
     isStringArray(resources.knowledge) &&
     activitiesAreValid &&
+    outputsMetricsAreValid &&
     isStringArray(outcomes.short_term) &&
     isStringArray(outcomes.medium_term) &&
     isStringArray(outcomes.long_term)
@@ -92,7 +97,19 @@ export function isValidPersistedDraft(value: unknown): value is PersistedDraft {
     typeof v.savedAt === "string" &&
     !!draft &&
     isValidLogicModel(draft.model) &&
-    isChatMessageArray(draft.messages)
+    isChatMessageArray(draft.messages) &&
+    (draft.retentionMemory === undefined || isValidRetentionMemory(draft.retentionMemory))
+  );
+}
+
+function isValidRetentionMemory(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Array.isArray(v.claims) &&
+    Array.isArray(v.conflicts) &&
+    Array.isArray(v.questions) &&
+    typeof v.lastUpdatedTurnIndex === "number"
   );
 }
 

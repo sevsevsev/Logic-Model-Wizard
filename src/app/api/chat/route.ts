@@ -10,15 +10,26 @@ import {
 } from "@/lib/chat/guardrails";
 import {
   assertIntentWithLatestUserEvidence,
-  buildContextCoverageSummary,
 } from "@/lib/chat/agenticContext";
+import {
+  applyGroundedReplyFallback,
+  buildConflictClarificationPrompt,
+  buildEvidenceLedgerFromTurn,
+  buildSectionScopedMemoryContext,
+  computeSectionReadiness,
+  createEmptyClaimMemory,
+  detectContextConflicts,
+  isClaimMemoryState,
+  updateClaimMemoryFromTurn,
+} from "@/lib/chat/orchestration";
 import { applyCompiledStatementPolicy } from "@/lib/chat/impactAcceptance";
-import { sanitizeImpactPatchWhenDraftBlocked } from "@/lib/chat/impactDraftGate";
+import { looksLikeBroadProgramFrame } from "@/lib/chat/intakeSignals";
+
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
-import { executeAgenticTurn } from "@/lib/agent/executeTurn";
-import { buildConceptCodingTrace } from "@/lib/rag/conceptCoding";
-import { retrieveKnowledge } from "@/lib/rag/retrieval";
-import { findSchoolReferenceMentions } from "@/lib/geo/referenceStore";
+import { runConversationalTurn } from "@/lib/chat/conversationalPipeline";
+
+import { normalizeTranscript } from "@/lib/chat/transcript";
+import type { AgentRevisionLifecycle } from "@/lib/agent/types";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
 
@@ -29,10 +40,14 @@ const SYSTEM_PROMPT = buildSystemPrompt();
 const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
 const DEBUG_AGENTIC_CONTEXT = process.env.DEBUG_AGENTIC_CONTEXT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
-const ENABLE_AGENTIC_TURN = process.env.ENABLE_AGENTIC_TURN === "true";
-const AGENTIC_DUAL_RUN = process.env.AGENTIC_DUAL_RUN === "true";
-const AGENTIC_SOFT_PHASE_ENFORCEMENT = process.env.AGENTIC_SOFT_PHASE_ENFORCEMENT !== "false";
-const AGENTIC_ENABLE_ROUTE_REWRITES = process.env.AGENTIC_ENABLE_ROUTE_REWRITES === "true";
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const LEGACY_RETRIEVAL_TOP_K = parsePositiveInt(process.env.RAG_LEGACY_TOP_K, 8);
 
 const PATCH_EXTRACTION_PROMPT = `You are a strict JSON extraction engine.
 
@@ -59,6 +74,7 @@ Schema:
       "financial": ["string"],
       "knowledge": ["string"]
     },
+    "outputs_metrics": ["string"],
     "quality_fidelity": {
       "fidelity": ["string"],
       "quality": ["string"]
@@ -92,6 +108,16 @@ function splitSentences(text: string): string[] {
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function normalizeNarrativeText(text: string): string {
+  return text
+    .normalize("NFKC")
+    // Common copy/paste artifact: private-use glyph replacing ligatures such as "ti".
+    .replace(/([A-Za-z])[\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]([A-Za-z])/gu, "$1ti$2")
+    .replace(/[\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function dedupeStrings(values: string[]): string[] {
@@ -368,11 +394,12 @@ function buildResourcesLoopFollowUp(
   existingResources: LogicModel["implementation"]["resources"] | undefined,
   userMessage: string
 ): string {
+  const messageResources = extractResourcesHeuristic(userMessage);
   const captured = {
-    human: existingResources?.human ?? [],
-    material: existingResources?.material ?? [],
-    financial: existingResources?.financial ?? [],
-    knowledge: existingResources?.knowledge ?? [],
+    human: dedupeStrings([...(existingResources?.human ?? []), ...(messageResources?.human ?? [])]),
+    material: dedupeStrings([...(existingResources?.material ?? []), ...(messageResources?.material ?? [])]),
+    financial: dedupeStrings([...(existingResources?.financial ?? []), ...(messageResources?.financial ?? [])]),
+    knowledge: dedupeStrings([...(existingResources?.knowledge ?? []), ...(messageResources?.knowledge ?? [])]),
   };
 
   // Determine which buckets are still empty
@@ -400,7 +427,7 @@ function buildResourcesLoopFollowUp(
   if (capturedLines.length > 0) {
     const capturedSummary = capturedLines.join("\n");
     if (missing.length === 0) {
-      return `Got it — here's what I've captured so far:\n\n${capturedSummary}\n\nDoes that look right, or would you like to add or change anything?`;
+      return `Got it — here's what I've captured so far:\n\n${capturedSummary}\n\nWhat are the main activities your team delivers in a typical cycle?`;
     }
     return `Got it — I've captured:\n\n${capturedSummary}\n\nDo you also have any ${missing.slice(0, 2).join(" or ")} to add? It's fine if not — just share what applies.`;
   }
@@ -409,8 +436,229 @@ function buildResourcesLoopFollowUp(
   return `No worries if you don't have all of this yet. Let's start simple: who are the main people involved in running the program (staff, volunteers, or partners)?`;
 }
 
-function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> | null {
+function hasResourceEntries(resources: LogicModel["implementation"]["resources"] | undefined): boolean {
+  return Boolean(
+    (resources?.human?.length ?? 0) > 0 ||
+      (resources?.material?.length ?? 0) > 0 ||
+      (resources?.financial?.length ?? 0) > 0 ||
+      (resources?.knowledge?.length ?? 0) > 0
+  );
+}
+
+function applyResourcesTurnHeuristic(
+  patch: Partial<LogicModel> | null,
+  userMessage: string,
+  responseDomain: QuestionIntent | undefined,
+  existingResources?: LogicModel["implementation"]["resources"]
+): Partial<LogicModel> | null {
+  if (responseDomain !== "resources") return patch;
+  const patchResources = patch?.implementation?.resources;
+  const extracted = extractResourcesHeuristic(userMessage);
+  const mergedResources = {
+    human: dedupeStrings([
+      ...(existingResources?.human ?? []),
+      ...(patchResources?.human ?? []),
+      ...(extracted?.human ?? []),
+    ]),
+    material: dedupeStrings([
+      ...(existingResources?.material ?? []),
+      ...(patchResources?.material ?? []),
+      ...(extracted?.material ?? []),
+    ]),
+    financial: dedupeStrings([
+      ...(existingResources?.financial ?? []),
+      ...(patchResources?.financial ?? []),
+      ...(extracted?.financial ?? []),
+    ]),
+    knowledge: dedupeStrings([
+      ...(existingResources?.knowledge ?? []),
+      ...(patchResources?.knowledge ?? []),
+      ...(extracted?.knowledge ?? []),
+    ]),
+  };
+
+  if (!hasResourceEntries(mergedResources)) return patch;
+
+  return {
+    ...(patch ?? {}),
+    implementation: {
+      ...(patch?.implementation ?? {}),
+      resources: mergedResources,
+      activities: patch?.implementation?.activities ?? [],
+      outputs_metrics: patch?.implementation?.outputs_metrics ?? [],
+      quality_fidelity: patch?.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
+    },
+  };
+}
+
+function applyActivitiesTurnHeuristic(
+  patch: Partial<LogicModel> | null,
+  userMessage: string,
+  responseDomain: QuestionIntent | undefined
+): Partial<LogicModel> | null {
+  if (responseDomain !== "activities") return patch;
+  if (looksLikeBroadProgramFrame(userMessage)) return patch;
+  if (Array.isArray(patch?.implementation?.activities) && patch.implementation.activities.length > 0) {
+    return patch;
+  }
+
+  const action = userMessage.trim().replace(/[.]+$/g, "");
+  if (!action) return patch;
+
+  return {
+    ...(patch ?? {}),
+    implementation: {
+      resources: patch?.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+      activities: [{ item: "__ungrouped__", actions: [action], outputs: [] }],
+      outputs_metrics: patch?.implementation?.outputs_metrics ?? [],
+      quality_fidelity: patch?.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
+    },
+  };
+}
+
+function applyQualityTurnHeuristic(
+  patch: Partial<LogicModel> | null,
+  userMessage: string,
+  responseDomain: QuestionIntent | undefined
+): Partial<LogicModel> | null {
+  if (responseDomain !== "quality_evidence") return patch;
+
+  const currentQuality = patch?.implementation?.quality_fidelity?.quality ?? [];
+  const currentFidelity = patch?.implementation?.quality_fidelity?.fidelity ?? [];
+  if (currentQuality.length > 0 || currentFidelity.length > 0) return patch;
+
+  const text = userMessage.trim().replace(/[.]+$/g, "");
+  if (!text) return patch;
+
+  const quality: string[] = [];
+  const fidelity: string[] = [];
+
+  if (/\bquality\b|standard|background checks?|training|participant\s+satisfaction/i.test(text)) {
+    quality.push(text);
+  }
+  if (/\bfidelity\b|checklist|manual|handbook|adherence/i.test(text)) {
+    fidelity.push(text);
+  }
+
+  if (quality.length === 0 && fidelity.length === 0) {
+    quality.push(text);
+  }
+
+  return {
+    ...(patch ?? {}),
+    implementation: {
+      resources: patch?.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+      activities: patch?.implementation?.activities ?? [],
+      outputs_metrics: patch?.implementation?.outputs_metrics ?? [],
+      quality_fidelity: {
+        quality: dedupeStrings(quality),
+        fidelity: dedupeStrings(fidelity),
+      },
+    },
+  };
+}
+
+function applyOutcomesTurnHeuristic(
+  patch: Partial<LogicModel> | null,
+  userMessage: string,
+  responseDomain: QuestionIntent | undefined
+): Partial<LogicModel> | null {
+  if (responseDomain !== "outcomes_review") return patch;
+
+  const hasOutcomes = Boolean(
+    (patch?.outcomes?.short_term?.length ?? 0) > 0 ||
+      (patch?.outcomes?.medium_term?.length ?? 0) > 0 ||
+      (patch?.outcomes?.long_term?.length ?? 0) > 0
+  );
+  if (hasOutcomes) return patch;
+
   const text = userMessage.trim();
+  if (!text) return patch;
+
+  const short_term: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
+  const medium_term: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
+  const long_term: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
+
+  const short = text.match(/\bshort\s*term\b[:,\-]?\s*([^\.]+(?:\.[^\.]+)*)/i)?.[1];
+  const medium = text.match(/\bmedium\s*term\b[:,\-]?\s*([^\.]+(?:\.[^\.]+)*)/i)?.[1];
+  const long = text.match(/\blong\s*term\b[:,\-]?\s*([^\.]+(?:\.[^\.]+)*)/i)?.[1];
+
+  if (short?.trim()) short_term.push({ statement: short.trim().replace(/[.]+$/g, ""), stakeholderLabels: ["Students"] });
+  if (medium?.trim()) medium_term.push({ statement: medium.trim().replace(/[.]+$/g, ""), stakeholderLabels: ["Students"] });
+  if (long?.trim()) long_term.push({ statement: long.trim().replace(/[.]+$/g, ""), stakeholderLabels: ["Students"] });
+
+  if (short_term.length === 0 && medium_term.length === 0 && long_term.length === 0) {
+    if (/\b(succeed|success|do\s+better|thrive|improve)\b/i.test(text) && !/\b(short|medium|long)[-\s]?term\b/i.test(text)) {
+      return patch;
+    }
+    long_term.push({ statement: text.replace(/[.]+$/g, ""), stakeholderLabels: ["Students"] });
+  }
+
+  return {
+    ...(patch ?? {}),
+    outcomes: {
+      short_term,
+      medium_term,
+      long_term,
+    },
+  };
+}
+
+function hasOutcomeEntries(outcomes: Partial<LogicModel["outcomes"]> | undefined): boolean {
+  return Boolean(
+    (outcomes?.short_term?.length ?? 0) > 0 ||
+      (outcomes?.medium_term?.length ?? 0) > 0 ||
+      (outcomes?.long_term?.length ?? 0) > 0
+  );
+}
+
+function isOutcomesPatchTooVague(outcomes: Partial<LogicModel["outcomes"]> | undefined): boolean {
+  if (!outcomes) return true;
+
+  const statements = [
+    ...(outcomes.short_term ?? []).map((entry) => String(entry.statement ?? "")),
+    ...(outcomes.medium_term ?? []).map((entry) => String(entry.statement ?? "")),
+    ...(outcomes.long_term ?? []).map((entry) => String(entry.statement ?? "")),
+  ]
+    .join(" ")
+    .trim();
+
+  if (!statements) return true;
+
+  const genericOnly = /\b(succeed|success|do\s+better|thrive|improve)\b/i.test(statements);
+  const hasConcreteCue =
+    /\b(short|medium|long)[-\s]?term\b/i.test(statements) ||
+    /\b(acceptance|enrollment|credential|graduat|attendance|retention|employment|housing|produce|lbs?|percentage|%)\b/i.test(
+      statements
+    );
+
+  return genericOnly && !hasConcreteCue;
+}
+
+function looksVagueActivityDescription(userMessage: string): boolean {
+  const text = userMessage.trim().toLowerCase();
+  if (!text) return true;
+
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const hasStructuredDetail = /\b(for\s+\d+\s+hours?|\d+\s*(?:x|times?)\s*(?:a|per)\s*week|weekly|bi-weekly|daily|students?\s+meet|sessions?)\b/i.test(
+    text
+  );
+
+  if (hasStructuredDetail) return false;
+  return wordCount < 9;
+}
+
+function isGenericOutcomeUserMessage(userMessage: string): boolean {
+  const text = userMessage.trim();
+  if (!text) return false;
+
+  const generic = /\b(succeed|success|do\s+better|thrive|improve)\b/i.test(text);
+  const hasHorizon = /\b(short|medium|long)[-\s]?term\b/i.test(text);
+  return generic && !hasHorizon;
+}
+
+function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> | null {
+  const text = normalizeNarrativeText(userMessage);
   if (!text) return null;
 
   const sentences = splitSentences(text);
@@ -418,6 +666,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
 
   const populationCandidates: string[] = [];
   const geographyCandidates: string[] = [];
+  const longTermGoalCandidates: string[] = [];
   const stakeholderLabels: string[] = [];
   const activities: Array<{
     item: string;
@@ -429,6 +678,8 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
   const shortOutcomes: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
   const mediumOutcomes: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
   const longOutcomes: Array<{ statement: string; stakeholderLabels?: string[] }> = [];
+  const qualitySignals: string[] = [];
+  const fidelitySignals: string[] = [];
 
   const populationRegexes = [
     /(?:enrolls?|serves?|supports?|targets?|works with)\s+([^.!?]+)/i,
@@ -466,9 +717,24 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       }
     }
 
+    const longTermGoalMatch = normalized.match(/\b(?:our\s+goal\s+is|goal\s+is|long[-\s]?term\s+goal\s+is|our\s+mission\s+is\s+to|mission\s+is\s+to|theory\s+of\s+change\s*:\s*|we\s+want\s+to|we\s+aim\s+to|we\s+hope\s+to|so\s+that)\s+(.+)$/i);
+    if (longTermGoalMatch?.[1]) {
+      const goalCandidate = longTermGoalMatch[1].trim().replace(/[.]+$/g, "");
+      if (goalCandidate.length > 8) {
+        longTermGoalCandidates.push(goalCandidate);
+      }
+    }
+
     if (/\bstudents?\b/i.test(normalized)) stakeholderLabels.push("Students");
+    if (/\bchildren\b/i.test(normalized)) stakeholderLabels.push("Children");
+    if (/\byouth\b/i.test(normalized)) stakeholderLabels.push("Youth");
+    if (/\bfamil(?:y|ies)\b/i.test(normalized)) stakeholderLabels.push("Families");
     if (/\bteachers?|educators?\b/i.test(normalized)) stakeholderLabels.push("Teachers");
     if (/\bclass(?:es)?\b/i.test(normalized)) stakeholderLabels.push("Classrooms");
+
+    if (/\bchildren\b/i.test(normalized) && /\byouth\b/i.test(normalized)) {
+      populationCandidates.push("children and youth");
+    }
 
     if (/(enroll|recruit|admit)/i.test(normalized)) {
       activities.push({
@@ -494,9 +760,43 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       });
     }
 
+    if (
+      /\b(deliver|delivers|delivered|provides?|offers?)\b.*\b(music|dance|arts?|learning\s+experiences?|programming)\b/i.test(normalized) &&
+      !activities.some((a) => a.actions[0]?.toLowerCase() === normalized.toLowerCase())
+    ) {
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: [],
+        stakeholderLabels: ["Students", "Children", "Youth"],
+      });
+    }
+
     // Expanded activity patterns: general program delivery verbs
     if (
       /\b(run|hold|host|facilitate|conduct|lead|manage)\b.*(program|workshop|session|class|group|meeting|event|camp|club)/i.test(normalized) &&
+      !activities.some((a) => a.actions[0]?.toLowerCase() === normalized.toLowerCase())
+    ) {
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: [],
+      });
+    }
+
+    if (
+      /\b(run|hold|host|facilitate|conduct|lead|manage)\b.*(programs?|workshops?|sessions?|classes?|groups?|meetings?|events?|camps?|clubs?|distribution\s+stands?)\b/i.test(normalized) &&
+      !activities.some((a) => a.actions[0]?.toLowerCase() === normalized.toLowerCase())
+    ) {
+      activities.push({
+        item: "__ungrouped__",
+        actions: [normalized.replace(/[.]+$/g, "")],
+        outputs: [],
+      });
+    }
+
+    if (
+      /\b(meet|meets|meeting|mentor|mentoring|check\s*in)\b/i.test(normalized) &&
       !activities.some((a) => a.actions[0]?.toLowerCase() === normalized.toLowerCase())
     ) {
       activities.push({
@@ -560,6 +860,24 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       .filter(Boolean);
 
     for (const clause of outcomeClauses) {
+      const shortMatch = clause.match(/\bshort\s*term\b[:,\-]?\s*(.+)$/i);
+      if (shortMatch?.[1]) {
+        addOutcome(shortOutcomes, shortMatch[1], ["Students"]);
+        continue;
+      }
+
+      const mediumMatch = clause.match(/\bmedium\s*term\b[:,\-]?\s*(.+)$/i);
+      if (mediumMatch?.[1]) {
+        addOutcome(mediumOutcomes, mediumMatch[1], ["Students"]);
+        continue;
+      }
+
+      const longMatch = clause.match(/\blong\s*term\b[:,\-]?\s*(.+)$/i);
+      if (longMatch?.[1]) {
+        addOutcome(longOutcomes, longMatch[1], ["Students"]);
+        continue;
+      }
+
       // Short-term: knowledge / awareness changes
       if (/(clearer sense|awareness|knowledge|understand|options|ideas? about)/i.test(clause)) {
         addOutcome(shortOutcomes, clause, ["Students"]);
@@ -572,13 +890,43 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
         continue;
       }
 
+      // Medium-term: social-emotional and school environment shifts.
+      if (/(self[-\s]?efficacy|social[-\s]?emotional|SEL|classroom\s+climate|school\s+culture|family\s+engagement)/i.test(clause)) {
+        addOutcome(mediumOutcomes, clause, ["Students", "Families"]);
+        continue;
+      }
+
       // Long-term: condition / status changes — require employment/economic/life-condition words,
       // not just "career" (which appears in career-awareness sentences)
       if (/(employment|economic|self.suffic|stability|life condition|social mobility)/i.test(clause) && /(will|should)/i.test(clause)) {
         addOutcome(longOutcomes, clause, ["Students"]);
       }
+
+      if (/(safer|vibrant\s+communit(?:y|ies)|arts\s+learning.*embedded|daily\s+life)/i.test(clause)) {
+        addOutcome(longOutcomes, clause, ["Students", "Families", "Community"]);
+      }
+    }
+
+    const qualityParen = normalized.match(/([^.!?;]+)\(\s*quality\s*\)/i);
+    if (qualityParen?.[1]) {
+      qualitySignals.push(qualityParen[1].trim().replace(/[.]+$/g, ""));
+    }
+
+    const fidelityParen = normalized.match(/([^.!?;]+)\(\s*fidelity\s*\)/i);
+    if (fidelityParen?.[1]) {
+      fidelitySignals.push(fidelityParen[1].trim().replace(/[.]+$/g, ""));
+    }
+
+    if (/(\bquality\b|organic-only|standards?|background checks?|participant\s+satisfaction)/i.test(normalized)) {
+      qualitySignals.push(normalized.replace(/[.]+$/g, ""));
+    }
+
+    if (/(\bfidelity\b|checklist|manual|adherence|as\s+designed|handbook)/i.test(normalized)) {
+      fidelitySignals.push(normalized.replace(/[.]+$/g, ""));
     }
   }
+
+  const broadProgramFrame = looksLikeBroadProgramFrame(text);
 
   const dedupedStakeholders = dedupeStrings(stakeholderLabels).map(makeStakeholder);
   const dedupedActivities = activities.filter(
@@ -616,6 +964,12 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     patch.intended_impact = { ...base, geography } as LogicModel["intended_impact"];
   }
 
+  if (longTermGoalCandidates.length > 0) {
+    const long_term_goal = dedupeStrings(longTermGoalCandidates)[0];
+    const base = (patch.intended_impact ?? {}) as Partial<LogicModel["intended_impact"]>;
+    patch.intended_impact = { ...base, long_term_goal } as LogicModel["intended_impact"];
+  }
+
   if (dedupedStakeholders.length > 0) {
     patch.stakeholders = dedupedStakeholders;
   }
@@ -624,21 +978,19 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
   const heuristicResources = extractResourcesHeuristic(text);
   if (heuristicResources) {
     patch.implementation = {
-      ...(patch.implementation ?? {}),
-      activities: patch.implementation?.activities ?? [],
       resources: {
         human: heuristicResources.human,
         material: heuristicResources.material,
         financial: heuristicResources.financial,
         knowledge: heuristicResources.knowledge,
       },
+      activities: patch.implementation?.activities ?? [],
       quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
     };
-  } else if (dedupedActivities.length > 0) {
+  } else if (dedupedActivities.length > 0 && !broadProgramFrame) {
     patch.implementation = {
-      ...(patch.implementation ?? {}),
-      activities: dedupedActivities,
       resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+      activities: dedupedActivities,
       quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
     };
   }
@@ -648,6 +1000,19 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       short_term: shortOutcomes,
       medium_term: mediumOutcomes,
       long_term: longOutcomes,
+    };
+  }
+
+  const nextQuality = dedupeStrings(qualitySignals);
+  const nextFidelity = dedupeStrings(fidelitySignals);
+  if (nextQuality.length > 0 || nextFidelity.length > 0) {
+    patch.implementation = {
+      resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
+      activities: patch.implementation?.activities ?? [],
+      quality_fidelity: {
+        quality: nextQuality,
+        fidelity: nextFidelity,
+      },
     };
   }
 
@@ -681,6 +1046,12 @@ function mergeModelPatchPreferPrimary(
       (fallback.implementation.activities?.length ?? 0) > 0
     ) {
       merged.implementation.activities = fallback.implementation.activities;
+    }
+    if (
+      (merged.implementation.outputs_metrics?.length ?? 0) === 0 &&
+      (fallback.implementation.outputs_metrics?.length ?? 0) > 0
+    ) {
+      merged.implementation.outputs_metrics = fallback.implementation.outputs_metrics;
     }
     // Merge resources bucket-by-bucket: prefer primary when non-empty, fill from fallback otherwise
     if (fallback.implementation.resources) {
@@ -786,20 +1157,20 @@ function normalizeMergedActivityPatch(
 
     normalizedActivities.push({
       item,
-      category: typeof activity.category === "string" ? activity.category : undefined,
+      category: undefined,
       actions: actionTexts,
-      outputs,
+      outputs: outputs.map((output) => ({ text: output.text })),
     });
   }
 
   return {
     ...patch,
     implementation: {
-      ...patch.implementation,
+      resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
       activities: normalizedActivities,
-       resources: patch.implementation?.resources ?? { human: [], material: [], financial: [], knowledge: [] },
-       quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
-},
+      outputs_metrics: patch.implementation?.outputs_metrics ?? [],
+      quality_fidelity: patch.implementation?.quality_fidelity ?? { fidelity: [], quality: [] },
+    },
   };
 }
 
@@ -808,11 +1179,13 @@ async function extractModelPatchFallback({
   history,
   userMessage,
   modelSnapshot,
+  memoryContext,
 }: {
   apiKey: string;
   history: ChatMessage[];
   userMessage: string;
   modelSnapshot?: LogicModel;
+  memoryContext?: string;
 }): Promise<Partial<LogicModel> | null> {
   const extractionPayload = {
     system_instruction: { parts: [{ text: PATCH_EXTRACTION_PROMPT }] },
@@ -825,6 +1198,7 @@ async function extractModelPatchFallback({
               history,
               model_snapshot: modelSnapshot,
               latest_user_message: userMessage,
+              retained_facts_context: memoryContext ?? "",
             }),
           },
         ],
@@ -894,7 +1268,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { message, history, model } = body as { message?: unknown; history?: unknown; model?: unknown };
+  const { message, history, model, revisionLifecycle, retentionMemory } = body as {
+    message?: unknown;
+    history?: unknown;
+    model?: unknown;
+    revisionLifecycle?: unknown;
+    retentionMemory?: unknown;
+    transcript?: unknown;
+  };
 
   if (typeof message !== "string" || message.trim().length === 0) {
     return NextResponse.json({ error: "message must be a non-empty string." }, { status: 400 });
@@ -905,15 +1286,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "message exceeds maximum length." }, { status: 400 });
   }
 
-  if (!Array.isArray(history)) {
+  if (history !== undefined && !Array.isArray(history)) {
     return NextResponse.json({ error: "history must be an array." }, { status: 400 });
   }
 
   const modelSnapshot = isLogicModelShape(model) ? model : undefined;
+  const safeRevisionLifecycle: AgentRevisionLifecycle | undefined = isRevisionLifecycleShape(revisionLifecycle)
+    ? revisionLifecycle
+    : undefined;
+  const safeRetentionMemory = isClaimMemoryState(retentionMemory)
+    ? retentionMemory
+    : createEmptyClaimMemory();
   const requestUserId = req.headers.get("x-user-id")?.trim() || undefined;
 
   // Cap history depth to prevent token-stuffing attacks
-  const safeHistory = (history as ChatMessage[])
+  const safeHistory = ((Array.isArray(history) ? history : []) as ChatMessage[])
     .slice(-40)
     .filter(
       (m) =>
@@ -923,540 +1310,123 @@ export async function POST(req: NextRequest) {
         typeof m.content === "string"
     );
   const responseDomain = inferUserResponseDomainFromHistory(safeHistory);
-  // -------------------------------------------------------------------------
-
-  let dualRunAgenticResult: Awaited<ReturnType<typeof executeAgenticTurn>> = null;
-  let agenticFallbackReason: string | null = null;
-  if (!ENABLE_AGENTIC_TURN && AGENTIC_DUAL_RUN) {
-    try {
-      dualRunAgenticResult = await executeAgenticTurn({
-        apiKey,
-        userMessage: message.trim(),
-        history: safeHistory,
-        modelSnapshot,
-        userId: requestUserId,
-      });
-    } catch {
-      dualRunAgenticResult = null;
-    }
-  }
-
-  if (ENABLE_AGENTIC_TURN) {
-    try {
-      const agentic = await executeAgenticTurn({
-        apiKey,
-        userMessage: message.trim(),
-        history: safeHistory,
-        modelSnapshot,
-        userId: requestUserId,
-      });
-
-      if (agentic) {
-        let usedExtractionFallback = false;
-        let usedHeuristicMerge = false;
-        let modelPatch = agentic.modelPatch;
-        let patchSource: "agent" | "extraction_fallback" | "heuristic_merge" | "none" = modelPatch
-          ? "agent"
-          : "none";
-        const shouldUseFallbackMerge = (agentic.confidence ?? 0) < 0.6 || !modelPatch;
-
-        // Agentic mode should preserve user-provided facts with the same resilience as legacy mode.
-        if (!modelPatch && shouldUseFallbackMerge) {
-          usedExtractionFallback = true;
-          modelPatch = await extractModelPatchFallback({
-            apiKey,
-            history: safeHistory,
-            userMessage: message.trim(),
-            modelSnapshot,
-          });
-          if (modelPatch) {
-            patchSource = "extraction_fallback";
-          }
-        }
-
-        if (shouldUseFallbackMerge) {
-          try {
-            const heuristicPatch = buildHeuristicNarrativePatch(message.trim());
-            usedHeuristicMerge = Boolean(heuristicPatch);
-            if (heuristicPatch && !modelPatch) {
-              patchSource = "heuristic_merge";
-            }
-            modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
-          } catch {
-            // Heuristic extraction failed — proceed with AI patch only
-          }
-        }
-
-        modelPatch = normalizeMergedActivityPatch(modelPatch);
-        modelPatch = applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
-          synthesizeWhenComplete: false,
-        });
-        modelPatch = constrainPatchToResponseDomain(modelPatch, responseDomain);
-
-        const schoolMatches = await findSchoolReferenceMentions(message.trim(), 3);
-        const topSchoolMatch = schoolMatches[0];
-        const secondSchoolMatch = schoolMatches[1];
-
-        const patchGeography = modelPatch?.intended_impact?.geography ?? "";
-        const snapshotGeography = modelSnapshot?.intended_impact?.geography ?? "";
-        const hasSpecificGeography = guardrailLooksSpecificGeography(patchGeography || snapshotGeography);
-
-        const schoolMatchIsHighConfidence = Boolean(topSchoolMatch && topSchoolMatch.confidence >= 0.85);
-        const schoolMatchIsAmbiguous = Boolean(
-          topSchoolMatch &&
-            (!schoolMatchIsHighConfidence ||
-              (secondSchoolMatch && topSchoolMatch.confidence - secondSchoolMatch.confidence < 0.12))
-        );
-
-        let schoolResolverAction: "none" | "auto-applied" | "clarify" = "none";
-        let schoolResolverAppliedValue: string | null = null;
-        const hasAgentQuestionPlan = Boolean(agentic.questionPlan);
-
-        let reply = agentic.reply;
-        let questionIntent = normalizeQuestionIntent(agentic.questionIntent);
-
-        if (!hasSpecificGeography && topSchoolMatch && schoolMatchIsHighConfidence && !schoolMatchIsAmbiguous) {
-          const resolvedGeography = [
-            topSchoolMatch.schoolName,
-            topSchoolMatch.city,
-            topSchoolMatch.state,
-            topSchoolMatch.zipCode,
-          ]
-            .filter(Boolean)
-            .join(", ");
-
-          if (!modelPatch) {
-            modelPatch = {};
-          }
-          modelPatch.intended_impact = {
-            population:
-              modelPatch.intended_impact?.population ?? modelSnapshot?.intended_impact.population ?? "",
-            geography: resolvedGeography,
-            long_term_goal:
-              modelPatch.intended_impact?.long_term_goal ?? modelSnapshot?.intended_impact.long_term_goal ?? "",
-            compiled_statement:
-              modelPatch.intended_impact?.compiled_statement ??
-              modelSnapshot?.intended_impact.compiled_statement ??
-              "",
-          };
-
-          schoolResolverAction = "auto-applied";
-          schoolResolverAppliedValue = resolvedGeography;
-        }
-
-        if (!hasSpecificGeography && topSchoolMatch && schoolMatchIsAmbiguous) {
-          const option1 = topSchoolMatch.schoolName;
-          const option2 = secondSchoolMatch?.schoolName;
-          const optionsText = option2 ? `${option1} or ${option2}` : option1;
-
-          reply = `I might be matching your school reference to ${optionsText}. Which school should I use to set the geography?`;
-          questionIntent = "geography";
-          schoolResolverAction = "clarify";
-        }
-
-        if (
-          AGENTIC_ENABLE_ROUTE_REWRITES &&
-          !hasAgentQuestionPlan &&
-          shouldRequestImpactSpecificity(modelPatch, {
-            currentIntent: questionIntent,
-            snapshot: modelSnapshot,
-          })
-        ) {
-          reply = "Let's make that impact statement more specific. What exact long-term difference should we be able to point to in 10 years (for example, sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
-          questionIntent = "impact_specificity";
-        }
-
-        const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
-
-        if (
-          AGENTIC_ENABLE_ROUTE_REWRITES &&
-          !hasAgentQuestionPlan &&
-          shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)
-        ) {
-          reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
-          questionIntent = "impact_aspiration";
-        }
-
-        const impactDraftReadiness = inferImpactDraftReadiness(
-          modelSnapshot,
-          safeHistory,
-          message.trim()
-        );
-
-        if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
-          modelPatch = sanitizeImpactPatchWhenDraftBlocked(modelPatch);
-
-          questionIntent = impactDraftReadiness.missingIntent;
-          reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
-        }
-
-        const normalizedIntent = normalizeQuestionIntent(questionIntent);
-        let stateIntent = inferIntentFromModelState(patchedSnapshot);
-        stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
-
-        // When all three impact inputs are present but the user has not yet confirmed the
-        // compiled statement, synthesize it and present the draft for confirmation.
-        if (stateIntent === "impact_review" && !patchedSnapshot?.intended_impact.compiled_statement?.trim()) {
-          const { population, geography, long_term_goal } = patchedSnapshot!.intended_impact;
-          const compiled = buildCompiledStatement(population, geography, long_term_goal);
-          if (compiled) {
-            reply = `Based on what you've shared, here's a draft intended impact statement:\n\n${compiled}\n\nDoes this statement capture your ultimate goal for the students you serve?`;
-            questionIntent = "impact_review";
-          }
-        }
-
-        // Detect when we've looped asking the same phase question without capturing the answer.
-        // Override with a targeted follow-up that acknowledges partial input and asks specifically.
-        if (stateIntent && detectRepeatPhaseLoop(safeHistory, stateIntent)) {
-          const loopFollowUp = buildResourcesLoopFollowUp(
-            patchedSnapshot?.implementation?.resources,
-            message.trim()
-          );
-          reply = loopFollowUp;
-          questionIntent = "resources";
-        }
-
-        const qualityClarified = refineRepeatedQualityQuestion(
-          reply,
-          normalizedIntent,
-          stateIntent,
-          message.trim()
-        );
-        reply = qualityClarified.reply;
-        questionIntent = qualityClarified.questionIntent;
-
-        const planAligned = applyQuestionPlanGuard(
-          reply,
-          normalizeQuestionIntent(questionIntent),
-          agentic.questionPlan
-        );
-
-        const deterministic = hasAgentQuestionPlan
-          ? {
-              reply: planAligned.reply,
-              questionIntent: planAligned.questionIntent,
-            }
-          : enforceDeterministicPhaseQuestion(
-              planAligned.reply,
-              planAligned.questionIntent,
-              stateIntent,
-              { strict: !AGENTIC_SOFT_PHASE_ENFORCEMENT }
-            );
-
-        const conceptAdjusted = applyConceptTangentResumePrompt(
-          deterministic.reply,
-          message.trim()
-        );
-
-        const contextText = [
-          ...safeHistory.map((msg) => msg.content),
-          message.trim(),
-          conceptAdjusted.reply,
-        ].join("\n");
-
-        const intentResolution = resolveQuickReplyIntent(
-          conceptAdjusted.reply,
-          deterministic.questionIntent
-        );
-
-        const quickReplies = conceptAdjusted.applied
-          ? getConceptTangentQuickReplies()
-          : ENABLE_RESPONSE_CHIPS
-            ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
-            : undefined;
-
-        // Final-pass: deterministically synthesize compiled_statement when all
-        // three core impact fields are present but the statement is still empty.
-        modelPatch = applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
-          synthesizeWhenComplete: true,
-        });
-
-        if (DEBUG_AGENTIC_CONTEXT) {
-          console.info("[agentic-context-coverage]", {
-            mode: "agentic",
-            summary: buildContextCoverageSummary(message.trim(), modelPatch),
-            stateAssessment: agentic.stateAssessment ?? null,
-            contradictionFlags: agentic.contradictionFlags ?? [],
-            decisionSummary: agentic.decisionSummary ?? null,
-          });
-        }
-
-        return NextResponse.json({
-          reply: conceptAdjusted.reply,
-          modelPatch,
-          quickReplies,
-          llmMeta: {
-            path: "agentic",
-            model: agentic.modelUsed ?? null,
-            fallbackReason: null,
-            trace: {
-              stateIntent: stateIntent ?? null,
-              initialIntent: normalizeQuestionIntent(agentic.questionIntent) ?? null,
-              finalIntent: deterministic.questionIntent ?? null,
-              contradictionFlags: agentic.contradictionFlags ?? [],
-              questionPlan: agentic.questionPlan ?? null,
-              questionPlanApplied: hasAgentQuestionPlan,
-              decisionSummary: agentic.decisionSummary ?? null,
-              patchSource,
-              usedExtractionFallback,
-              usedHeuristicMerge,
-              schoolResolverAction,
-              schoolResolverAppliedValue,
-              schoolResolverTopMatches: schoolMatches.slice(0, 2).map((m) => ({
-                schoolName: m.schoolName,
-                confidence: m.confidence,
-              })),
-              conceptCoding: buildConceptCodingTrace({
-                userText: message.trim(),
-                retrievedChunks: agentic.retrievedEvidence ?? [],
-                evidenceRefs: agentic.evidenceRefs,
-              }),
-              conceptTangentHandled: conceptAdjusted.applied,
-              routeRewritesEnabled: AGENTIC_ENABLE_ROUTE_REWRITES,
-            },
-          },
-        });
-      }
-
-      agenticFallbackReason = "null-agentic-result";
-      logAgenticFallback("null-agentic-result", message.trim(), modelSnapshot, safeHistory.length);
-    } catch {
-      agenticFallbackReason = "agentic-exception";
-      logAgenticFallback("agentic-exception", message.trim(), modelSnapshot, safeHistory.length);
-      // Fall through to legacy pipeline when agentic mode fails.
-    }
-  }
-
-  // Build Gemini contents array from chat history
-  const impactDraftReadiness = inferImpactDraftReadiness(
-    modelSnapshot,
-    safeHistory,
-    message.trim()
+  const effectiveResponseDomain = inferEffectiveResponseDomain(
+    responseDomain,
+    message.trim(),
+    safeHistory
   );
 
-  const modelContextText = modelSnapshot
-    ? `\n\n[Current Logic Model Snapshot]\n${JSON.stringify(modelSnapshot)}`
-    : "";
-
-  const impactReadinessText = buildImpactReadinessInstruction(impactDraftReadiness);
-
-  const contents = [
-    ...safeHistory.map((msg) => ({
-      role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.content }],
+  // --- Minimal Conversational Pipeline (only execution path) ----------------
+  // Natural dialogue: one follow-up at a time, no schema forcing, retrieval as support.
+  const incomingTranscript = (body as { transcript?: unknown }).transcript;
+  const transcriptFromHistory = {
+    turns: safeHistory.map((entry) => ({
+      role: entry.role,
+      content: entry.content,
+      timestamp: entry.timestamp,
     })),
-    { role: "user", parts: [{ text: `${message.trim()}${modelContextText}${impactReadinessText}` }] },
-  ];
-
-  const geminiPayload = {
-    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents,
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 2048,
-    },
+    questionsAsked: [],
+    topicsCovered: [],
   };
 
-  const { response: geminiRes, model: legacyModelUsed } = await generateGeminiContentWithFallback(
-    apiKey,
-    geminiPayload,
-    "chat"
-  );
-
-  if (!geminiRes.ok) {
-    const errText = await geminiRes.text();
-    return NextResponse.json({ error: errText }, { status: geminiRes.status });
-  }
-
-  const geminiData = await geminiRes.json();
-  const rawText: string =
-    geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-  // Split coaching reply from hidden tags
-  const intentMatch = rawText.match(/<question_intent>([\s\S]*?)<\/question_intent>/);
-  const patchMatch = rawText.match(/<model_patch>([\s\S]*?)<\/model_patch>/);
-  let questionIntent = normalizeQuestionIntent(intentMatch?.[1]);
-  let reply = rawText
-    .replace(/<question_intent>[\s\S]*?<\/question_intent>/g, "")
-    .replace(/<model_patch>[\s\S]*?<\/model_patch>/g, "")
-    .trim();
-
-  let modelPatch: Partial<LogicModel> | null = null;
-  if (patchMatch?.[1]) {
-    try {
-      modelPatch = JSON.parse(patchMatch[1].trim());
-    } catch {
-      // Malformed patch — ignore, don't crash
-    }
-  }
-
-  // Fallback path: if the model did not emit <model_patch> tags,
-  // run a strict extraction pass so the Logic Mirror still updates.
-  if (!modelPatch) {
-    modelPatch = await extractModelPatchFallback({
-      apiKey,
-      history: safeHistory,
-      userMessage: message.trim(),
-      modelSnapshot,
-    });
-  }
-
+  const normalizedTranscript = normalizeTranscript(incomingTranscript ?? transcriptFromHistory);
+  
   try {
-    const heuristicPatch = buildHeuristicNarrativePatch(message.trim());
-    modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
-  } catch {
-    // Heuristic extraction failed — proceed with AI patch only
-  }
+    const readinessBeforeTurn = computeSectionReadiness(modelSnapshot);
+    const focusSection = readinessBeforeTurn.nextSection;
+    const retainedFactsContext = buildSectionScopedMemoryContext(safeRetentionMemory, focusSection);
 
-  modelPatch = normalizeMergedActivityPatch(modelPatch);
-  modelPatch = applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
-    synthesizeWhenComplete: false,
-  });
-  modelPatch = constrainPatchToResponseDomain(modelPatch, responseDomain);
+    const conversational = await runConversationalTurn({
+      apiKey,
+      message: message.trim(),
+      transcript: normalizedTranscript,
+      topK: LEGACY_RETRIEVAL_TOP_K,
+      retainedFactsContext,
+      sectionFocus: focusSection,
+    });
 
-  if (
-    shouldRequestImpactSpecificity(modelPatch, {
-      currentIntent: questionIntent,
-      snapshot: modelSnapshot,
-    })
-  ) {
-    if (modelPatch) {
-      const { intended_impact: _omit, ...remainingPatch } = modelPatch;
-      modelPatch = remainingPatch;
-    }
-    reply = "Let's make that impact statement more specific. What exact long-term difference should we be able to point to in 10 years (for example, sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
-    questionIntent = "impact_specificity";
-  }
-
-  const patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
-
-  if (shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
-    reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
-    questionIntent = "impact_aspiration";
-  }
-
-  if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
-    modelPatch = sanitizeImpactPatchWhenDraftBlocked(modelPatch);
-
-    questionIntent = impactDraftReadiness.missingIntent;
-    reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
-  }
-
-  let stateIntent = inferIntentFromModelState(patchedSnapshot);
-  stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
-
-  // When all three impact inputs are present but the user has not yet confirmed the
-  // compiled statement, synthesize it and present the draft for confirmation.
-  if (stateIntent === "impact_review" && !patchedSnapshot?.intended_impact.compiled_statement?.trim()) {
-    const { population, geography, long_term_goal } = patchedSnapshot!.intended_impact;
-    const compiled = buildCompiledStatement(population, geography, long_term_goal);
-    if (compiled) {
-      reply = `Based on what you've shared, here's a draft intended impact statement:\n\n${compiled}\n\nDoes this statement capture your ultimate goal for the students you serve?`;
-      questionIntent = "impact_review";
-    }
-  }
-
-  // Detect when we've looped asking the same phase question without capturing the answer.
-  if (stateIntent && detectRepeatPhaseLoop(safeHistory, stateIntent)) {
-    const loopFollowUp = buildResourcesLoopFollowUp(
-      patchedSnapshot?.implementation?.resources,
-      message.trim()
+    const modelPatch = applyCompiledStatementPolicy(
+      conversational.analysis.model,
+      modelSnapshot,
+      message.trim(),
+      { synthesizeWhenComplete: true }
     );
-    reply = loopFollowUp;
-    questionIntent = "resources";
-  }
 
-  const qualityClarified = refineRepeatedQualityQuestion(
-    reply,
-    normalizeQuestionIntent(questionIntent),
-    stateIntent,
-    message.trim()
-  );
-  reply = qualityClarified.reply;
-  questionIntent = qualityClarified.questionIntent;
+    const mergedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
+    const evidenceLedger = buildEvidenceLedgerFromTurn({
+      userMessage: message.trim(),
+      modelPatch,
+      historyLength: safeHistory.length,
+    });
+    const readinessAfterTurn = computeSectionReadiness(mergedSnapshot, evidenceLedger);
+    const updatedRetentionMemory = updateClaimMemoryFromTurn({
+      previous: safeRetentionMemory,
+      userMessage: message.trim(),
+      modelPatch,
+      turnIndex: safeHistory.length + 1,
+    });
 
-  const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent, {
-    strict: true,
-  });
+    const conflictPrompt = buildConflictClarificationPrompt(
+      updatedRetentionMemory,
+      readinessAfterTurn.nextSection
+    );
+    const finalReply = applyGroundedReplyFallback({
+      reply: conflictPrompt ?? conversational.reply,
+      modelPatch,
+      nextSection: readinessAfterTurn.nextSection,
+    });
 
-  const conceptAdjusted = applyConceptTangentResumePrompt(
-    deterministic.reply,
-    message.trim()
-  );
-  reply = conceptAdjusted.reply;
-  questionIntent = deterministic.questionIntent;
-
-  const contextText = [
-    ...safeHistory.map((msg) => msg.content),
-    message.trim(),
-    reply,
-  ].join("\n");
-
-  const intentResolution = resolveQuickReplyIntent(reply, questionIntent);
-  const quickReplies = conceptAdjusted.applied
-    ? getConceptTangentQuickReplies()
-    : ENABLE_RESPONSE_CHIPS
-      ? detectQuickReplies(intentResolution.intent, contextText, message.trim())
+    const quickReplies = ENABLE_RESPONSE_CHIPS
+      ? sanitizeQuickReplies(
+          detectQuickReplies(
+            resolveQuickReplyIntent(finalReply).intent,
+            [
+              ...safeHistory.map((entry) => entry.content),
+              message.trim(),
+              finalReply,
+            ].join("\n"),
+            message.trim()
+          ),
+          finalReply
+        )
       : undefined;
 
-  const legacyRetrieved = await retrieveKnowledge(message.trim(), 5, {
-    userId: requestUserId,
-  });
-
-  if (DEBUG_AGENTIC_CONTEXT) {
-    console.info("[agentic-context-coverage]", {
-      mode: "legacy",
-      summary: buildContextCoverageSummary(message.trim(), modelPatch),
-    });
-  }
-
-  if (CHAT_INTENT_DEBUG) {
-    console.info("[chat-intent]", {
-      explicitIntent: questionIntent ?? null,
-      stateIntent: stateIntent ?? null,
-      fallbackIntent: intentResolution.fallbackIntent ?? null,
-      chosenIntent: intentResolution.intent ?? null,
-      source: intentResolution.source,
-      quickReplyCount: quickReplies?.length ?? 0,
-      responseChipsEnabled: ENABLE_RESPONSE_CHIPS,
-      impactDraftReadiness,
-    });
-
-    if (AGENTIC_DUAL_RUN) {
-      console.info("[agentic-dual-run]", {
-        enabled: Boolean(dualRunAgenticResult),
-        agenticReplyPreview: dualRunAgenticResult?.reply?.slice(0, 220) ?? null,
-        legacyReplyPreview: reply.slice(0, 220),
-        agenticIntent: dualRunAgenticResult?.questionIntent ?? null,
-        legacyIntent: questionIntent ?? null,
-      });
-    }
-  }
-
-  return NextResponse.json({
-    reply,
-    modelPatch: applyCompiledStatementPolicy(modelPatch, modelSnapshot, message.trim(), {
-      synthesizeWhenComplete: true,
-    }),
-    quickReplies,
-    llmMeta: {
-      path: "legacy",
-      model: legacyModelUsed,
-      fallbackReason: ENABLE_AGENTIC_TURN ? agenticFallbackReason : null,
-      trace: {
-        stateIntent: stateIntent ?? null,
-        initialIntent: normalizeQuestionIntent(intentMatch?.[1]) ?? null,
-        finalIntent: questionIntent ?? null,
-        resolutionSource: intentResolution.source,
-        conceptCoding: buildConceptCodingTrace({
-          userText: message.trim(),
-          retrievedChunks: legacyRetrieved,
-        }),
-        conceptTangentHandled: conceptAdjusted.applied,
-        routeRewritesEnabled: true,
+    return NextResponse.json({
+      reply: finalReply,
+      modelPatch,
+      retentionMemory: updatedRetentionMemory,
+      revisionProposal: null,
+      quickReplies,
+      transcript: conversational.transcript,
+      analysis: conversational.analysis,
+      llmMeta: {
+        path: "conversational",
+        model: conversational.modelUsed,
+        fallbackReason: null,
+        trace: {
+          initialIntent: effectiveResponseDomain ?? responseDomain ?? null,
+          stateIntent: responseDomain ?? null,
+          finalIntent: effectiveResponseDomain ?? responseDomain ?? focusSection,
+          resolutionSource: "minimal_conversational_pipeline",
+          responseDomain: responseDomain ?? null,
+          effectiveResponseDomain: effectiveResponseDomain ?? null,
+          patchSource: "analysis_only",
+          retrieval: conversational.retrieval.trace,
+          usedExtractionFallback: false,
+          usedHeuristicMerge: false,
+          routeRewritesEnabled: false,
+          nextSection: readinessAfterTurn.nextSection,
+          openConflictQuestions: updatedRetentionMemory.questions.filter((q) => q.status === "open").length,
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    console.error("[chat-route] Conversational pipeline error:", error instanceof Error ? error.message : error);
+    return NextResponse.json(
+      { error: "Conversational processing failed" },
+      { status: 500 }
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1488,6 +1458,32 @@ type QuestionIntent =
   | "outcomes_review"
   | "section_refine"
   | "none";
+
+function mapResponseDomainToSection(domain: QuestionIntent | undefined):
+  | "impact"
+  | "resources"
+  | "activities"
+  | "outputs_metrics"
+  | "quality_fidelity"
+  | "outcomes"
+  | "stakeholders" {
+  switch (domain) {
+    case "resources":
+      return "resources";
+    case "activities":
+      return "activities";
+    case "outputs_metrics":
+      return "outputs_metrics";
+    case "quality_evidence":
+      return "quality_fidelity";
+    case "outcomes_review":
+      return "outcomes";
+    case "section_refine":
+      return "stakeholders";
+    default:
+      return "impact";
+  }
+}
 
 type ParsedQuestionIntent = QuestionIntent;
 
@@ -1535,9 +1531,77 @@ function inferUserResponseDomainFromHistory(history: ChatMessage[]): QuestionInt
   return detectQuickReplyIntent(sourceText);
 }
 
+function lastAssistantAskedResources(history: ChatMessage[]): boolean {
+  const lastAssistantMessage = [...history]
+    .reverse()
+    .find(
+      (msg) =>
+        msg.role === "assistant" &&
+        typeof msg.content === "string" &&
+        msg.content.trim().length > 0
+    );
+
+  if (!lastAssistantMessage) return false;
+  return detectQuickReplyIntent(lastAssistantMessage.content) === "resources";
+}
+
+function inferEffectiveResponseDomain(
+  inferredDomain: QuestionIntent | undefined,
+  userMessage: string,
+  history: ChatMessage[]
+): QuestionIntent | undefined {
+  const broadProgramFrame = looksLikeBroadProgramFrame(userMessage);
+
+  // Let strong current-turn evidence override stale domain anchoring from prior prompts.
+  if (/\b(short[-\s]?term|medium[-\s]?term|outcomes?)\b/i.test(userMessage)) {
+    return "outcomes_review";
+  }
+
+  if (/\b(fidelity|quality|standards?|checklist|rubric|adherence|implementation\s+quality|check[-\s]?ins?|monitor(?:ing)?|supervision)\b/i.test(userMessage)) {
+    return "quality_evidence";
+  }
+
+  // Keep broad first-turn framing in impact flow; avoid coercing into activities
+  // when the user is describing program purpose, population, or geography at a high level.
+  if (
+    broadProgramFrame &&
+    (!inferredDomain ||
+      inferredDomain === "impact_population_facet" ||
+      inferredDomain === "impact_geography_facet" ||
+      inferredDomain === "impact_aspiration" ||
+      inferredDomain === "impact_change_type" ||
+      inferredDomain === "impact_specificity" ||
+      inferredDomain === "impact_review" ||
+      inferredDomain === "geography" ||
+      inferredDomain === "population_focus")
+  ) {
+    return inferredDomain;
+  }
+
+  if (/\b(activity|activities|workshops?|sessions?|mentorship|mentoring|classes?|program\s+delivery|we\s+hold|we\s+run|meets?\s+with|hours?\s+a\s+week|hours?\s+per\s+week)\b/i.test(userMessage)) {
+    return "activities";
+  }
+
+  const resourceSignal = extractResourcesHeuristic(userMessage);
+  if (resourceSignal) {
+    return "resources";
+  }
+
+  if (
+    inferredDomain === "quality_evidence" &&
+    /\b(succeed|success|outcome|outcomes|difference|change|long[-\s]?term)\b/i.test(userMessage)
+  ) {
+    return "outcomes_review";
+  }
+
+  if (inferredDomain === "resources") return inferredDomain;
+
+  return inferredDomain;
+}
+
 function buildScopedImplementation(
   implementation: Partial<LogicModel["implementation"]> | undefined,
-  allowed: Array<"resources" | "activities" | "quality_fidelity">
+  allowed: Array<"resources" | "activities" | "outputs_metrics" | "quality_fidelity">
 ): LogicModel["implementation"] | undefined {
   if (!implementation) return undefined;
 
@@ -1547,6 +1611,9 @@ function buildScopedImplementation(
   }
   if (allowed.includes("activities") && implementation.activities) {
     scoped.activities = implementation.activities;
+  }
+  if (allowed.includes("outputs_metrics") && implementation.outputs_metrics) {
+    scoped.outputs_metrics = implementation.outputs_metrics;
   }
   if (allowed.includes("quality_fidelity") && implementation.quality_fidelity) {
     scoped.quality_fidelity = implementation.quality_fidelity;
@@ -1594,8 +1661,7 @@ function constrainPatchToResponseDomain(
       break;
     }
     case "outputs_metrics": {
-      // Outputs are nested under activity records, so keep activity updates only.
-      const implementation = buildScopedImplementation(patch.implementation, ["activities"]);
+      const implementation = buildScopedImplementation(patch.implementation, ["outputs_metrics"]);
       if (implementation) {
         constrained.implementation = implementation;
       }
@@ -1820,7 +1886,7 @@ function shouldBlockImpactDraft(
   modelPatch: Partial<LogicModel> | null
 ): boolean {
   if (questionIntent === "impact_review") return true;
-  if (modelPatch?.intended_impact && Object.keys(modelPatch.intended_impact).length > 0) return true;
+  if (modelPatch?.intended_impact?.compiled_statement?.trim()) return true;
 
   return /(draft\s+(?:intended\s+)?impact|does\s+that\s+capture|capture\s+your\s+intent|revise\s+the\s+impact\s+statement)/i.test(
     reply
@@ -1954,6 +2020,20 @@ function isLogicModelShape(value: unknown): value is LogicModel {
   );
 }
 
+function isRevisionLifecycleShape(value: unknown): value is AgentRevisionLifecycle {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  if (v.status !== "none" && v.status !== "pending" && v.status !== "accepted" && v.status !== "dismissed") {
+    return false;
+  }
+
+  if (v.originalText !== undefined && typeof v.originalText !== "string") return false;
+  if (v.revisedText !== undefined && typeof v.revisedText !== "string") return false;
+  if (v.rationale !== undefined && typeof v.rationale !== "string") return false;
+  if (v.updatedAt !== undefined && typeof v.updatedAt !== "number") return false;
+  return true;
+}
+
 function inferIntentFromModelState(
   model: LogicModel | undefined
 ): ReturnType<typeof inferNextRequiredIntent> {
@@ -1971,18 +2051,69 @@ function applyPatchToSnapshot(
   patch: Partial<LogicModel> | null
 ): LogicModel | undefined {
   if (!snapshot || !patch) return snapshot;
+
+  const nextResources = { ...snapshot.implementation.resources };
+  const patchResources = patch.implementation?.resources;
+  if (patchResources) {
+    for (const key of ["human", "material", "financial", "knowledge"] as const) {
+      const values = patchResources[key];
+      if (Array.isArray(values) && values.length > 0) {
+        nextResources[key] = values;
+      }
+    }
+  }
+
+  const patchQuality = patch.implementation?.quality_fidelity;
+  const nextQuality = {
+    fidelity:
+      Array.isArray(patchQuality?.fidelity) && patchQuality.fidelity.length > 0
+        ? patchQuality.fidelity
+        : snapshot.implementation.quality_fidelity.fidelity,
+    quality:
+      Array.isArray(patchQuality?.quality) && patchQuality.quality.length > 0
+        ? patchQuality.quality
+        : snapshot.implementation.quality_fidelity.quality,
+  };
+
+  const nextActivities =
+    Array.isArray(patch.implementation?.activities) && patch.implementation.activities.length > 0
+      ? patch.implementation.activities
+      : snapshot.implementation.activities;
+
+  const nextOutputsMetrics =
+    Array.isArray(patch.implementation?.outputs_metrics) && patch.implementation.outputs_metrics.length > 0
+      ? patch.implementation.outputs_metrics
+      : snapshot.implementation.outputs_metrics;
+
+  const nextOutcomes = {
+    short_term:
+      Array.isArray(patch.outcomes?.short_term) && patch.outcomes.short_term.length > 0
+        ? patch.outcomes.short_term
+        : snapshot.outcomes.short_term,
+    medium_term:
+      Array.isArray(patch.outcomes?.medium_term) && patch.outcomes.medium_term.length > 0
+        ? patch.outcomes.medium_term
+        : snapshot.outcomes.medium_term,
+    long_term:
+      Array.isArray(patch.outcomes?.long_term) && patch.outcomes.long_term.length > 0
+        ? patch.outcomes.long_term
+        : snapshot.outcomes.long_term,
+  };
+
   return {
     ...snapshot,
     intended_impact: patch.intended_impact
       ? { ...snapshot.intended_impact, ...patch.intended_impact }
       : snapshot.intended_impact,
     stakeholders: patch.stakeholders ?? snapshot.stakeholders,
-    implementation: patch.implementation
-      ? { ...snapshot.implementation, ...patch.implementation }
-      : snapshot.implementation,
-    outcomes: patch.outcomes
-      ? { ...snapshot.outcomes, ...patch.outcomes }
-      : snapshot.outcomes,
+    implementation: {
+      ...snapshot.implementation,
+      resources: nextResources,
+      activities: nextActivities,
+      outputs_metrics: nextOutputsMetrics,
+      quality_fidelity: nextQuality,
+    },
+    outcomes: nextOutcomes,
   };
 }
 
@@ -1991,7 +2122,7 @@ function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undef
     case "population_focus":
       return "Who is this intended impact statement really about?";
     case "geography":
-      return "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites)?";
+      return "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites) before we lock resources?";
     case "impact_specificity":
       return "What concrete long-term change should this intended impact statement point to in 10 years?";
     case "resources":
@@ -2001,7 +2132,7 @@ function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undef
     case "outputs_metrics":
       return "How will you count whether those activities happened (for example participants reached, sessions delivered, or hours)?";
     case "outcomes_review":
-      return "What is one short-term knowledge change, one medium-term behavior change, and one long-term condition change you expect?";
+      return "What outcomes should we expect, and what should short term, medium term, and long term results look like?";
     case "quality_evidence":
       return "How will you track implementation fidelity and delivery quality as activities are delivered?";
     case "section_refine":
@@ -2278,6 +2409,92 @@ function ensureTypeQuickReply(replies: QuickReply[]): QuickReply[] {
   ];
 }
 
+function normalizeQuickReplyText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isEchoLikeQuickReply(candidate: QuickReply, assistantReply: string): boolean {
+  if (candidate.action === "open-input" || candidate.value === "__type__") {
+    return false;
+  }
+
+  const focus = getQuestionFocusText(assistantReply).text || assistantReply;
+  const normalizedQuestion = normalizeQuickReplyText(focus);
+  if (!normalizedQuestion) return false;
+
+  const normalizedValue = normalizeQuickReplyText(candidate.value || "");
+  const normalizedLabel = normalizeQuickReplyText(candidate.label || "");
+  const probe = normalizedValue || normalizedLabel;
+  if (!probe) return false;
+
+  if (probe === normalizedQuestion) return true;
+  if (probe.length >= 16 && (normalizedQuestion.includes(probe) || probe.includes(normalizedQuestion))) {
+    return true;
+  }
+
+  const stopwords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "what",
+    "which",
+    "should",
+    "would",
+    "could",
+    "your",
+    "our",
+    "from",
+    "into",
+    "about",
+    "next",
+  ]);
+
+  const questionTokens = normalizedQuestion
+    .split(" ")
+    .filter((token) => token.length > 2 && !stopwords.has(token));
+  const probeTokens = probe
+    .split(" ")
+    .filter((token) => token.length > 2 && !stopwords.has(token));
+
+  if (questionTokens.length === 0 || probeTokens.length === 0) return false;
+
+  const questionSet = new Set(questionTokens);
+  const overlap = probeTokens.filter((token) => questionSet.has(token)).length;
+  return overlap / probeTokens.length >= 0.75 && probeTokens.length >= 3;
+}
+
+function sanitizeQuickReplies(
+  replies: QuickReply[] | undefined,
+  assistantReply: string
+): QuickReply[] | undefined {
+  if (!replies || replies.length === 0) return undefined;
+
+  const seen = new Set<string>();
+  const cleaned: QuickReply[] = [];
+
+  for (const reply of replies) {
+    const label = (reply.label ?? "").trim();
+    const value = (reply.value ?? "").trim();
+    if (!label || !value) continue;
+    if (isEchoLikeQuickReply(reply, assistantReply)) continue;
+
+    const key = `${label.toLowerCase()}::${value.toLowerCase()}::${reply.action ?? "send"}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cleaned.push({ ...reply, label, value });
+  }
+
+  if (cleaned.length === 0) return undefined;
+  return ensureTypeQuickReply(cleaned);
+}
+
 function isLogicModelConceptQuestion(userMessage: string): boolean {
   const text = userMessage.trim();
   if (!text) return false;
@@ -2352,7 +2569,7 @@ function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
     return "activities";
   }
 
-  if (/(how would you count|unit of measure|participants|sessions|materials|outputs?|track.*deliver|attendance|hours of service)/i.test(reply)) {
+  if (/(how would you count|unit of measure|participants|sessions|outputs?|track.*deliver|attendance|hours of service|how many|count\b|measure\b|metrics?)/i.test(reply)) {
     return "outputs_metrics";
   }
 
@@ -2360,7 +2577,10 @@ function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
     return "quality_evidence";
   }
 
-  if (/(resource|staff|volunteer|partner|funding|curriculum|technology|equipment|inputs?)/i.test(reply) && /(what|who|how|tell me|describe)/i.test(reply)) {
+  if (
+    /(resource|staff|volunteer|partner|funding|curriculum|technology|equipment|inputs?|materials?|expertise)/i.test(reply) &&
+    /(what|who|how|tell me|describe|list|name|share|outline|walk me through|please\s+list)/i.test(reply)
+  ) {
     return "resources";
   }
 
