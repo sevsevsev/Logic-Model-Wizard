@@ -77,10 +77,10 @@ export async function extractModelFromTranscript(
       },
     };
     
-    // Add resources to appropriate buckets
+    // Add resources to all matching buckets when a phrase contains multiple signals.
     for (const resource of resources) {
       const lower = resource.toLowerCase();
-      if (
+      const matchesHuman =
         lower.includes("volunteer") ||
         lower.includes("staff") ||
         lower.includes("instructor") ||
@@ -89,12 +89,14 @@ export async function extractModelFromTranscript(
         lower.includes("teacher") ||
         lower.includes("expert") ||
         lower.includes("counselor") ||
-        lower.includes("partner")
-      ) {
-        model.implementation.resources.human.push(resource);
-      } else if (lower.includes("fund") || lower.includes("grant") || lower.includes("budget") || /\$\s*\d/.test(lower)) {
-        model.implementation.resources.financial.push(resource);
-      } else if (
+        lower.includes("partner");
+      const matchesFinancial =
+        lower.includes("fund") ||
+        lower.includes("grant") ||
+        lower.includes("budget") ||
+        lower.includes("bank") ||
+        /\$\s*\d/.test(lower);
+      const matchesKnowledge =
         lower.includes("technolog") ||
         lower.includes("software") ||
         lower.includes("curriculum") ||
@@ -102,12 +104,42 @@ export async function extractModelFromTranscript(
         lower.includes("expertise") ||
         lower.includes("handbook") ||
         lower.includes("manual") ||
-        lower.includes("evidence-based")
-      ) {
+        lower.includes("evidence-based");
+      const matchesMaterial =
+        lower.includes("tool") ||
+        lower.includes("equipment") ||
+        lower.includes("laptop") ||
+        lower.includes("device") ||
+        lower.includes("space") ||
+        lower.includes("library") ||
+        lower.includes("material");
+
+      let assigned = 0;
+      if (matchesHuman) {
+        model.implementation.resources.human.push(resource);
+        assigned += 1;
+      }
+      if (matchesFinancial) {
+        model.implementation.resources.financial.push(resource);
+        assigned += 1;
+      }
+      if (matchesKnowledge) {
         model.implementation.resources.knowledge.push(resource);
-      } else {
+        assigned += 1;
+      }
+      if (matchesMaterial) {
+        model.implementation.resources.material.push(resource);
+        assigned += 1;
+      }
+
+      if (assigned === 0) {
         model.implementation.resources.material.push(resource);
       }
+    }
+
+    for (const key of ["human", "material", "financial", "knowledge"] as const) {
+      const values = model.implementation.resources[key];
+      model.implementation.resources[key] = Array.from(new Set(values));
     }
   }
 
@@ -176,18 +208,22 @@ function extractPopulation(userMessages: string, fullText: string): string {
 
 function extractGeography(userMessages: string, fullText: string): string {
   const patterns = [
-    /(?:in|across|throughout|serving|based in)\s+([^.!?]+?(?:philadelphia|city|county|state|region|neighborhood|district|school))/i,
+    /(?:in|across|throughout|serving|based in)\s+([^.!?]+?(?:(?:north|south|west|east|northeast|northwest|southeast|southwest)\s+philadelphia|philadelphia|center\s+city|kensington|fishtown|germantown|south\s+philly|north\s+philly|west\s+philly|city|county|state|region|neighborhood|district|school))/i,
     /(?:location|geography|based)\s+(?:in|is)\s+([^.!?]+)/i,
-    /\b(Philadelphia|New York|Chicago|[A-Z][a-z]+ (?:County|City|Neighborhood))\b/,
+    /\b((?:North|South|West|East|Northeast|Northwest|Southeast|Southwest)\s+Philadelphia|Philadelphia|New York|Chicago|Kensington|Fishtown|Germantown|South Philly|North Philly|West Philly|[A-Z][a-z]+ (?:County|City|Neighborhood))\b/,
   ];
 
+  let lastMatch = "";
   for (const pattern of patterns) {
-    const match = fullText.match(pattern);
-    if (match?.[1]) {
-      return match[1].trim().substring(0, 150);
+    const regex = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+    for (const match of fullText.matchAll(regex)) {
+      const candidate = (match[1] ?? "").trim().substring(0, 150);
+      if (candidate) {
+        lastMatch = candidate;
+      }
     }
   }
-  return "";
+  return lastMatch;
 }
 
 function extractLongTermGoal(userMessages: string, fullText: string): string {
@@ -259,7 +295,7 @@ function splitResourceSegments(text: string): string[] {
   if (!normalized) return [];
 
   const segments: string[] = [];
-  for (const sentence of normalized.split(/[;\n]+/)) {
+  for (const sentence of normalized.split(/[.;!?\n]+/)) {
     const commaParts = sentence.split(/\s*,\s*/).filter(Boolean);
     for (const commaPart of commaParts) {
       const andParts = splitOnListConjunctions(commaPart);
@@ -306,7 +342,8 @@ function normalizeResourceCandidate(candidate: string): string {
     .replace(/^(?:and|or|plus|also)\s+/i, "")
     .replace(/^(?:our|the|a|an|some|any|these|those|this|that)\s+/i, "")
     .replace(/^(?:resources?|inputs?)\s*(?:include|are|:)?\s*/i, "")
-    .replace(/^(?:we|we\s+have|we\s+use|we\s+need|we\s+access|we\s+include|we\s+work\s+with)\s+/i, "")
+    .replace(/^(?:we\s+have|we\s+use|we\s+need|we\s+access|we\s+include|we\s+work\s+with|we)\s+/i, "")
+    .replace(/^(?:have|has)\s+/i, "")
     .replace(/\b(?:that|which|who|where|while|because|so that|to ensure|to support|for reflection|for analysis|for reporting)\b.*$/i, "")
     .trim();
 
@@ -335,23 +372,83 @@ function extractOutcomes(userMessages: string, fullText: string): { short_term: 
   const labeledLong = fullText.match(/long\s*term[^.!?]*[:,-]?\s*([^.!?]+)/i);
   if (labeledLong?.[1]) outcomes.long_term.push(labeledLong[1].trim());
 
-  // Short-term outcomes
-  const shortTermMatches = fullText.match(/(?:knowledge|awareness|skills?|confidence|belonging|understanding)[^.!?]*/gi);
-  if (shortTermMatches) {
-    outcomes.short_term = [...outcomes.short_term, ...shortTermMatches.map((m) => m.trim())].slice(0, 3);
+  // Parse temporal language to classify outcomes into time buckets
+  const sentences = fullText.split(/[.!?\n]+/).filter(Boolean);
+  for (const sentence of sentences) {
+    // Skip activity-describing sentences (to avoid activity-outcome confusion)
+    if (/\b(?:hold|run|deliver|offer|provide|conduct|lead|teach|mentor)\s+(?:weekly|monthly|daily|session|activity|program|class|workshop)/i.test(sentence)) {
+      continue;
+    }
+    if (/\b(?:activities?|programs?|sessions?)\s+(?:include|consist of|are|involve)/i.test(sentence)) {
+      continue;
+    }
+
+    // Short-term temporal signals (immediate, instant)
+    if (/(immediately|right away|instantly|at once|first thing|day one|week one)\b/i.test(sentence)) {
+      const match = sentence.match(/(we\s+)?(?:want|expect|hope|intend|aim)\s+(?:to|that|for)?\s*([^.!?]+)/i);
+      if (match?.[2]) {
+        outcomes.short_term.push(match[2].trim());
+      }
+    }
+    // Short-term keywords
+    else if (/\b(?:knowledge|awareness|understanding|skills?|confidence|sense of|belonging|welcome)\b/i.test(sentence)) {
+      const match = sentence.match(/(?:we\s+)?(?:want|expect|hope)\s+(?:to|that)?\s*([^.!?]+)/i);
+      if (match?.[1]) {
+        const text = match[1].trim();
+        if (!/\b(?:within|in|after|over)\s+\d+\s+(?:year|month|week)/i.test(text)) {
+          outcomes.short_term.push(text);
+        }
+      }
+    }
+
+    // Medium-term temporal signals (weeks, months, up to ~6 months)
+    if (/(within\s+)?(?:(?:a|\d+)\s+)?(?:week|month|semester)s?\b|(?:few|several)\s+(?:weeks?|months?)/i.test(sentence)) {
+      const match = sentence.match(/(we\s+)?(?:want|expect|hope|intend|aim)\s+(?:to|that)?\s*([^.!?]+)/i);
+      if (match?.[2]) {
+        outcomes.medium_term.push(match[2].trim());
+      }
+    }
+    // Medium-term keywords (behavior, engagement, attendance)
+    else if (/\b(?:behavior|engagement|attendance|grades|participation|social.?emotional|performance|achievement|progress|habits?)\b/i.test(sentence)) {
+      const match = sentence.match(/(?:we\s+)?(?:want|expect|hope)\s+(?:to|that)?\s*([^.!?]+)/i);
+      if (match?.[1]) {
+        const text = match[1].trim();
+        // Skip if it explicitly mentions years
+        if (!/\b(?:within|in|after)\s+\d+\s+years?\b/i.test(text)) {
+          outcomes.medium_term.push(text);
+        }
+      }
+    }
+
+    // Long-term temporal signals (years)
+    if (/(within\s+)?(?:\d+\s+)?years?\b|in\s+(?:10|five|several)\s+years?|ten\s+years|long.?term/i.test(sentence)) {
+      const match = sentence.match(/(we\s+)?(?:want|expect|hope|intend|aim)\s+(?:to|that)?\s*([^.!?]+)/i);
+      if (match?.[2]) {
+        outcomes.long_term.push(match[2].trim());
+      }
+    }
+    // Long-term keywords (graduation, career, pathways)
+    else if (/\b(?:graduation|graduate|college|career|employment|pathways?|trajectories?|reduce|decrease|increase|enrollment|persistence)\b/i.test(sentence)) {
+      const match = sentence.match(/(?:we\s+)?(?:want|expect|hope)\s+(?:to|that)?\s*([^.!?]+)/i);
+      if (match?.[1]) {
+        const text = match[1].trim();
+        // Only include if it doesn't explicitly say short/medium timeframe
+        if (!/\b(?:immediately|within\s+(?:a\s+)?(?:week|month|semester))/i.test(text)) {
+          outcomes.long_term.push(text);
+        }
+      }
+    }
   }
 
-  // Medium-term outcomes
-  const mediumTermMatches = fullText.match(/(?:behavior|engagement|attendance|grades|participation|social.?emotional)[^.!?]*/gi);
-  if (mediumTermMatches) {
-    outcomes.medium_term = [...outcomes.medium_term, ...mediumTermMatches.map((m) => m.trim())].slice(0, 3);
-  }
+  // Deduplicate and limit results
+  const dedupe = (arr: string[]) => Array.from(new Set(arr.map(s => s.toLowerCase()))).map(s => {
+    const original = arr.find(o => o.toLowerCase() === s);
+    return original || "";
+  }).filter(Boolean).slice(0, 3);
 
-  // Long-term outcomes
-  const longTermMatches = fullText.match(/(?:graduation|college|career|employment|pathways?|educational trajectories?|long.?term condition|decrease|increase|reduction|enrollment)[^.!?]*/gi);
-  if (longTermMatches) {
-    outcomes.long_term = [...outcomes.long_term, ...longTermMatches.map((m) => m.trim())].slice(0, 3);
-  }
+  outcomes.short_term = dedupe(outcomes.short_term);
+  outcomes.medium_term = dedupe(outcomes.medium_term);
+  outcomes.long_term = dedupe(outcomes.long_term);
 
   return outcomes;
 }

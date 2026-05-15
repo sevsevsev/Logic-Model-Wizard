@@ -20,3 +20,29 @@ test("buildComparisonRetrievalQuery prioritizes activity chunking comparison evi
   assert.match(query, /verb phrase/i);
   assert.match(query, /anti-pattern/i);
 });
+
+test("buildComparisonRetrievalQuery shifts impact focus toward draft review when a draft already exists", () => {
+  const query = buildComparisonRetrievalQuery(
+    "We are focusing on the intended impact.",
+    "impact",
+    {
+      intended_impact: {
+        population: "middle school students",
+        geography: "North Philadelphia",
+        long_term_goal: "read on grade level and transition successfully to high school",
+        compiled_statement: "Middle school students in North Philadelphia will read on grade level and transition successfully to high school.",
+      },
+      stakeholders: [],
+      implementation: {
+        resources: { human: [], material: [], financial: [], knowledge: [] },
+        activities: [],
+        quality_fidelity: { fidelity: [], quality: [] },
+      },
+      outcomes: { short_term: [], medium_term: [], long_term: [] },
+    }
+  );
+
+  assert.match(query, /draft review/i);
+  assert.match(query, /working draft/i);
+  assert.match(query, /acknowledge/i);
+});

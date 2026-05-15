@@ -29,10 +29,15 @@ function getPool(): Pool {
     throw new Error("DATABASE_URL is not configured.");
   }
 
+  const connectionTimeoutMillis = Number.parseInt(process.env.PG_CONNECTION_TIMEOUT_MS ?? "3000", 10);
+  const queryTimeoutMillis = Number.parseInt(process.env.PG_QUERY_TIMEOUT_MS ?? "5000", 10);
+
   if (!pool) {
     pool = new Pool({
       connectionString: databaseUrl,
       max: 2,
+      connectionTimeoutMillis: Number.isFinite(connectionTimeoutMillis) && connectionTimeoutMillis > 0 ? connectionTimeoutMillis : 3000,
+      query_timeout: Number.isFinite(queryTimeoutMillis) && queryTimeoutMillis > 0 ? queryTimeoutMillis : 5000,
     });
   }
 

@@ -81,3 +81,27 @@ test("compiled statement policy synthesizes when complete snapshot exists", () =
     "5th graders in Kensington will lead lives that include healthy and supportive relationships with peers later in life"
   );
 });
+
+test("acceptance reply uses the assistant draft when the snapshot cannot synthesize", () => {
+  const model = {
+    ...createModel(),
+    intended_impact: {
+      population: "middle school students",
+      geography: "North Philadelphia",
+      long_term_goal: "",
+      compiled_statement: "",
+    },
+  } satisfies LogicModel;
+
+  const patched = applyImpactAcceptanceFromReply(
+    null,
+    model,
+    "Yes, that captures it.",
+    "Based on what you've shared, here's a draft intended impact statement:\n\nMiddle school students in North Philadelphia will read on grade level and successfully transition to high school.\n\nDoes this statement capture your ultimate goal?"
+  );
+
+  assert.equal(
+    patched?.intended_impact?.compiled_statement,
+    "Middle school students in North Philadelphia will read on grade level and successfully transition to high school."
+  );
+});

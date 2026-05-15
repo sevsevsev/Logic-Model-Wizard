@@ -4,10 +4,10 @@
 
 ---
 # === METADATA ===
-id: "scenario-slug"                  # Use format: <section>-<focus> (e.g., "resources-list-capture")
-section: "impact"                    # One of: impact, resources, activities, quality, outcomes, cross-section
+id: "scenario-slug" # Use format: <section>-<focus> (e.g., "resources-list-capture")
+section: "impact" # One of: impact, resources, activities, quality, outcomes, cross-section
 description: "Brief human-readable description of what this scenario tests."
-focus: "assertion"                   # One of: assertion, deviation-recovery, multi-turn-retention, edge-case
+focus: "assertion" # One of: assertion, deviation-recovery, multi-turn-retention, edge-case
 
 # === SEED HISTORY (OPTIONAL) ===
 # Use this to pre-populate the conversation with agent's opening question for this section.
@@ -24,30 +24,30 @@ seedHistory:
 turns:
   # TURN 1: Initial user input
   - user: "User message describing their program or input for this section."
-    
+
     # EXPECT: Assertions about agent's response to this turn
     expect:
       # (Optional) Agent's final intent classification must be one of these.
       # Common intents: "impact", "resources", "activities", "quality", "outcomes", "clarify", "confirm"
       finalIntentOneOf:
         - "resources"
-      
+
       # (Optional) Model patch MUST contain these paths if data was captured.
       # Common paths: "intended_impact", "implementation.resources", "implementation.activities", "outcomes.short_term", etc.
       modelPatchMustHavePath:
         - "implementation.resources"
-      
+
       # (Optional) If resources section: minimum number of resource buckets captured in the patch.
       # Buckets: human, material, financial, knowledge
       modelPatchResourceBucketsAtLeast: 2
-      
+
       # (Optional) Agent's reply must contain at least one of these patterns.
       # Use for validating agent acknowledged or understood the input.
       replyMustContainAny:
         - "captured"
         - "understood"
         - "noted"
-      
+
       # (Optional) Agent's reply must NOT match these regex patterns.
       # Use for ensuring agent does not repeat questions or show confusion.
       replyMustNotMatch:
@@ -56,12 +56,12 @@ turns:
 
   # TURN 2: Follow-up user input (multi-turn scenarios)
   - user: "Second user message (e.g., user confirms, clarifies, or adds more info)."
-    
+
     expect:
       finalIntentOneOf:
         - "confirm"
       replyMustNotMatch:
-        - "/what resources/i"     # Agent should NOT re-ask the resource question
+        - "/what resources/i" # Agent should NOT re-ask the resource question
 
   # TURN 3+: Additional turns as needed
   # (Follow same pattern as Turn 2)
@@ -84,7 +84,7 @@ finalCheck:
   - path: "implementation.resources.human"
     expectNonEmpty: true
     description: "Human resources must be captured"
-  
+
   - path: "implementation.resources"
     expectResourceBucketsAtLeast: 2
     description: "At least 2 resource buckets must be present"

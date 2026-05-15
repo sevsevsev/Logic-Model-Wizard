@@ -45,9 +45,17 @@ function buildQuestionPlanningQuery(turnBrief: AgentTurnBrief): string {
     none: "logic model direct answer with optional follow-up question framing",
   };
 
+  const coachingModeHint =
+    turnBrief.currentPhase === "complete" || turnBrief.currentPhase === "section_refine"
+      ? "End-stage mode: prioritize section_refine, wording cleanup, and light-touch polishing while preserving user intent."
+      : "Collection mode: accept close-enough answers, capture partial details, keep momentum, and ask one focused follow-up only when needed.";
+
   return [
     phaseQueries[turnBrief.currentPhase] ?? "logic model clarification question framing",
     turnBrief.missingFields.length > 0 ? `Missing fields: ${turnBrief.missingFields.join(", ")}` : "No required field is currently missing.",
+    coachingModeHint,
+    "Prefer low-friction coaching guidance: close enough, good enough for now, avoid repetitive correction loops.",
+    "Use end-of-flow guidance for refinement: finishing touches, section refine, wording cleanup after model is populated.",
     "Use conceptual guidance to decide whether to ask, confirm, or answer directly.",
   ].join("\n");
 }
@@ -108,6 +116,8 @@ CORE OPERATING PRINCIPLES
 - Ask at most one focused follow-up question when clarification is needed.
 - Prefer forward progress and avoid repeating already confirmed prompts.
 - Decide explicitly whether this turn should answer only, confirm a draft, or ask one focused next-step question.
+- Prefer a close-enough standard during collection turns: capture usable meaning first and avoid over-correcting phrasing mid-flow.
+- Save wording polish and category cleanup for section_refine/end-of-flow review unless there is clear risk of material misclassification.
 - When the user's answer is close but not ideal, you may propose a revision that preserves the user's meaning while tightening clarity and framework alignment; do not invent facts or drift away from the original intent.
 - Keep assistant_reply consistent with question_plan. If question_plan.shouldAsk is false, do not end with a new question.
 - Use turn_brief.revision_lifecycle to guide rewrite behavior:

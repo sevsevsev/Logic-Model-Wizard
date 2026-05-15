@@ -60,6 +60,12 @@ const AGENT_POLICY_CHUNKS: AgentPolicyChunk[] = [
     text: "Resources do not need to be exhaustive to move forward. If the user has named at least one person, material, funding source, or type of expertise, capture it and either ask about one specific missing bucket or advance to activities. Do not stay stuck on the same resources question if the user has already responded.",
     tags: ["resources", "sequencing", "advance", "partial", "loop"],
   },
+  {
+    id: "policy-close-enough-progress",
+    title: "Use close-enough capture first, then refine at the end",
+    text: "When user language is directionally correct but not perfectly framed, capture the usable meaning, keep momentum, and avoid blocking progress with repeated correction loops. Defer wording polish and category cleanup to section_refine or end-of-flow review unless the current wording causes a material misclassification risk.",
+    tags: ["close-enough", "friction", "progress", "section_refine", "revision", "momentum"],
+  },
 ];
 
 function tokenize(text: string): string[] {

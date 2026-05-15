@@ -5,6 +5,27 @@ interface CompiledStatementPolicyOptions {
   synthesizeWhenComplete?: boolean;
 }
 
+function extractDraftImpactStatementFromReply(reply: string): string | undefined {
+  const normalized = reply.trim();
+  if (!normalized) return undefined;
+
+  const markers = [
+    /here(?:'| i)?s? a draft intended impact statement:\s*(?:\r?\n\s*)+([^\n]+?)(?:\r?\n\s*\r?\n|$)/i,
+    /based on what you'?ve shared, here(?:'| i)?s? a draft intended impact statement:\s*(?:\r?\n\s*)+([^\n]+?)(?:\r?\n\s*\r?\n|$)/i,
+    /draft intended impact statement:\s*(?:\r?\n\s*)+([^\n]+?)(?:\r?\n\s*\r?\n|$)/i,
+  ];
+
+  for (const pattern of markers) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) {
+      const candidate = match[1].trim().replace(/^[-"“”]+|[-"“”]+$/g, "").trim();
+      if (candidate) return candidate;
+    }
+  }
+
+  return undefined;
+}
+
 function mergeImpactSnapshot(
   modelSnapshot: LogicModel | undefined,
   modelPatch: Partial<LogicModel> | null
@@ -82,13 +103,32 @@ export function applyCompiledStatementPolicy(
 export function applyImpactAcceptanceFromReply(
   modelPatch: Partial<LogicModel> | null,
   modelSnapshot: LogicModel | undefined,
-  latestUserMessage: string
+  latestUserMessage: string,
+  assistantReply?: string
 ): Partial<LogicModel> | null {
   if (!isExplicitImpactAcceptance(latestUserMessage)) {
     return modelPatch;
   }
 
-  return applyCompiledStatementPolicy(modelPatch, modelSnapshot, latestUserMessage, {
+  const acceptedPatch = applyCompiledStatementPolicy(modelPatch, modelSnapshot, latestUserMessage, {
     synthesizeWhenComplete: true,
   });
+
+  if (acceptedPatch?.intended_impact?.compiled_statement?.trim()) {
+    return acceptedPatch;
+  }
+
+  const extractedDraft = extractDraftImpactStatementFromReply(assistantReply ?? "");
+  if (!extractedDraft) {
+    return acceptedPatch;
+  }
+
+  const mergedImpact = mergeImpactSnapshot(modelSnapshot, acceptedPatch);
+  return {
+    ...(acceptedPatch ?? {}),
+    intended_impact: {
+      ...mergedImpact,
+      compiled_statement: extractedDraft,
+    },
+  };
 }

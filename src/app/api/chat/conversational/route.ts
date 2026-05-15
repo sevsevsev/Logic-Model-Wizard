@@ -14,11 +14,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runConversationalTurn } from "@/lib/chat/conversationalPipeline";
 import { normalizeTranscript, type ConversationTranscript } from "@/lib/chat/transcript";
+import type { LogicModel } from "@/store/useLogicModelStore";
 
 interface ConversationalChatRequest {
   message: string;
   transcript?: ConversationTranscript;
-  model?: Record<string, unknown>; // Current model snapshot for context
+  model?: LogicModel; // Current model snapshot for context
 }
 
 export async function POST(request: NextRequest) {
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
       message,
       transcript: normalizeTranscript(incomingTranscript),
       topK: 8,
+      modelSnapshot: body.model,
     });
 
     return NextResponse.json({

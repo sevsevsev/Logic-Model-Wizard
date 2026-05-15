@@ -19,7 +19,7 @@ turns:
         - "captured"
         - "understood"
         - "confirmed"
-  
+
   - user: "Yes, that captures it."
     expect:
       replyMustNotMatch:
@@ -222,3 +222,149 @@ finalCheck:
   - path: "implementation.resources"
     expectResourceBucketsAtLeast: 2
     description: "Resources retained as conversation moves to next section"
+
+---
+# Example 7: Contradiction Handling - Explicit Correction Should Overwrite Prior Field
+id: "impact-contradiction-explicit-correction"
+section: "impact"
+description: "User corrects geography after initial capture; agent should acknowledge correction and avoid stale carryover."
+focus: "contradiction-handling"
+
+turns:
+  - user: "We serve middle school students in North Philadelphia and want them to read on grade level by high school."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      modelPatchMustHavePath:
+        - "intended_impact.geography"
+
+  - user: "Correction: not North Philadelphia, it's West Philadelphia."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      modelPatchMustHavePath:
+        - "intended_impact.geography"
+      replyMustContainAny:
+        - "thanks for clarifying"
+        - "updated"
+        - "correction"
+      replyMustNotMatch:
+        - "/north philadelphia/i"
+
+finalCheck:
+  - path: "intended_impact.geography"
+    expectEquals: "West Philadelphia"
+
+---
+# Example 8: Ambiguity Recovery - Agent Should Ask One Focused Clarifier
+id: "impact-ambiguous-input-single-clarifier"
+section: "impact"
+description: "When user gives broad, vague framing, agent asks one concrete clarifying question rather than jumping sections."
+focus: "ambiguity-recovery"
+
+turns:
+  - user: "We want youth to thrive and succeed."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      replyMustContainAny:
+        - "who"
+        - "where"
+        - "long-term"
+      replyMustNotMatch:
+        - "/what resources/i"
+        - "/activities/i"
+
+  - user: "Specifically, high school youth in Kensington graduating on time."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      modelPatchMustHavePath:
+        - "intended_impact.population"
+        - "intended_impact.geography"
+        - "intended_impact.long_term_goal"
+
+finalCheck:
+  - path: "intended_impact.population"
+    expectNonEmpty: true
+  - path: "intended_impact.geography"
+    expectNonEmpty: true
+  - path: "intended_impact.long_term_goal"
+    expectNonEmpty: true
+
+---
+# Example 9: Off-Topic Resistance - Redirect Without Polluting Model Patch
+id: "offtopic-smalltalk-no-model-pollution"
+section: "guardrails"
+description: "Off-topic user content should get a brief redirect and avoid writing unrelated model fields."
+focus: "guardrail"
+
+seedHistory:
+  - role: "assistant"
+    content: "Let's continue building your intended impact statement."
+
+turns:
+  - user: "By the way, what's your favorite movie?"
+    expect:
+      replyMustContainAny:
+        - "logic model"
+        - "program"
+        - "intended impact"
+      replyMustNotMatch:
+        - "/my favorite/i"
+        - "/i love/i"
+
+  - user: "Okay, we serve elementary students in South Philly and want stronger reading outcomes."
+    expect:
+      finalIntentOneOf:
+        - "impact"
+      modelPatchMustHavePath:
+        - "intended_impact"
+
+finalCheck:
+  - path: "intended_impact.population"
+    expectNonEmpty: true
+
+---
+# Example 10: Long-Context Drift - Preserve Early Captured Resources Across Section Changes
+id: "long-context-resources-retained-after-multi-section-flow"
+section: "multi-turn-retention"
+description: "Resources captured early should remain intact after activities, quality, and outcomes turns."
+focus: "long-context"
+
+turns:
+  - user: "Our resources are staff mentors, donated tablets, grant funding, and evidence-based training."
+    expect:
+      finalIntentOneOf:
+        - "resources"
+      modelPatchMustHavePath:
+        - "implementation.resources"
+      modelPatchResourceBucketsAtLeast: 3
+
+  - user: "Main activities are weekly tutoring sessions and family literacy workshops."
+    expect:
+      finalIntentOneOf:
+        - "activities"
+      modelPatchMustHavePath:
+        - "implementation.activities"
+
+  - user: "For quality, we do facilitator observations; for fidelity, we use session checklists."
+    expect:
+      finalIntentOneOf:
+        - "quality_fidelity"
+      modelPatchMustHavePath:
+        - "implementation.quality_fidelity"
+
+  - user: "Short term: stronger reading confidence. Medium term: improved attendance. Long term: grade-level proficiency."
+    expect:
+      finalIntentOneOf:
+        - "outcomes"
+      modelPatchMustHavePath:
+        - "outcomes.short_term"
+        - "outcomes.medium_term"
+        - "outcomes.long_term"
+
+finalCheck:
+  - path: "implementation.resources"
+    expectResourceBucketsAtLeast: 3
+    description: "Early resources must still be retained after multi-section conversation"

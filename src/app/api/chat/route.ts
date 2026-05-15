@@ -23,7 +23,9 @@ import {
   updateClaimMemoryFromTurn,
 } from "@/lib/chat/orchestration";
 import { applyCompiledStatementPolicy } from "@/lib/chat/impactAcceptance";
-import { looksLikeBroadProgramFrame } from "@/lib/chat/intakeSignals";
+import { applyImpactAcceptanceFromReply } from "@/lib/chat/impactAcceptance";
+import { enforceImpactDraftAcknowledgement } from "@/lib/chat/impactDraftReply";
+import { classifyIntakeSignals, looksLikeBroadProgramFrame } from "@/lib/chat/intakeSignals";
 
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { runConversationalTurn } from "@/lib/chat/conversationalPipeline";
@@ -45,6 +47,10 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function captureDurationMs(startedAt: number): number {
+  return Date.now() - startedAt;
 }
 
 const LEGACY_RETRIEVAL_TOP_K = parsePositiveInt(process.env.RAG_LEGACY_TOP_K, 8);
@@ -96,11 +102,31 @@ Schema:
   }
 }
 
-Rules:
-- Omit unchanged fields entirely.
-- Omit empty strings/arrays.
-- Never infer user confirmation from assistant phrasing.
-- If nothing changed, return {}.`;
+Critical Extraction Rules:
+
+1. ACTIVITIES vs OUTCOMES DISTINCTION:
+   - Activities: Describe WHAT YOU DO. Verbs: hold, run, deliver, offer, provide, conduct, meet, teach, mentor, coach, connect, facilitate, lead, organize.
+   - Outcomes: Describe WHAT CHANGES for participants. Verbs: expect, want, hope, aim, intend; often preceded by temporal markers.
+   - NEVER place activities in outcomes or vice versa.
+
+2. TEMPORAL OUTCOME CLASSIFICATION:
+   - Short-term (immediate changes in knowledge/awareness): "immediately", "right away", "day one", "first session", "knowledge", "awareness", "understanding", "skills", "confidence", "sense of"
+   - Medium-term (behavior/engagement changes within weeks-months): "within weeks", "within 3 months", "within a semester", "behavior", "engagement", "attendance", "participation", "grades", "performance"
+   - Long-term (condition/status changes in 1+ years): "within 2 years", "10 years", "graduation", "employment", "career", "educational trajectory", "persistence"
+   - When temporal markers are present in outcomes text, ALWAYS map to the corresponding bucket.
+
+3. SENTENCE CHUNKING FOR MIXED CONTENT:
+   - When one sentence contains both activity and outcome language (e.g., "We run workshops. After 3 months, we expect better attendance."):
+     a) Split at sentence boundaries (periods/exclamation/question marks).
+     b) Classify each chunk independently.
+     c) Activity chunks → implementation.activities. Outcome chunks → outcomes[time_bucket].
+   - Never merge activity and outcome content into a single field.
+
+4. GENERAL RULES:
+   - Omit unchanged fields entirely.
+   - Omit empty strings/arrays.
+   - Never infer user confirmation from assistant phrasing.
+   - If nothing changed, return {}.`;
 
 function splitSentences(text: string): string[] {
   return text
@@ -860,6 +886,15 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
       .filter(Boolean);
 
     for (const clause of outcomeClauses) {
+      // CRITICAL: Skip activity-describing clauses to prevent activities from being misclassified as outcomes
+      if (
+        /\b(?:hold|run|deliver|offer|provide|conduct|lead|teach|mentor|coach|meet|connect|facilitate|organize|host)\b/i.test(clause) ||
+        /\b(?:sessions?|workshops?|classes?|meetings?|programs?|activities?|activities|trainings?|courses?)\b/i.test(clause) ||
+        /\b(?:focus(?:es|ed|ing)?|designed|aimed|intended)\s+(?:on|to|at)\s+(?:skill|training|learning|development|instruction)\b/i.test(clause)
+      ) {
+        continue; // Skip this clause — it's an activity description, not an outcome
+      }
+
       const shortMatch = clause.match(/\bshort\s*term\b[:,\-]?\s*(.+)$/i);
       if (shortMatch?.[1]) {
         addOutcome(shortOutcomes, shortMatch[1], ["Students"]);
@@ -1244,10 +1279,169 @@ async function extractModelPatchFallback({
 }
 
 // ---------------------------------------------------------------------------
+// Post-Population Validation — diagnose and fix placement issues after model is populated
+// Prevents heuristic churn by letting Gemini validate the full model state once it's sufficiently populated
+// ---------------------------------------------------------------------------
+
+interface ModelQualityIssue {
+  hasIssues: boolean;
+  issues: string[];
+  activitiesInOutcomes: string[];
+  unclassifiedOutcomes: string[];
+}
+
+/**
+ * Lightweight detector (heuristic-only) — identifies potential placement errors
+ * Does NOT call LLM; just flags suspected issues for later validation.
+ */
+function detectModelQualityIssues(model: LogicModel): ModelQualityIssue {
+  const issues: string[] = [];
+  const activitiesInOutcomes: string[] = [];
+  const unclassifiedOutcomes: string[] = [];
+
+  const activityVerbs =
+    /\b(hold|run|deliver|offer|provide|teach|mentor|coach|meet|conduct|lead|organize|facilitate|host|deliver)\b/i;
+
+  // Check outcomes for activity language
+  for (const outcomeList of [
+    model.outcomes?.short_term ?? [],
+    model.outcomes?.medium_term ?? [],
+    model.outcomes?.long_term ?? [],
+  ]) {
+    for (const item of outcomeList) {
+      const text = item.statement.toLowerCase();
+      if (activityVerbs.test(text)) {
+        issues.push("Activity verb detected in outcome statement");
+        activitiesInOutcomes.push(item.statement);
+      }
+      // Flag outcomes that lack temporal markers or expectation language
+      if (!/\b(expect|want|hope|intend|aim|should|will)\b/i.test(text)) {
+        unclassifiedOutcomes.push(item.statement);
+      }
+    }
+  }
+
+  return {
+    hasIssues: issues.length > 0,
+    issues,
+    activitiesInOutcomes,
+    unclassifiedOutcomes,
+  };
+}
+
+/**
+ * Check if model has enough data to warrant validation
+ * Only validate when model is sufficiently populated to avoid churn on partial states.
+ */
+function isModelSufficientlyPopulated(model: LogicModel | undefined): boolean {
+  if (!model) return false;
+
+  const hasActivities = (model.implementation?.activities?.length ?? 0) > 0;
+  const hasOutcomes =
+    (model.outcomes?.short_term?.length ?? 0) +
+      (model.outcomes?.medium_term?.length ?? 0) +
+      (model.outcomes?.long_term?.length ?? 0) >=
+    1;
+  const hasImpact =
+    !!(model.intended_impact?.population && model.intended_impact?.geography) ||
+    !!(model.intended_impact?.long_term_goal);
+
+  // Require at least activities + outcomes + some impact
+  return hasActivities && hasOutcomes && hasImpact;
+}
+
+/**
+ * Gemini-based validation — diagnose and fix placement issues on the full model.
+ * Only called when model is sufficiently populated AND issues are detected.
+ */
+async function validateAndFixModelPlacement({
+  apiKey,
+  model,
+  issues,
+  userMessage,
+}: {
+  apiKey: string;
+  model: LogicModel;
+  issues: ModelQualityIssue;
+  userMessage: string;
+}): Promise<LogicModel> {
+  const validationPrompt = `You are a logic model validator. Analyze this populated model for placement errors and fix them.
+
+Current Model:
+${JSON.stringify(model, null, 2)}
+
+Detected Potential Issues:
+${issues.issues.map((i) => `- ${i}`).join("\n")}
+
+Recent User Message: "${userMessage}"
+
+Tasks:
+1. If activities appear in outcomes sections, move them to implementation.activities
+2. Reclassify outcomes into correct temporal buckets based on temporal language:
+   - short_term: immediate, right away, knowledge, awareness, skills, confidence
+   - medium_term: weeks, months, behavior, engagement, attendance, participation
+   - long_term: years, graduation, employment, career, persistence
+3. Ensure resource buckets (human, material, financial, knowledge) are correctly assigned
+4. Return ONLY the corrected model as valid JSON. No explanations.`;
+
+  const validationPayload = {
+    system: [
+      {
+        text: "You are a precise logic model validator. Return only valid JSON in application/json format.",
+      },
+    ],
+    contents: [
+      {
+        role: "user" as const,
+        parts: [{ text: validationPrompt }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 3000,
+      responseMimeType: "application/json",
+    },
+  };
+
+  try {
+    const { response } = await generateGeminiContentWithFallback(apiKey, validationPayload, "extraction");
+
+    if (!response.ok) {
+      console.error("Validation failed with status:", response.status);
+      return model;
+    }
+
+    const responseData = await response.json();
+    const content = responseData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+    if (!content) {
+      console.error("Validation returned empty content");
+      return model;
+    }
+
+    // Extract JSON if wrapped in markdown code fences
+    const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/) || content.match(/```\n?([\s\S]*?)\n?```/);
+    const jsonString = jsonMatch?.[1] ?? content;
+
+    const corrected = JSON.parse(jsonString);
+    if (isLogicModelShape(corrected)) {
+      return corrected;
+    }
+  } catch (err) {
+    console.error("Model validation failed, returning original:", err);
+  }
+
+  // Return original model if validation fails
+  return model;
+}
+
+// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
+  const requestStartedAt = Date.now();
+  const stageTimings: Record<string, number> = {};
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -1332,10 +1526,15 @@ export async function POST(req: NextRequest) {
   const normalizedTranscript = normalizeTranscript(incomingTranscript ?? transcriptFromHistory);
   
   try {
+    const readinessStartedAt = Date.now();
     const readinessBeforeTurn = computeSectionReadiness(modelSnapshot);
+    stageTimings.readinessBeforeTurnMs = captureDurationMs(readinessStartedAt);
     const focusSection = readinessBeforeTurn.nextSection;
+    const memoryContextStartedAt = Date.now();
     const retainedFactsContext = buildSectionScopedMemoryContext(safeRetentionMemory, focusSection);
+    stageTimings.memoryContextMs = captureDurationMs(memoryContextStartedAt);
 
+    const conversationalStartedAt = Date.now();
     const conversational = await runConversationalTurn({
       apiKey,
       message: message.trim(),
@@ -1343,39 +1542,108 @@ export async function POST(req: NextRequest) {
       topK: LEGACY_RETRIEVAL_TOP_K,
       retainedFactsContext,
       sectionFocus: focusSection,
+      modelSnapshot,
     });
+    stageTimings.conversationalTurnMs = captureDurationMs(conversationalStartedAt);
 
-    const modelPatch = applyCompiledStatementPolicy(
+    const patchAcceptanceStartedAt = Date.now();
+    const acceptedPatch = applyImpactAcceptanceFromReply(
       conversational.analysis.model,
+      modelSnapshot,
+      message.trim(),
+      conversational.reply
+    );
+    stageTimings.patchAcceptanceMs = captureDurationMs(patchAcceptanceStartedAt);
+
+    const compiledPolicyStartedAt = Date.now();
+    let modelPatch = applyCompiledStatementPolicy(
+      acceptedPatch,
       modelSnapshot,
       message.trim(),
       { synthesizeWhenComplete: true }
     );
+    stageTimings.compiledStatementPolicyMs = captureDurationMs(compiledPolicyStartedAt);
 
+    const offTopicTangent = isOffTopicTangent(message.trim(), safeHistory);
+    if (offTopicTangent) {
+      modelPatch = null;
+    }
+
+    const mergeStartedAt = Date.now();
     const mergedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
+    stageTimings.mergeSnapshotMs = captureDurationMs(mergeStartedAt);
+
+    // === POST-POPULATION VALIDATION ===
+    // If model is sufficiently populated and has suspected placement issues,
+    // let Gemini diagnose and fix them on the full model state (avoids heuristic churn).
+    const validationStartedAt = Date.now();
+    let validatedSnapshot: LogicModel | undefined = mergedSnapshot;
+    
+    if (
+      mergedSnapshot !== undefined &&
+      isModelSufficientlyPopulated(mergedSnapshot)
+    ) {
+      const qualityIssues = detectModelQualityIssues(mergedSnapshot);
+      if (qualityIssues.hasIssues) {
+        validatedSnapshot = await validateAndFixModelPlacement({
+          apiKey,
+          model: mergedSnapshot,
+          issues: qualityIssues,
+          userMessage: message.trim(),
+        });
+      }
+    }
+    stageTimings.postValidationMs = captureDurationMs(validationStartedAt);
+
+    const evidenceStartedAt = Date.now();
     const evidenceLedger = buildEvidenceLedgerFromTurn({
       userMessage: message.trim(),
       modelPatch,
       historyLength: safeHistory.length,
     });
-    const readinessAfterTurn = computeSectionReadiness(mergedSnapshot, evidenceLedger);
+    stageTimings.evidenceLedgerMs = captureDurationMs(evidenceStartedAt);
+
+    const readinessAfterStartedAt = Date.now();
+    const readinessAfterTurn = computeSectionReadiness(validatedSnapshot, evidenceLedger);
+    stageTimings.readinessAfterTurnMs = captureDurationMs(readinessAfterStartedAt);
+
+    const retentionUpdateStartedAt = Date.now();
     const updatedRetentionMemory = updateClaimMemoryFromTurn({
       previous: safeRetentionMemory,
       userMessage: message.trim(),
       modelPatch,
       turnIndex: safeHistory.length + 1,
     });
+    stageTimings.retentionUpdateMs = captureDurationMs(retentionUpdateStartedAt);
 
+    const conflictPromptStartedAt = Date.now();
     const conflictPrompt = buildConflictClarificationPrompt(
       updatedRetentionMemory,
       readinessAfterTurn.nextSection
     );
-    const finalReply = applyGroundedReplyFallback({
+    stageTimings.conflictPromptMs = captureDurationMs(conflictPromptStartedAt);
+
+    const groundedReplyStartedAt = Date.now();
+    const groundedReply = applyGroundedReplyFallback({
       reply: conflictPrompt ?? conversational.reply,
       modelPatch,
       nextSection: readinessAfterTurn.nextSection,
     });
+    stageTimings.groundedReplyMs = captureDurationMs(groundedReplyStartedAt);
 
+    const finalReplyStartedAt = Date.now();
+    let finalReply = enforceImpactDraftAcknowledgement({
+      reply: groundedReply,
+      userMessage: message.trim(),
+      focusSection,
+      modelSnapshot: validatedSnapshot,
+    });
+    if (offTopicTangent) {
+      finalReply = buildOffTopicRedirect(focusSection);
+    }
+    stageTimings.finalReplyRewriteMs = captureDurationMs(finalReplyStartedAt);
+
+    const quickRepliesStartedAt = Date.now();
     const quickReplies = ENABLE_RESPONSE_CHIPS
       ? sanitizeQuickReplies(
           detectQuickReplies(
@@ -1390,6 +1658,18 @@ export async function POST(req: NextRequest) {
           finalReply
         )
       : undefined;
+    stageTimings.quickRepliesMs = captureDurationMs(quickRepliesStartedAt);
+
+    const totalMs = captureDurationMs(requestStartedAt);
+    stageTimings.totalRequestMs = totalMs;
+    const slowRequestThresholdMs = parsePositiveInt(process.env.CHAT_ROUTE_SLOW_REQUEST_MS, 20000);
+    if (totalMs >= slowRequestThresholdMs) {
+      console.warn("[chat-route] Slow request", JSON.stringify({
+        totalMs,
+        focusSection,
+        stageTimings,
+      }));
+    }
 
     return NextResponse.json({
       reply: finalReply,
@@ -1417,11 +1697,18 @@ export async function POST(req: NextRequest) {
           routeRewritesEnabled: false,
           nextSection: readinessAfterTurn.nextSection,
           openConflictQuestions: updatedRetentionMemory.questions.filter((q) => q.status === "open").length,
+          timings: stageTimings,
         },
       },
     });
   } catch (error) {
-    console.error("[chat-route] Conversational pipeline error:", error instanceof Error ? error.message : error);
+    const totalMs = captureDurationMs(requestStartedAt);
+    stageTimings.totalRequestMs = totalMs;
+    console.error("[chat-route] Conversational pipeline error:", JSON.stringify({
+      message: error instanceof Error ? error.message : String(error),
+      totalMs,
+      stageTimings,
+    }));
     return NextResponse.json(
       { error: "Conversational processing failed" },
       { status: 500 }
@@ -1551,6 +1838,14 @@ function inferEffectiveResponseDomain(
   history: ChatMessage[]
 ): QuestionIntent | undefined {
   const broadProgramFrame = looksLikeBroadProgramFrame(userMessage);
+  const intakeSignals = classifyIntakeSignals(userMessage);
+  const looksLikeImpactFraming =
+    (intakeSignals.hasPopulationCue || intakeSignals.hasGeographyCue) &&
+    (intakeSignals.hasOutcomeCue || /\b(serves?|work\s+with|supports?|targets?)\b/i.test(userMessage));
+
+  if (looksLikeImpactFraming) {
+    return inferredDomain && inferredDomain !== "none" ? inferredDomain : "impact_statement";
+  }
 
   // Let strong current-turn evidence override stale domain anchoring from prior prompts.
   if (/\b(short[-\s]?term|medium[-\s]?term|outcomes?)\b/i.test(userMessage)) {
@@ -1896,12 +2191,12 @@ function shouldBlockImpactDraft(
 function buildImpactMissingFollowUp(missingIntent: QuestionIntent | undefined): string {
   switch (missingIntent) {
     case "population_focus":
-      return "Before we lock the impact statement, who is that statement really about?";
+      return "I can see the draft intended impact statement, but it still needs a clearer population anchor. Who is this impact statement really about?";
     case "geography":
-      return "Before we lock the impact statement, what place should we anchor that statement to (for example, citywide, neighborhoods, or specific schools)?";
+      return "I can see the draft intended impact statement, but it still needs a place anchor. What place should we anchor that statement to (for example, citywide, neighborhoods, or specific schools)?";
     case "impact_specificity":
     default:
-      return "Before we lock the impact statement, what exact long-term difference should it point to in 10 years (for example: sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
+      return "I can see the draft intended impact statement, but it still needs a sharper long-term outcome. What exact long-term difference should it point to in 10 years (for example: sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
   }
 }
 
@@ -2120,11 +2415,11 @@ function applyPatchToSnapshot(
 function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undefined {
   switch (intent) {
     case "population_focus":
-      return "Who is this intended impact statement really about?";
+      return "I can see a draft intended impact statement, but it still needs a clearer population anchor. Who is this impact statement really about?";
     case "geography":
-      return "What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites) before we lock resources?";
+      return "I can see the draft intended impact statement, but it still needs a place anchor. What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites) before we lock resources?";
     case "impact_specificity":
-      return "What concrete long-term change should this intended impact statement point to in 10 years?";
+      return "I can see the draft intended impact statement, but it still needs a sharper long-term outcome. What concrete long-term change should this intended impact statement point to in 10 years?";
     case "resources":
       return "What are the key resources needed to run this program (people, materials, funding, and expertise)?";
     case "activities":
@@ -2523,6 +2818,29 @@ function applyConceptTangentResumePrompt(reply: string, userMessage: string): { 
     reply: `${reply}\n\nWould you like to continue populating your logic model now?`,
     applied: true,
   };
+}
+
+function isOffTopicTangent(userMessage: string, history: ChatMessage[]): boolean {
+  const text = userMessage.trim();
+  if (!text || !text.includes("?")) return false;
+  if (isLogicModelConceptQuestion(text)) return false;
+  if (/\b(logic model|impact|resources|activities|outputs?|outcomes?|quality|fidelity|stakeholders?)\b/i.test(text)) {
+    return false;
+  }
+
+  const context = history.map((entry) => entry.content).join("\n");
+  return /\b(logic model|intended impact|resources|activities|outcomes?|quality|fidelity|stakeholders?)\b/i.test(context);
+}
+
+function buildOffTopicRedirect(focusSection?: string): string {
+  const focusLabel =
+    focusSection === "impact"
+      ? "intended impact"
+      : focusSection === "stakeholders"
+        ? "stakeholders"
+        : focusSection || "logic model";
+
+  return `I can help with your logic model, but I'm going to stay focused on that work. If you want to continue, tell me more about your ${focusLabel}.`;
 }
 
 function getConceptTangentQuickReplies(): QuickReply[] {

@@ -45,3 +45,65 @@ test("extractModelFromTranscript splits multi-item resource lists into clean str
     `unexpected clause leak in resources: ${flattened.join(" | ")}`
   );
 });
+
+test("extractModelFromTranscript captures mentor and funding buckets after prior impact turns", async () => {
+  const transcript: ConversationTranscript = {
+    turns: [
+      {
+        role: "user",
+        content: "We work with high schoolers in the city to help them get jobs.",
+        timestamp: Date.now(),
+      },
+      {
+        role: "user",
+        content: "Our long-term goal is 100% college or trade school enrollment for our seniors.",
+        timestamp: Date.now(),
+      },
+      {
+        role: "user",
+        content: "We have mentors and some funding from a local bank.",
+        timestamp: Date.now(),
+      },
+    ],
+    questionsAsked: [],
+    topicsCovered: [],
+  };
+
+  const analysis = await extractModelFromTranscript(transcript);
+  const resources = analysis.model.implementation?.resources;
+
+  assert.ok(resources, "resources should be present");
+  assert.ok(resources.human.length > 0, "human resources should include mentors");
+  assert.ok(resources.financial.length > 0, "financial resources should include funding");
+});
+
+test("extractModelFromTranscript prefers corrected geography later in transcript", async () => {
+  const transcript: ConversationTranscript = {
+    turns: [
+      {
+        role: "user",
+        content: "We serve middle school students in North Philadelphia and want them to read on grade level by high school.",
+        timestamp: Date.now(),
+      },
+      {
+        role: "user",
+        content: "Correction: not North Philadelphia, it's West Philadelphia.",
+        timestamp: Date.now(),
+      },
+    ],
+    questionsAsked: [],
+    topicsCovered: [],
+  };
+
+  const analysis = await extractModelFromTranscript(transcript);
+  assert.equal(analysis.model.intended_impact?.geography, "West Philadelphia");
+});
+
+test("extractModelFromTranscript captures neighborhood geography like Kensington", async () => {
+  const transcript = makeTranscript(
+    "Specifically, high school youth in Kensington graduating on time."
+  );
+
+  const analysis = await extractModelFromTranscript(transcript);
+  assert.equal(analysis.model.intended_impact?.geography, "Kensington");
+});

@@ -59,21 +59,57 @@ function buildUrl(model: string, apiKey: string): string {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 }
 
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function resolveRequestTimeoutMs(role: GeminiRole): number {
+  const roleTimeouts: Record<GeminiRole, string | undefined> = {
+    agent: process.env.GEMINI_AGENT_TIMEOUT_MS,
+    chat: process.env.GEMINI_CHAT_TIMEOUT_MS,
+    bootstrap: process.env.GEMINI_BOOTSTRAP_TIMEOUT_MS,
+    extraction: process.env.GEMINI_EXTRACTION_TIMEOUT_MS,
+  };
+
+  return parsePositiveInt(roleTimeouts[role] ?? process.env.GEMINI_REQUEST_TIMEOUT_MS, 90000);
+}
+
 export async function generateGeminiContentWithFallback(
   apiKey: string,
   payload: unknown,
   role: GeminiRole
 ): Promise<GenerateContentResult> {
   const chain = resolveModelChain(role);
+  const timeoutMs = resolveRequestTimeoutMs(role);
 
   let lastFailure: GenerateContentResult | null = null;
+  let lastError: Error | null = null;
 
   for (const model of chain) {
-    const response = await fetch(buildUrl(model, apiKey), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const startedAt = Date.now();
+    let response: Response;
+
+    try {
+      response = await fetch(buildUrl(model, apiKey), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      const elapsedMs = Date.now() - startedAt;
+      const message = error instanceof Error ? error.message : String(error);
+      lastError = new Error(
+        `[gemini:${role}] model '${model}' request failed after ${elapsedMs}ms (timeout ${timeoutMs}ms): ${message}`
+      );
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (response.ok) {
       return { response, model };
@@ -91,6 +127,7 @@ export async function generateGeminiContentWithFallback(
   }
 
   if (lastFailure) return lastFailure;
+  if (lastError) throw lastError;
 
   throw new Error("No Gemini models configured for generateContent call.");
 }

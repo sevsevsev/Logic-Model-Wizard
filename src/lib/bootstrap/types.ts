@@ -243,16 +243,16 @@ export function getNextGapQuestion(model: LogicModel): string {
     return "What one-sentence intended impact statement best captures the long-term change your program is working toward?";
   }
   if (!impactState.populationKnown) {
-    return "Who is that intended impact statement really about?";
+    return "I can see a draft intended impact statement, but it still needs a clearer population anchor. Who is this impact statement really about?";
   }
   if (!impactState.geographyKnown) {
-    return "What place should that intended impact statement be anchored to?";
+    return "I can see the draft intended impact statement, but it still needs a place anchor. What place should this statement be anchored to?";
   }
   if (!impactState.concreteOutcomeKnown) {
-    return "What exact long-term difference should that intended impact statement point to in participants' lives?";
+    return "I can see the draft intended impact statement, but it still needs a more concrete long-term outcome. What exact long-term difference should it point to in participants' lives?";
   }
   if (impactState.needsImpactReview) {
-    return "Here is the draft intended impact statement. Does it capture the long-term change you want to anchor the model around?";
+    return "I can see the draft intended impact statement. Does it capture the long-term change you want to anchor the model around, or should we tighten the population, geography, or outcome?";
   }
   if (
     model.implementation.resources.human.length === 0 &&

@@ -1,5 +1,6 @@
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { getConversationalAgentInstruction } from "@/lib/agent/conversationalInstructions";
+import type { LogicModel } from "@/store/useLogicModelStore";
 import {
   addTurn,
   createEmptyTranscript,
@@ -17,9 +18,27 @@ interface RunConversationalTurnInput {
   topK?: number;
   retainedFactsContext?: string;
   sectionFocus?: string;
+  modelSnapshot?: LogicModel;
 }
 
-export function buildComparisonRetrievalQuery(message: string, sectionFocus?: string): string {
+function buildImpactDraftContext(modelSnapshot?: LogicModel): string {
+  const impact = modelSnapshot?.intended_impact;
+  if (!impact) return "";
+
+  const lines: string[] = [];
+  if (impact.population?.trim()) lines.push(`Population draft: ${impact.population.trim()}`);
+  if (impact.geography?.trim()) lines.push(`Geography draft: ${impact.geography.trim()}`);
+  if (impact.long_term_goal?.trim()) lines.push(`Long-term change draft: ${impact.long_term_goal.trim()}`);
+  if (impact.compiled_statement?.trim()) lines.push(`Compiled impact statement: ${impact.compiled_statement.trim()}`);
+
+  return lines.length > 0 ? `\n\nWORKING IMPACT DRAFT:\n${lines.map((line) => `- ${line}`).join("\n")}` : "";
+}
+
+export function buildComparisonRetrievalQuery(
+  message: string,
+  sectionFocus?: string,
+  modelSnapshot?: LogicModel
+): string {
   const normalizedMessage = message.trim().toLowerCase();
   const normalizedFocus = sectionFocus?.trim().toLowerCase() ?? "";
   const combined = `${normalizedFocus}\n${normalizedMessage}`;
@@ -70,6 +89,22 @@ export function buildComparisonRetrievalQuery(message: string, sectionFocus?: st
   }
 
   if (/impact|intended impact|population|geography|north star|mission/.test(combined)) {
+    const hasImpactDraft = Boolean(
+      modelSnapshot?.intended_impact?.population?.trim() ||
+        modelSnapshot?.intended_impact?.geography?.trim() ||
+        modelSnapshot?.intended_impact?.long_term_goal?.trim() ||
+        modelSnapshot?.intended_impact?.compiled_statement?.trim()
+    );
+
+    if (hasImpactDraft) {
+      return [
+        "logic model intended impact draft review acknowledgement",
+        "working draft of intended impact statement",
+        "acknowledge the draft then ask one targeted follow-up question",
+        "draft intended impact statement needs refinement impact_review",
+      ].join("\n");
+    }
+
     return [
       "logic model intended impact example",
       "strong example weak example bad example anti-pattern",
@@ -104,17 +139,19 @@ export async function runConversationalTurn(
 
   const withUserTurn = addTurn(transcript, "user", input.message.trim());
 
-  const { chunks: relevantKnowledge, trace: retrievalTrace } = await retrieveKnowledgeWithTrace(
-    input.message,
-    topK
-  );
   const comparisonQuery = buildComparisonRetrievalQuery(input.message, input.sectionFocus);
-  const { chunks: comparisonKnowledge } = await retrieveKnowledgeWithTrace(
-    comparisonQuery,
-    Math.max(4, Math.min(topK, 6))
-  );
+  const [primaryRetrieval, comparisonRetrieval] = await Promise.all([
+    retrieveKnowledgeWithTrace(input.message, topK),
+    retrieveKnowledgeWithTrace(
+      comparisonQuery,
+      Math.max(4, Math.min(topK, 6))
+    ),
+  ]);
+  const { chunks: relevantKnowledge, trace: retrievalTrace } = primaryRetrieval;
+  const { chunks: comparisonKnowledge } = comparisonRetrieval;
 
   const systemInstruction = getConversationalAgentInstruction();
+  const impactDraftContext = buildImpactDraftContext(input.modelSnapshot);
   const retainedFactsContext = input.retainedFactsContext?.trim()
     ? `\n\nRETAINED FACTS (for consistency):\n${input.retainedFactsContext.trim()}`
     : "";
@@ -138,7 +175,7 @@ export async function runConversationalTurn(
         role: "user",
         parts: [
           {
-            text: `${systemInstruction}\n\n---\n\nCONVERSATION SO FAR:\n${transcriptToString(withUserTurn)}${retainedFactsContext}${sectionFocus}\n\nRespond naturally to continue the conversation.${knowledgeContext}${comparisonContext}`,
+              text: `${systemInstruction}\n\n---\n\nCONVERSATION SO FAR:\n${transcriptToString(withUserTurn)}${retainedFactsContext}${sectionFocus}${impactDraftContext}\n\nRespond naturally to continue the conversation.${knowledgeContext}${comparisonContext}`,
           },
         ],
       },

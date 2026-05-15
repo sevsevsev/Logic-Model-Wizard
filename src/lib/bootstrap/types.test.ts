@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   getBootstrapStartOptions,
   getBootstrapStartRecommendation,
+  getNextGapQuestion,
 } from "@/lib/bootstrap/types";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { BootstrapSuggestion } from "@/lib/bootstrap/types";
@@ -209,4 +210,20 @@ test("getBootstrapStartRecommendation falls back to guide order when uncertainty
   const recommendation = getBootstrapStartRecommendation(model, broadUncertainty);
   // Base guide-sequenced recommendation here is implementation (impact anchored, implementation missing).
   assert.equal(recommendation.section, "implementation");
+});
+
+test("getNextGapQuestion acknowledges the draft before asking for the missing population", () => {
+  const model = buildModel({
+    intended_impact: {
+      population: "",
+      geography: "",
+      long_term_goal: "increase reading level",
+      compiled_statement: "increase reading level",
+    },
+  });
+
+  assert.equal(
+    getNextGapQuestion(model),
+    "I can see a draft intended impact statement, but it still needs a clearer population anchor. Who is this impact statement really about?"
+  );
 });
