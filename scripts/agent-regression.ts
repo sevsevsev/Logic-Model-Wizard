@@ -1103,6 +1103,69 @@ const SCENARIOS: Scenario[] = [
       return failures;
     },
   },
+  {
+    id: "impact-refinement-does-not-erase-draft-facets",
+    description:
+      "Impact refinement and confirmation turns should not erase previously captured geography or long-term goal facets.",
+    turns: [
+      {
+        user: "We serve students in West Philadelphia. Our long-term goal is that they graduate high school prepared for college and careers.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography"],
+          modelPatchMustHavePath: ["intended_impact.population", "intended_impact.geography", "intended_impact.long_term_goal"],
+        },
+      },
+      {
+        user: "Let's begin with intended impact.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography", "long_term_help"],
+        },
+      },
+      {
+        user: "As adults they can become better prepared for workforce and postsecondary pathways.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography", "long_term_help"],
+        },
+      },
+      {
+        user: "The city will benefit from higher graduation rates and stronger economic mobility.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography", "long_term_help"],
+        },
+      },
+      {
+        user: "Yes, that's a good draft.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography", "long_term_help"],
+        },
+      },
+      {
+        user: "We work with students in K-8.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography", "long_term_help"],
+        },
+      },
+      {
+        user: "Actually, let's say K-12.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography", "long_term_help"],
+        },
+      },
+    ],
+    finalCheck: ({ model }) => {
+      const failures: string[] = [];
+      if (!isNonEmptyString(model.intended_impact.population)) {
+        failures.push("population was unexpectedly empty after impact refinement flow");
+      }
+      if (!isNonEmptyString(model.intended_impact.geography)) {
+        failures.push("geography was unexpectedly erased during impact refinement flow");
+      }
+      if (!isNonEmptyString(model.intended_impact.long_term_goal)) {
+        failures.push("long_term_goal was unexpectedly erased during impact refinement flow");
+      }
+      return failures;
+    },
+  },
 ];
 
 async function runScenario(scenario: Scenario): Promise<ScenarioResult> {

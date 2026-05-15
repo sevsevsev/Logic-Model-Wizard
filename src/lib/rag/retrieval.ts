@@ -18,6 +18,21 @@ export interface RetrievalTrace {
     | "keyword_success"
     | "vector_success";
   topK: number;
+  metadataRerankEnabled?: boolean;
+  scoringDiagnostics?: Array<{
+    chunkId: string;
+    source: string;
+    topic: string;
+    rawScore: number;
+    metadataBoost: number;
+    finalScore: number;
+    qualityScore?: number;
+    sourceWeight?: number;
+    preferredSource?: boolean;
+    canonicalDomain?: string;
+    queryDomain?: string | null;
+    domainMatch?: boolean;
+  }>;
 }
 
 export interface RetrievalResult {
@@ -27,6 +42,169 @@ export interface RetrievalResult {
 
 // Prefer vector retrieval by default; allow explicit opt-out with ENABLE_RAG_RETRIEVAL=false.
 const ENABLE_RAG_RETRIEVAL = process.env.ENABLE_RAG_RETRIEVAL !== "false";
+const ENABLE_METADATA_RERANK = process.env.ENABLE_METADATA_RERANK !== "false";
+
+const SOURCE_WEIGHT_KEYS = [
+  "sourceWeight",
+  "source_weight",
+  "priorityWeight",
+  "priority_weight",
+  "retrievalWeight",
+  "retrieval_weight",
+  "weight",
+] as const;
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function inferCanonicalDomain(query: string): string | null {
+  const lower = query.toLowerCase();
+  if (/impact|intended impact|population|geography|north star|mission/.test(lower)) {
+    return "intended impact";
+  }
+  if (/resource|staff|funding|material|knowledge|input/.test(lower)) {
+    return "resources (inputs)";
+  }
+  if (/activit|strategy|delivery|session|workshop/.test(lower)) {
+    return "activities";
+  }
+  if (/output|metric|dosage|reach/.test(lower)) {
+    return "outputs";
+  }
+  if (/outcome|short term|medium term|long term/.test(lower)) {
+    return "outcomes";
+  }
+  return null;
+}
+
+function extractSourceWeight(metadata: Record<string, unknown> | undefined): number {
+  if (!metadata) return 0;
+  for (const key of SOURCE_WEIGHT_KEYS) {
+    const value = toFiniteNumber(metadata[key]);
+    if (value !== null) {
+      return Math.max(-2, Math.min(2, value));
+    }
+  }
+  return 0;
+}
+
+function computeMetadataFeatures(chunk: RetrievedChunk, query: string): {
+  metadataBoost: number;
+  qualityScore?: number;
+  sourceWeight?: number;
+  preferredSource?: boolean;
+  canonicalDomain?: string;
+  queryDomain?: string | null;
+  domainMatch?: boolean;
+} {
+  const metadata = chunk.metadata;
+  let metadataBoost = 0;
+  let qualityScore: number | undefined;
+  let sourceWeight: number | undefined;
+  let preferredSource: boolean | undefined;
+  let canonicalDomain: string | undefined;
+  let queryDomain: string | null | undefined;
+  let domainMatch: boolean | undefined;
+
+  if (metadata) {
+    // Source-priority weighting from metadata lets trusted corpus items outrank peers.
+    sourceWeight = extractSourceWeight(metadata);
+    metadataBoost += sourceWeight * 0.05;
+
+    const rawQuality = toFiniteNumber(metadata.qualityScore);
+    if (rawQuality !== null) {
+      qualityScore = Math.max(0, Math.min(10, rawQuality));
+      const normalizedQuality = qualityScore / 10;
+      metadataBoost += normalizedQuality * 0.04;
+    }
+
+    preferredSource = metadata.preferredSource === true;
+    if (preferredSource) {
+      metadataBoost += 0.04;
+    }
+
+    queryDomain = inferCanonicalDomain(query);
+    canonicalDomain = typeof metadata.canonicalDomain === "string"
+      ? metadata.canonicalDomain.trim().toLowerCase()
+      : "";
+    domainMatch = Boolean(queryDomain && canonicalDomain && canonicalDomain === queryDomain);
+    if (domainMatch) {
+      metadataBoost += 0.03;
+    }
+  }
+
+  return {
+    metadataBoost,
+    qualityScore,
+    sourceWeight,
+    preferredSource,
+    canonicalDomain,
+    queryDomain,
+    domainMatch,
+  };
+}
+
+function rerankByMetadata(
+  chunks: RetrievedChunk[],
+  query: string,
+  topK: number
+): {
+  chunks: RetrievedChunk[];
+  diagnostics: RetrievalTrace["scoringDiagnostics"];
+} {
+  if (!ENABLE_METADATA_RERANK || chunks.length <= 1) {
+    return {
+      chunks: chunks.slice(0, topK),
+      diagnostics: chunks.slice(0, topK).map((chunk) => ({
+        chunkId: chunk.id,
+        source: chunk.source,
+        topic: chunk.topic,
+        rawScore: chunk.score,
+        metadataBoost: 0,
+        finalScore: chunk.score,
+      })),
+    };
+  }
+
+  const reranked = chunks
+    .map((chunk) => {
+      const features = computeMetadataFeatures(chunk, query);
+      const finalScore = chunk.score + features.metadataBoost;
+      return {
+        chunk: {
+          ...chunk,
+          score: finalScore,
+        },
+        diagnostics: {
+          chunkId: chunk.id,
+          source: chunk.source,
+          topic: chunk.topic,
+          rawScore: chunk.score,
+          metadataBoost: features.metadataBoost,
+          finalScore,
+          qualityScore: features.qualityScore,
+          sourceWeight: features.sourceWeight,
+          preferredSource: features.preferredSource,
+          canonicalDomain: features.canonicalDomain,
+          queryDomain: features.queryDomain,
+          domainMatch: features.domainMatch,
+        },
+      };
+    })
+    .sort((a, b) => b.chunk.score - a.chunk.score)
+    .slice(0, topK);
+
+  return {
+    chunks: reranked.map((entry) => entry.chunk),
+    diagnostics: reranked.map((entry) => entry.diagnostics),
+  };
+}
 
 function tokenize(text: string): string[] {
   return text
@@ -102,14 +280,22 @@ export async function retrieveKnowledgeWithTrace(
         })
       : [];
 
-    const merged = [...userResults, ...knowledgeBaseResults]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
+    const reranked = rerankByMetadata(
+      [...userResults, ...knowledgeBaseResults],
+      query,
+      topK
+    );
 
-    if (merged.length > 0) {
+    if (reranked.chunks.length > 0) {
       return {
-        chunks: merged,
-        trace: { mode: "vector", reason: "vector_success", topK },
+        chunks: reranked.chunks,
+        trace: {
+          mode: "vector",
+          reason: "vector_success",
+          topK,
+          metadataRerankEnabled: ENABLE_METADATA_RERANK,
+          scoringDiagnostics: reranked.diagnostics,
+        },
       };
     }
   } catch {

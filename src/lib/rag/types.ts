@@ -25,4 +25,5 @@ export interface KnowledgeChunk {
 
 export interface RetrievedChunk extends KnowledgeChunk {
   score: number;
+  metadata?: Record<string, unknown>;
 }

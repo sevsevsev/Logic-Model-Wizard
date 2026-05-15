@@ -49,6 +49,7 @@ import type { KnowledgeChunk, KnowledgeChunkTopic, KnowledgeSource } from "@/lib
 // ── types for the export format ───────────────────────────────────────────────
 
 interface ExportChunkMetadata {
+  [key: string]: unknown;
   qualityScore?: number;
   summary?: string;
   keywords?: string[];
@@ -229,7 +230,9 @@ async function main() {
     }
 
     try {
-      await upsertVectorChunk(chunk, embedding);
+      await upsertVectorChunk(chunk, embedding, {
+        metadata: raw.metadata ?? {},
+      });
       inserted += 1;
       if (inserted % 25 === 0) {
         console.log(`  Progress: ${inserted} upserted (${i + 1}/${chunks.length} processed)…`);

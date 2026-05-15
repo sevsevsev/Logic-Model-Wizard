@@ -1572,6 +1572,7 @@ export async function POST(req: NextRequest) {
       message.trim(),
       { synthesizeWhenComplete: true }
     );
+    modelPatch = removeBlankImpactFacetFields(modelPatch);
     stageTimings.compiledStatementPolicyMs = captureDurationMs(compiledPolicyStartedAt);
 
     const sectionContractStartedAt = Date.now();
@@ -1581,7 +1582,7 @@ export async function POST(req: NextRequest) {
       focusLock: resolvedFocusLock,
       enabled: ENABLE_STRICT_SECTION_PATCH_CONTRACT,
     });
-    modelPatch = sectionContract.patch;
+    modelPatch = removeBlankImpactFacetFields(sectionContract.patch);
     stageTimings.sectionPatchContractMs = captureDurationMs(sectionContractStartedAt);
 
     const offTopicTangent = isOffTopicTangent(message.trim(), safeHistory);
@@ -2096,6 +2097,32 @@ function constrainPatchToResponseDomain(
   }
 
   return Object.keys(constrained).length > 0 ? constrained : null;
+}
+
+function removeBlankImpactFacetFields(
+  patch: Partial<LogicModel> | null
+): Partial<LogicModel> | null {
+  if (!patch?.intended_impact) return patch;
+
+  const nextPatch = structuredClone(patch);
+  const nextImpact = {
+    ...(nextPatch.intended_impact ?? {}),
+  } as Partial<LogicModel["intended_impact"]>;
+
+  for (const key of ["population", "geography", "long_term_goal"] as const) {
+    const value = nextImpact[key];
+    if (typeof value === "string" && value.trim().length === 0) {
+      delete nextImpact[key];
+    }
+  }
+
+  if (Object.keys(nextImpact).length === 0) {
+    delete nextPatch.intended_impact;
+  } else {
+    nextPatch.intended_impact = nextImpact as LogicModel["intended_impact"];
+  }
+
+  return Object.keys(nextPatch).length > 0 ? nextPatch : null;
 }
 
 function mapSectionToContractDomain(section: LogicSection): QuestionIntent | undefined {

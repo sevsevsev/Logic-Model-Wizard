@@ -7,6 +7,7 @@ let schemaReady: Promise<void> | null = null;
 export interface UpsertVectorChunkOptions {
   userId?: string;
   docId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface VectorQueryOptions {
@@ -76,6 +77,7 @@ export async function ensureVectorSchema(): Promise<void> {
           tags TEXT[] NOT NULL DEFAULT '{}',
           source TEXT NOT NULL,
           topic TEXT NOT NULL DEFAULT 'framework-foundation',
+          metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
           embedding VECTOR(3072) NOT NULL,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -120,6 +122,15 @@ export async function ensureVectorSchema(): Promise<void> {
         // noop
       }
 
+      try {
+        await db.query(`
+          ALTER TABLE rag_knowledge_chunks
+            ADD COLUMN IF NOT EXISTS metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb
+        `);
+      } catch {
+        // noop
+      }
+
       await db.query(
         "CREATE INDEX IF NOT EXISTS rag_knowledge_chunks_source_idx ON rag_knowledge_chunks (source);"
       );
@@ -131,6 +142,9 @@ export async function ensureVectorSchema(): Promise<void> {
       );
       await db.query(
         "CREATE INDEX IF NOT EXISTS rag_knowledge_chunks_doc_idx ON rag_knowledge_chunks (doc_id);"
+      );
+      await db.query(
+        "CREATE INDEX IF NOT EXISTS rag_knowledge_chunks_metadata_gin_idx ON rag_knowledge_chunks USING GIN (metadata_json);"
       );
     })();
   }
@@ -152,8 +166,8 @@ export async function upsertVectorChunk(
 
   await db.query(
     `
-      INSERT INTO rag_knowledge_chunks (id, title, text_content, tags, source, topic, user_id, doc_id, embedding, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, NOW())
+      INSERT INTO rag_knowledge_chunks (id, title, text_content, tags, source, topic, user_id, doc_id, metadata_json, embedding, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::vector, NOW())
       ON CONFLICT (id)
       DO UPDATE SET
         title = EXCLUDED.title,
@@ -163,6 +177,7 @@ export async function upsertVectorChunk(
         topic = EXCLUDED.topic,
         user_id = EXCLUDED.user_id,
         doc_id = EXCLUDED.doc_id,
+        metadata_json = EXCLUDED.metadata_json,
         embedding = EXCLUDED.embedding,
         updated_at = NOW()
     `,
@@ -175,6 +190,7 @@ export async function upsertVectorChunk(
       chunk.topic ?? "framework-foundation",
       options?.userId ?? null,
       options?.docId ?? null,
+      JSON.stringify(options?.metadata ?? {}),
       embeddingLiteral,
     ]
   );
@@ -202,6 +218,7 @@ export async function queryVectorChunks(
     tags: string[];
     source: KnowledgeSource;
     topic: string;
+    metadata_json: Record<string, unknown> | null;
     similarity: number;
   };
 
@@ -210,7 +227,7 @@ export async function queryVectorChunks(
   if (options.source && options.userId) {
     result = await db.query<VectorRow>(
       `
-        SELECT id, title, text_content, tags, source, topic,
+        SELECT id, title, text_content, tags, source, topic, metadata_json,
                1 - (embedding <=> $1::vector) AS similarity
         FROM rag_knowledge_chunks
         WHERE source = $2 AND user_id = $3
@@ -222,7 +239,7 @@ export async function queryVectorChunks(
   } else if (options.source) {
     result = await db.query<VectorRow>(
       `
-        SELECT id, title, text_content, tags, source, topic,
+        SELECT id, title, text_content, tags, source, topic, metadata_json,
                1 - (embedding <=> $1::vector) AS similarity
         FROM rag_knowledge_chunks
         WHERE source = $2
@@ -234,7 +251,7 @@ export async function queryVectorChunks(
   } else {
     result = await db.query<VectorRow>(
       `
-        SELECT id, title, text_content, tags, source, topic,
+        SELECT id, title, text_content, tags, source, topic, metadata_json,
                1 - (embedding <=> $1::vector) AS similarity
         FROM rag_knowledge_chunks
         ORDER BY embedding <=> $1::vector ASC
@@ -252,6 +269,7 @@ export async function queryVectorChunks(
     source: row.source,
     topic: (row.topic ?? "framework-foundation") as import("@/lib/rag/types").KnowledgeChunkTopic,
     score: Number.isFinite(row.similarity) ? row.similarity : 0,
+    metadata: row.metadata_json ?? undefined,
   }));
 }
 
