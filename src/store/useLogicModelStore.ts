@@ -622,11 +622,17 @@ export const useLogicModelStore = create<LogicModelState>()(
             for (const bucket of buckets) {
               if (res[bucket] !== undefined) {
                 const val = res[bucket];
-                state.model.implementation.resources[bucket] = Array.isArray(val)
-                  ? val
-                  : typeof val === "string" && val.length > 0
-                    ? [val]
-                    : state.model.implementation.resources[bucket];
+                if (Array.isArray(val)) {
+                  // Preserve existing resource memory when patch provides empty arrays.
+                  if (val.length > 0) {
+                    state.model.implementation.resources[bucket] = val;
+                  }
+                  continue;
+                }
+
+                if (typeof val === "string" && val.length > 0) {
+                  state.model.implementation.resources[bucket] = [val];
+                }
               }
             }
           }
