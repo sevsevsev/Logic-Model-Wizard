@@ -20,6 +20,7 @@ import {
   createEmptyClaimMemory,
   detectContextConflicts,
   isClaimMemoryState,
+  type LogicSection,
   updateClaimMemoryFromTurn,
 } from "@/lib/chat/orchestration";
 import { applyCompiledStatementPolicy } from "@/lib/chat/impactAcceptance";
@@ -34,6 +35,7 @@ import { normalizeTranscript } from "@/lib/chat/transcript";
 import type { AgentRevisionLifecycle } from "@/lib/agent/types";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
+import type { ConversationFocusLock } from "@/store/useLogicModelStore";
 
 // ---------------------------------------------------------------------------
 // System prompt — encodes all spec rules
@@ -42,6 +44,7 @@ const SYSTEM_PROMPT = buildSystemPrompt();
 const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
 const DEBUG_AGENTIC_CONTEXT = process.env.DEBUG_AGENTIC_CONTEXT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
+const ENABLE_STRICT_SECTION_PATCH_CONTRACT = process.env.ENABLE_STRICT_SECTION_PATCH_CONTRACT === "true";
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -1462,12 +1465,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { message, history, model, revisionLifecycle, retentionMemory } = body as {
+  const { message, history, model, revisionLifecycle, retentionMemory, focusLock } = body as {
     message?: unknown;
     history?: unknown;
     model?: unknown;
     revisionLifecycle?: unknown;
     retentionMemory?: unknown;
+    focusLock?: unknown;
     transcript?: unknown;
   };
 
@@ -1491,6 +1495,7 @@ export async function POST(req: NextRequest) {
   const safeRetentionMemory = isClaimMemoryState(retentionMemory)
     ? retentionMemory
     : createEmptyClaimMemory();
+  const safeFocusLock = isConversationFocusLockShape(focusLock) ? focusLock : null;
   const requestUserId = req.headers.get("x-user-id")?.trim() || undefined;
 
   // Cap history depth to prevent token-stuffing attacks
@@ -1529,7 +1534,12 @@ export async function POST(req: NextRequest) {
     const readinessStartedAt = Date.now();
     const readinessBeforeTurn = computeSectionReadiness(modelSnapshot);
     stageTimings.readinessBeforeTurnMs = captureDurationMs(readinessStartedAt);
-    const focusSection = readinessBeforeTurn.nextSection;
+    const resolvedFocusLock = resolveFocusLockBeforeTurn({
+      currentLock: safeFocusLock,
+      userMessage: message.trim(),
+      turnIndex: safeHistory.length + 1,
+    });
+    const focusSection = resolvedFocusLock?.section ?? readinessBeforeTurn.nextSection;
     const memoryContextStartedAt = Date.now();
     const retainedFactsContext = buildSectionScopedMemoryContext(safeRetentionMemory, focusSection);
     stageTimings.memoryContextMs = captureDurationMs(memoryContextStartedAt);
@@ -1563,6 +1573,16 @@ export async function POST(req: NextRequest) {
       { synthesizeWhenComplete: true }
     );
     stageTimings.compiledStatementPolicyMs = captureDurationMs(compiledPolicyStartedAt);
+
+    const sectionContractStartedAt = Date.now();
+    const sectionContract = enforceSectionPatchContract({
+      patch: modelPatch,
+      responseDomain: effectiveResponseDomain ?? responseDomain,
+      focusLock: resolvedFocusLock,
+      enabled: ENABLE_STRICT_SECTION_PATCH_CONTRACT,
+    });
+    modelPatch = sectionContract.patch;
+    stageTimings.sectionPatchContractMs = captureDurationMs(sectionContractStartedAt);
 
     const offTopicTangent = isOffTopicTangent(message.trim(), safeHistory);
     if (offTopicTangent) {
@@ -1643,6 +1663,13 @@ export async function POST(req: NextRequest) {
     }
     stageTimings.finalReplyRewriteMs = captureDurationMs(finalReplyStartedAt);
 
+    const outgoingFocusLock = resolveFocusLockAfterTurn({
+      currentLock: resolvedFocusLock,
+      userMessage: message.trim(),
+      readinessAfterTurn,
+      assistantReply: finalReply,
+    });
+
     const quickRepliesStartedAt = Date.now();
     const quickReplies = ENABLE_RESPONSE_CHIPS
       ? sanitizeQuickReplies(
@@ -1671,10 +1698,18 @@ export async function POST(req: NextRequest) {
       }));
     }
 
+    const finalTraceIntent =
+      outgoingFocusLock?.section ??
+      resolvedFocusLock?.section ??
+      effectiveResponseDomain ??
+      responseDomain ??
+      focusSection;
+
     return NextResponse.json({
       reply: finalReply,
       modelPatch,
       retentionMemory: updatedRetentionMemory,
+      focusLock: outgoingFocusLock,
       revisionProposal: null,
       quickReplies,
       transcript: conversational.transcript,
@@ -1686,16 +1721,24 @@ export async function POST(req: NextRequest) {
         trace: {
           initialIntent: effectiveResponseDomain ?? responseDomain ?? null,
           stateIntent: responseDomain ?? null,
-          finalIntent: effectiveResponseDomain ?? responseDomain ?? focusSection,
+          finalIntent: finalTraceIntent,
           resolutionSource: "minimal_conversational_pipeline",
           responseDomain: responseDomain ?? null,
           effectiveResponseDomain: effectiveResponseDomain ?? null,
+          strictSectionPatchContractEnabled: ENABLE_STRICT_SECTION_PATCH_CONTRACT,
+          strictSectionPatchContract: {
+            droppedByResponseDomain: sectionContract.droppedByResponseDomain,
+            droppedByFocusLock: sectionContract.droppedByFocusLock,
+            focusLockDomain: sectionContract.focusLockContractDomain,
+          },
           patchSource: "analysis_only",
           retrieval: conversational.retrieval.trace,
           usedExtractionFallback: false,
           usedHeuristicMerge: false,
           routeRewritesEnabled: false,
           nextSection: readinessAfterTurn.nextSection,
+          focusLockSection: outgoingFocusLock?.section ?? null,
+          focusLockReason: outgoingFocusLock?.reason ?? null,
           openConflictQuestions: updatedRetentionMemory.questions.filter((q) => q.status === "open").length,
           timings: stageTimings,
         },
@@ -1746,30 +1789,100 @@ type QuestionIntent =
   | "section_refine"
   | "none";
 
-function mapResponseDomainToSection(domain: QuestionIntent | undefined):
-  | "impact"
-  | "resources"
-  | "activities"
-  | "outputs_metrics"
-  | "quality_fidelity"
-  | "outcomes"
-  | "stakeholders" {
-  switch (domain) {
-    case "resources":
-      return "resources";
-    case "activities":
-      return "activities";
-    case "outputs_metrics":
-      return "outputs_metrics";
-    case "quality_evidence":
-      return "quality_fidelity";
-    case "outcomes_review":
-      return "outcomes";
-    case "section_refine":
-      return "stakeholders";
-    default:
+function detectExplicitSectionSelection(userMessage: string): LogicSection | undefined {
+  const text = userMessage.trim().toLowerCase();
+  if (!text) return undefined;
+
+  if (/\b(let'?s|lets|we\s+should|i\s+want\s+to|can\s+we|please)\b.{0,40}\b(begin|start|focus|work\s+on|review|refine|tighten|go\s+to)\b/.test(text)) {
+    if (/\bintended\s+impact|impact\s+statement|north\s+star|long[-\s]?term\s+goal\b/.test(text)) {
       return "impact";
+    }
+    if (/\bresources?\b/.test(text)) {
+      return "resources";
+    }
+    if (/\bactivities?\b/.test(text)) {
+      return "activities";
+    }
+    if (/\b(outputs?|metrics?|how many|number of)\b/i.test(text)) {
+      return "outputs_metrics";
+    }
+    if (/\bquality|fidelity\b/.test(text)) {
+      return "quality_fidelity";
+    }
+    if (/\boutcomes?\b/.test(text)) {
+      return "outcomes";
+    }
+    if (/\bstakeholders?\b/.test(text)) {
+      return "stakeholders";
+    }
+    if (/\bimplementation\b/.test(text)) {
+      return "resources";
+    }
   }
+
+  return undefined;
+}
+
+function requestedSectionRelease(userMessage: string): boolean {
+  const text = userMessage.trim().toLowerCase();
+  if (!text) return false;
+
+  return /\b(move\s+on|next\s+section|continue|proceed|looks\s+good|good\s+to\s+go|let'?s\s+proceed|that\s+works)\b/.test(text);
+}
+
+function getSectionScore(readiness: ReturnType<typeof computeSectionReadiness>["scores"], section: LogicSection): number {
+  return readiness[section] ?? 0;
+}
+
+function resolveFocusLockBeforeTurn(args: {
+  currentLock: ConversationFocusLock | null;
+  userMessage: string;
+  turnIndex: number;
+}): ConversationFocusLock | null {
+  const explicitSection = detectExplicitSectionSelection(args.userMessage);
+  if (explicitSection) {
+    return {
+      section: explicitSection,
+      reason: "user_section_selection",
+      acquiredAtTurn: args.turnIndex,
+    };
+  }
+
+  if (args.currentLock && requestedSectionRelease(args.userMessage)) {
+    return null;
+  }
+
+  if (args.currentLock) {
+    return {
+      ...args.currentLock,
+      reason: "carry_forward",
+    };
+  }
+
+  return null;
+}
+
+function shouldAutoReleaseFocusLock(args: {
+  currentLock: ConversationFocusLock | null;
+  readinessAfterTurn: ReturnType<typeof computeSectionReadiness>;
+  assistantReply: string;
+}): boolean {
+  if (!args.currentLock) return false;
+  const score = getSectionScore(args.readinessAfterTurn.scores, args.currentLock.section);
+  if (score < 1) return false;
+  return /\b(move\s+on|next\s+section|continue|proceed|ready\s+to\s+continue|shall\s+we\s+move)\b/i.test(args.assistantReply);
+}
+
+function resolveFocusLockAfterTurn(args: {
+  currentLock: ConversationFocusLock | null;
+  userMessage: string;
+  readinessAfterTurn: ReturnType<typeof computeSectionReadiness>;
+  assistantReply: string;
+}): ConversationFocusLock | null {
+  if (!args.currentLock) return null;
+  if (requestedSectionRelease(args.userMessage)) return null;
+  if (shouldAutoReleaseFocusLock(args)) return null;
+  return args.currentLock;
 }
 
 type ParsedQuestionIntent = QuestionIntent;
@@ -1985,6 +2098,78 @@ function constrainPatchToResponseDomain(
   return Object.keys(constrained).length > 0 ? constrained : null;
 }
 
+function mapSectionToContractDomain(section: LogicSection): QuestionIntent | undefined {
+  switch (section) {
+    case "impact":
+      return "population_focus";
+    case "resources":
+      return "resources";
+    case "activities":
+      return "activities";
+    case "outputs_metrics":
+      return "outputs_metrics";
+    case "quality_fidelity":
+      return "quality_evidence";
+    case "outcomes":
+      return "outcomes_review";
+    case "stakeholders":
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+function enforceSectionPatchContract(args: {
+  patch: Partial<LogicModel> | null;
+  responseDomain: QuestionIntent | undefined;
+  focusLock: ConversationFocusLock | null;
+  enabled: boolean;
+}): {
+  patch: Partial<LogicModel> | null;
+  droppedByResponseDomain: boolean;
+  droppedByFocusLock: boolean;
+  focusLockContractDomain: QuestionIntent | null;
+} {
+  if (!args.enabled) {
+    return {
+      patch: args.patch,
+      droppedByResponseDomain: false,
+      droppedByFocusLock: false,
+      focusLockContractDomain: null,
+    };
+  }
+
+  let nextPatch = args.patch;
+  let droppedByResponseDomain = false;
+  let droppedByFocusLock = false;
+
+  const patchEquals = (a: Partial<LogicModel> | null, b: Partial<LogicModel> | null): boolean =>
+    JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+  if (args.responseDomain) {
+    const constrained = constrainPatchToResponseDomain(nextPatch, args.responseDomain);
+    droppedByResponseDomain = !patchEquals(nextPatch, constrained);
+    nextPatch = constrained;
+  }
+
+  const focusLockContractDomain = args.focusLock
+    ? mapSectionToContractDomain(args.focusLock.section)
+    : undefined;
+
+  if (focusLockContractDomain) {
+    const constrained = constrainPatchToResponseDomain(nextPatch, focusLockContractDomain);
+    droppedByFocusLock = !patchEquals(nextPatch, constrained);
+    nextPatch = constrained;
+  }
+
+  return {
+    patch: nextPatch,
+    droppedByResponseDomain,
+    droppedByFocusLock,
+    focusLockContractDomain: focusLockContractDomain ?? null,
+  };
+}
+
 function getQuestionFocusText(reply: string): { text: string; hasQuestion: boolean } {
   const normalized = reply.trim();
   if (!normalized) return { text: "", hasQuestion: false };
@@ -2042,7 +2227,7 @@ const INTENT_QUESTION_PATTERNS: Record<QuestionIntent, RegExp[]> = {
     /(where\s+do\s+you\s+serve|which\s+neighborhood|citywide|zip\s+codes?|geograph)/i,
   ],
   population_focus: [
-    /(particular\s+subset|specific\s+group|who\s+exactly\s+do\s+you\s+serve|which\s+students\s+specifically)/i,
+    /(particular\s+subset|specific\s+group|particular group|subgroup|specific schools|backgrounds?|circumstances?|confirm who you reach)/i,
   ],
   resources: [
     /(key\s+resources|staff,?\s+volunteers?,?\s+partners?|funding|technology|equipment|inputs)/i,
@@ -2327,6 +2512,24 @@ function isRevisionLifecycleShape(value: unknown): value is AgentRevisionLifecyc
   if (v.rationale !== undefined && typeof v.rationale !== "string") return false;
   if (v.updatedAt !== undefined && typeof v.updatedAt !== "number") return false;
   return true;
+}
+
+function isConversationFocusLockShape(value: unknown): value is ConversationFocusLock {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  const isSection =
+    v.section === "impact" ||
+    v.section === "resources" ||
+    v.section === "activities" ||
+    v.section === "outputs_metrics" ||
+    v.section === "quality_fidelity" ||
+    v.section === "outcomes" ||
+    v.section === "stakeholders";
+  const isReason =
+    v.reason === "bootstrap_recommendation" ||
+    v.reason === "user_section_selection" ||
+    v.reason === "carry_forward";
+  return isSection && isReason && typeof v.acquiredAtTurn === "number";
 }
 
 function inferIntentFromModelState(

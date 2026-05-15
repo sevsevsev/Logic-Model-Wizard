@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-15T12:38:25.796Z",
+  "generatedAt": "2026-05-15T13:47:16.037Z",
   "apiUrl": "http://localhost:3300/api/chat",
   "results": [
     {
@@ -10,7 +10,7 @@
         {
           "turn": 1,
           "user": "We are starting the Green Haven Community Garden in West Philadelphia. Our goal is to serve local residents by reducing food insecurity and providing a green space for community building.",
-          "reply": "That's a powerful mission for the Green Haven Community Garden. Your goals of reducing food insecurity and fostering community are a great start for defining your ultimate impact.\n\nThinking about that big-picture vision, if you were to look at the West Philadelphia community several years from now, what is the most significant, long-term change you hope the garden will have helped to create?",
+          "reply": "That's a great start. The goals of reducing food insecurity and creating a space for community building are a fantastic foundation for your program.\n\nWhen we think about the ultimate *impact*, we're trying to describe the larger, long-term vision for the community that your garden contributes to. So, if your garden is successful, what kind of vibrant and healthy community do you ultimately hope to see in West Philadelphia?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -22,7 +22,7 @@
         {
           "turn": 2,
           "user": "We have two part-time coordinators, $5,000 in seed grants, donated tools from the city, and a partnership with a local horticulture expert for training.",
-          "reply": "That's a great list of the resources you have to work with. Having staff, funding, tools, and expert guidance already in place gives you a strong foundation.\n\nOne key resource for a garden is the land itself. Do you have the physical space for the garden secured?",
+          "reply": "Thanks, that's a fantastic list of resources to start with. It sounds like you have a great foundation with staff, funding, and key materials.\n\nYou mentioned the partnership with a local horticulture expert for training. To help capture that, could you tell me a bit more about the specific knowledge or expertise they will be providing?",
           "finalIntent": "resources",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -34,11 +34,11 @@
         {
           "turn": 3,
           "user": "We hold weekly planting workshops, maintain 20 raised beds, and run a bi-weekly harvest distribution stand.",
-          "reply": "Thanks for listing those activities. Holding workshops, maintaining the beds, and distributing the harvest are clearly the heart of your program.\n\nThese activities directly lead to measurable results. For example, with the weekly planting workshops, how many residents do you anticipate will participate in a typical session?",
+          "reply": "Those are very clear activities, thanks for sharing them. They give a great picture of what the program does day-to-day.\n\nThinking about those activities, the next step is to consider how you'll measure what you produce and who you reach.\n\nFor the weekly planting workshops you mentioned, how many residents do you anticipate will participate in those over a season?",
           "finalIntent": "activities",
-          "stateIntent": null,
+          "stateIntent": "resources",
           "patchSource": "analysis_only",
-          "responseDomain": null,
+          "responseDomain": "resources",
           "effectiveResponseDomain": "activities",
           "resourceBucketsInPatch": 4,
           "failures": []
@@ -46,7 +46,7 @@
         {
           "turn": 4,
           "user": "We maintain quality by using organic-only soil standards. For fidelity, we use a weekly checklist to ensure every bed is watered and weeded according to the garden manual.",
-          "reply": "It's great that you have clear standards for both quality and fidelity. Using organic soil and a weekly checklist are excellent ways to ensure the garden is managed consistently and effectively.\n\nThose activities, like the harvest distribution stand, are the direct link between your resources and the changes you hope to see.\n\nThinking about that bi-weekly distribution, how much produce do you anticipate you'll be able to share with residents each time?",
+          "reply": "That's excellent information on quality and fidelity. Using organic standards and a weekly checklist are great ways to ensure the garden is consistently well-maintained.\n\nThinking about the direct results of your activities, you mentioned running a bi-weekly harvest distribution stand. How much produce do you aim to distribute there each time?",
           "finalIntent": "quality_evidence",
           "stateIntent": "outputs_metrics",
           "patchSource": "analysis_only",
@@ -58,7 +58,7 @@
         {
           "turn": 5,
           "user": "Short term, we want residents to learn basic gardening. Medium term, we expect 200lbs of produce per season. Long term, we hope to see a 10% decrease in reported food insecurity among regular members.",
-          "reply": "That's a helpful breakdown of the results you're aiming for, from immediate learning to long-term community change.\n\nThe \"200 lbs of produce\" is a great, concrete target. In a logic model, the direct, tangible products of your activities—like the amount of food harvested—are often called \"outputs.\" That's a perfect metric for the harvest distribution you mentioned.\n\nLet's build on your short-term goal for residents to learn basic gardening. To make that more specific, what is one key skill or piece of knowledge you hope participants gain from your weekly workshops?",
+          "reply": "That's a very helpful breakdown of the changes you hope to see over time. The \"200lbs of produce per season\" is a fantastic example of a program output—it’s a direct, tangible result of your gardening activities.\n\nIt gives a clear picture of *what* the garden is producing. To go along with that, it's also helpful to capture *who* you are reaching.\n\nAbout how many households do you anticipate serving with that produce each season?",
           "finalIntent": "outcomes_review",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -77,7 +77,7 @@
         {
           "turn": 1,
           "user": "We work with high schoolers in the city to help them get jobs.",
-          "reply": "That's great, helping high schoolers find jobs is important work.\n\nTo start thinking about the logic model, let's look at the big picture. If your program is successful, what is the ultimate, long-term change you hope to see in the city as a result?",
+          "reply": "That's a great mission—helping high schoolers get jobs is so important.\n\nTo get started, let's think about the big picture. If your program is wildly successful, what is the ultimate, long-term change you hope to see for the youth or the city as a whole?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -89,7 +89,7 @@
         {
           "turn": 2,
           "user": "Our long-term goal is 100% college or trade school enrollment for our seniors.",
-          "reply": "That's a fantastic and clear goal for your students. Achieving 100% enrollment is a powerful long-term outcome.\n\nTo build on that for the logic model's \"impact\" section, let's think about the ripple effect. If all of your students successfully enroll in college or trade school, what is the ultimate positive change you hope to see for the city's community or economy down the line?",
+          "reply": "That’s a powerful and specific goal. Ensuring 100% of your seniors are enrolled in college or a trade school is a fantastic long-term outcome for them.\n\nFor the logic model's *impact*, we want to describe the ultimate, community-level change that happens *because* of that success.\n\nSo, if all those young people are on a path to a degree or a trade, what is the long-term benefit you hope to see for the city as a whole?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -101,7 +101,7 @@
         {
           "turn": 3,
           "user": "We have mentors and some funding from a local bank.",
-          "reply": "Thanks for sharing that. Mentors and funding are definitely key resources for your program.\n\nTo make sure we capture the full picture for the logic model, let's briefly return to the long-term impact. We have \"100% college or trade school enrollment\" as a powerful goal for your students. The impact section builds on that by describing the broader change in the community that happens *because* of that success.\n\nIf more of the city's young people are building careers, what effect do you hope that has on the local economy or community in the long run?",
+          "reply": "Those are definitely important resources for your program! We'll circle back to the mentors and funding in just a bit.\n\nFor now, let's finish up the big-picture goal. We've established that you're aiming for 100% of your seniors to enroll in college or a trade school.\n\nIf you achieve that, what positive change do you believe that will create for the city's economy or community wellbeing in the long run?",
           "finalIntent": "resources",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -113,7 +113,7 @@
         {
           "turn": 4,
           "user": "Oh, we also use a local library for meeting space and a licensed curriculum.",
-          "reply": "Those are excellent resources to have. Access to a library and a licensed curriculum are definitely key components for your program.\n\nTo return to the big picture for a moment, we have \"100% college or trade school enrollment\" as the goal for your students. In a logic model, that's a powerful long-term outcome for the participants themselves. The impact section builds on that by describing the broader benefit to the city that happens *because* of their success.\n\nIf you have more young people from the city building careers, what kind of change do you hope that creates for the local community or economy?",
+          "reply": "Thanks, those are more great examples of the resources your program uses. We'll be sure to capture the library space and curriculum.\n\nLet's try to finish up this big-picture impact statement. Your goal of 100% enrollment is a fantastic long-term outcome for your students. The impact is the community-level change that happens *because* of their success.\n\nSo, if you have a wave of young people entering the workforce with degrees and trade skills, what kind of long-term economic or social change do you hope that creates for the city?",
           "finalIntent": "resources",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -125,7 +125,7 @@
         {
           "turn": 5,
           "user": "We do mentorship meetings.",
-          "reply": "Got it, mentorship meetings are a key activity for your program.\n\nTo make sure we get the impact section just right, let's focus on that for a moment. We've established that \"100% college or trade school enrollment\" is a powerful long-term outcome for your students. The impact section of the logic model takes that one step further to describe the ultimate benefit to the *city* that happens *because* of your students' success.\n\nIf more of the city's young people are building strong careers, what is one major positive change you hope that creates for the local economy or community life?",
+          "reply": "Got it, mentorship meetings are a key activity. We'll be sure to capture that.\n\nLet's quickly try to wrap up the impact statement. We've established your goal of 100% college or trade school enrollment, which is a fantastic long-term outcome for your students.\n\nTo define the *impact*, we just need to describe the ripple effect of that success on the city. If all those young people build successful careers, what's one way that strengthens the city's economy or workforce?",
           "finalIntent": "activities",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -137,7 +137,7 @@
         {
           "turn": 6,
           "user": "Each student meets with a mentor for 2 hours a week to work on college apps and career goals.",
-          "reply": "That's a great, specific detail. Knowing that each student gets two hours a week with a mentor focused on college apps and career goals really clarifies what the program does.\n\nTo build on that, let's connect it to the big picture for the impact statement. We've established that your goal is \"100% college or trade school enrollment,\" which is a powerful long-term outcome for the students. The impact section describes the ripple effect of that success on the city as a whole.\n\nIf a wave of your students successfully launch into skilled professions, what broader economic change do you hope to see for the city in the long run?",
+          "reply": "Thanks, that's a very clear description of your mentorship meetings. Two hours a week focused on college apps and career goals sounds like a fantastic, structured activity.\n\nSo, let's connect that activity to the bigger picture. We've established that your goal of 100% college or trade school enrollment is a perfect *long-term outcome* for your students.\n\nThe final piece for this section, the *impact*, is just to describe the benefit to the city that happens *because* of their success. If you create a steady stream of graduates with degrees and skills, how does that ultimately improve the city's economic health?",
           "finalIntent": "activities",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -149,7 +149,7 @@
         {
           "turn": 7,
           "user": "We check in with the mentors often.",
-          "reply": "That's a great practice for ensuring the program stays on track. Checking in with mentors is a key part of maintaining quality.\n\nWhen you have those check-ins, what are you typically hoping to learn or confirm?",
+          "reply": "That's a great practice for ensuring the mentorship is high-quality. We can definitely circle back to that when we discuss how you monitor your program's activities.\n\nFor now, let's lock in that impact statement. We have a perfect long-term outcome for your students: \"100% of seniors enroll in college or a trade school.\"\n\nTo describe the ultimate *impact*, we just need to state the benefit to the city that happens *because* of their success. When those skilled graduates enter the local workforce, what kind of long-term improvement does that create for the city's economy?",
           "finalIntent": "quality_evidence",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -161,7 +161,7 @@
         {
           "turn": 8,
           "user": "We use a standardized mentor handbook (fidelity) and require all mentors to have background checks and 10 hours of training (quality).",
-          "reply": "That's fantastic. A standardized handbook, background checks, and required training are all strong indicators of a high-quality, reliable program.\n\nThinking about all of these activities and standards, let's get a sense of the program's scale. About how many students do you typically work with each year?",
+          "reply": "That's fantastic information. The standardized handbook, background checks, and training are all excellent examples of how you ensure your mentorship is high-quality and consistently delivered. We'll definitely note those details.\n\nLet's quickly try to finalize that impact statement. We've confirmed that \"100% of seniors enroll in college or a trade school\" is a powerful long-term goal for your students. The impact is just the final step—it describes the benefit to the community that happens *because* all those students are successful.\n\nSo, when those young, skilled graduates enter the local workforce, what positive, long-term change does that create for the city's economy or community?",
           "finalIntent": "quality_evidence",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -173,24 +173,24 @@
         {
           "turn": 9,
           "user": "We want them to succeed.",
-          "reply": "Of course, their success is the ultimate goal of all this work.\n\nTo help capture the scope of your program for the logic model, about how many high schoolers are you able to work with in a typical year?",
+          "reply": "Of course—their success is the ultimate goal, and that's a perfect way to put it.\n\nBased on what you've said, we have a really strong draft for the long-term goal for your students: \"100% of seniors enroll in college or a trade school.\"\n\nTo make this a community-level impact statement, we just need to add the 'so what?' that happens next. When those graduates get good jobs, they contribute back to the city.\n\nThinking about that, does their success ultimately help build a stronger local workforce or create more economic stability for the community?",
           "finalIntent": "outputs_metrics",
-          "stateIntent": "outputs_metrics",
+          "stateIntent": null,
           "patchSource": "analysis_only",
-          "responseDomain": "outputs_metrics",
-          "effectiveResponseDomain": "outputs_metrics",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
           "resourceBucketsInPatch": 4,
           "failures": []
         },
         {
           "turn": 10,
           "user": "Short term is completing one college app. Medium term is getting an acceptance letter. Long term is that enrollment goal I mentioned.",
-          "reply": "That's a perfect way to lay it out. Seeing the progression from completing an application, to getting an acceptance letter, and finally to enrolling in college gives a very clear picture of the student journey.\n\nTo help capture the scale of your program's efforts, about how many students do you typically support in reaching that first milestone of completing a college application each year?",
-          "finalIntent": "outputs_metrics",
-          "stateIntent": "outputs_metrics",
+          "reply": "That's a fantastic way to map out the student journey! Seeing the progression from completing an application, to getting an acceptance letter, and finally to enrolling makes the pathway to success perfectly clear.\n\nYou've just defined a great set of short, medium, and long-term outcomes. We can lock in that long-term outcome as \"100% of seniors enroll in college or a trade school.\"\n\nNow we can take that final step. When those students build successful careers in the city, what is the ultimate positive change you hope to see for the community as a whole?",
+          "finalIntent": "impact_statement",
+          "stateIntent": null,
           "patchSource": "analysis_only",
-          "responseDomain": "outputs_metrics",
-          "effectiveResponseDomain": "outputs_metrics",
+          "responseDomain": null,
+          "effectiveResponseDomain": "impact_statement",
           "resourceBucketsInPatch": 4,
           "failures": []
         }
@@ -204,7 +204,7 @@
         {
           "turn": 1,
           "user": "We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transition successfully to high school.",
-          "reply": "That's a clear and powerful goal for your students.\n\nWhen we think about the ultimate \"impact,\" we're looking at the bigger picture. If your students are reading at grade level and transitioning successfully to high school, what's the broader, long-term change you hope to see for them or for the North Philadelphia community as a whole?",
+          "reply": "That's a clear and powerful goal. Having students read on grade level and successfully transition to high school are crucial long-term outcomes.\n\nTo build the impact statement, we think one step beyond that. If your students achieve those goals, what is the ultimate, lasting change you hope to see for them or for the North Philadelphia community as a whole?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -216,7 +216,7 @@
         {
           "turn": 2,
           "user": "Yes, that captures it.",
-          "reply": "Excellent. It's helpful to have that ultimate goal clearly defined.\n\nNow, let's shift gears and think about what your program needs to operate. These are the \"resources\" or \"inputs\" that make your work possible.\n\nTo begin, what staff roles are dedicated to this program?",
+          "reply": "Excellent, we'll use that as our guiding impact statement.\n\nTo make that happen, a program needs resources. Let's start with the people involved. Who are the key staff or volunteer roles required to run your program?",
           "finalIntent": "resources",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -235,7 +235,7 @@
         {
           "turn": 1,
           "user": "We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training.",
-          "reply": "Thanks for listing those resources. It's helpful to see what your program is working with.\n\nNow, let's shift our focus to the big picture. What is the ultimate, long-term change you hope to achieve for the community or the individuals you serve?",
+          "reply": "Thanks, that's a great list of the key resources you have in place.\n\nNow, let's think about the big picture. What is the ultimate, long-term change you hope to see as a result of your program?",
           "finalIntent": "resources",
           "stateIntent": "resources",
           "patchSource": "analysis_only",
@@ -254,7 +254,7 @@
         {
           "turn": 1,
           "user": "Staff mentors, school partners, donated laptops, grant funding, and evidence-based training.",
-          "reply": "That's a very clear list of resources. Now, thinking about the big picture, what is the ultimate, long-term change you hope to see as a result of your program?",
+          "reply": "Thanks, that gives me a clear picture of the resources your program relies on.\n\nNow, let's think about the ultimate goal. What is the long-term, big-picture change you hope to create for the people you serve?",
           "finalIntent": "resources",
           "stateIntent": "resources",
           "patchSource": "analysis_only",
@@ -266,12 +266,12 @@
         {
           "turn": 2,
           "user": "Anything else you need from me on resources?",
-          "reply": "That's a great list of resources, thank you. It gives us a clear picture of what your program relies on. We can always come back to it if we need to add more detail later.\n\nSo, thinking about what all those resources are working towards, what is the ultimate, long-term change you hope to see because of your work?",
-          "finalIntent": "resources",
-          "stateIntent": "resources",
+          "reply": "No, that list is very clear for now. We can always come back to it if anything else comes to mind.\n\nSo, thinking about that big-picture goal, what is the ultimate, long-term change you hope this program creates?",
+          "finalIntent": "impact",
+          "stateIntent": null,
           "patchSource": "analysis_only",
-          "responseDomain": "resources",
-          "effectiveResponseDomain": "resources",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
           "resourceBucketsInPatch": 3,
           "failures": []
         }
@@ -285,7 +285,7 @@
         {
           "turn": 1,
           "user": "We serve middle school students in North Philadelphia and want them to read on grade level by high school.",
-          "reply": "That's a very clear and important goal. Having students read on grade level by high school is a powerful outcome for them.\n\nFor the logic model, the 'impact' is the ultimate, big-picture change that happens *because* those students succeed. Thinking about that, what kind of future do you envision for these students or for the North Philadelphia community as a result of their success?",
+          "reply": "That's a great goal. Having students read on grade level is a powerful outcome.\n\nFor the logic model, the 'impact' describes the ultimate, long-term change that happens *because* of that success.\n\nThinking big picture, what kind of future do you envision for students who are strong, confident readers, or for the community as a whole?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -297,7 +297,7 @@
         {
           "turn": 2,
           "user": "Correction: not North Philadelphia, it's West Philadelphia.",
-          "reply": "Got it, thanks for that correction. West Philadelphia.\n\nSo, thinking about the future for those students in West Philadelphia who succeed in your program, what is the ultimate, big-picture change you hope to see for the community as a whole?",
+          "reply": "Thanks for that correction. I've updated the location to West Philadelphia.\n\nSo, thinking about those students in West Philadelphia who become strong, confident readers by high school—what is the ultimate, long-term change you hope to see for them or for the community?",
           "finalIntent": "impact",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -316,7 +316,7 @@
         {
           "turn": 1,
           "user": "We want youth to thrive and succeed.",
-          "reply": "That's a powerful goal to anchor your work.\n\nWhen you picture a young person who is thriving and succeeding long after they've left your program, what is the ultimate, most important change you see in their life?",
+          "reply": "That's a powerful goal to have for your program.\n\nTo help bring that vision into focus for the logic model, it can be helpful to describe the specific, long-term change you hope to see.\n\nCould you tell me a bit more about what \"thriving and succeeding\" looks like for the youth you serve?",
           "finalIntent": "impact",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -328,7 +328,7 @@
         {
           "turn": 2,
           "user": "Specifically, high school youth in Kensington graduating on time.",
-          "reply": "That's a very clear and important goal.\n\nSo, after a young person in your program graduates on time, what's the next major step you hope to see them achieve?",
+          "reply": "Thank you, that's much more specific. Focusing on high school youth in Kensington and their on-time graduation really helps clarify the program's ultimate goal.\n\nThinking about your original vision of helping youth \"thrive and succeed,\" what do you hope happens for these students *after* they graduate?",
           "finalIntent": "impact",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -359,7 +359,7 @@
         {
           "turn": 2,
           "user": "Okay, we serve elementary students in South Philly and want stronger reading outcomes.",
-          "reply": "Thanks, that's a great starting point. Focusing on elementary students in South Philly and improving their reading is a very clear goal.\n\nThat goal, \"stronger reading outcomes,\" is what we would call a long-term outcome. The *impact* statement is usually a bit broader—it describes the ultimate, lasting change in students' lives that happens *because* they've become stronger readers.\n\nThinking beyond the classroom, what kind of lasting, positive change do you hope these improved reading skills will create for the students as they grow up?",
+          "reply": "Thanks, that's a great start. Focusing on stronger reading outcomes for elementary students in South Philly is a very clear goal.\n\nAn impact statement builds on that goal to describe the ultimate, long-lasting change you hope to see.\n\nThinking beyond just test scores, what does success in reading unlock for these students as they grow up?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -378,7 +378,7 @@
         {
           "turn": 1,
           "user": "Our resources are staff mentors, donated tablets, grant funding, and evidence-based training.",
-          "reply": "Great, that gives us a clear picture of your resources.\n\nTo help frame all of this, let's start with the big picture. What is the ultimate, long-term change you hope to achieve with this program?",
+          "reply": "Thanks, that's a great start for your resources. We can circle back to those details later.\n\nFor now, let's think about the big picture. What is the ultimate, long-term change you hope to see in the community or for your participants as a result of your program?",
           "finalIntent": "resources",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -390,11 +390,11 @@
         {
           "turn": 2,
           "user": "Main activities are weekly tutoring sessions and family literacy workshops.",
-          "reply": "Got it. So the program's core activities are weekly tutoring sessions and family literacy workshops.\n\nConnecting those activities to the bigger picture, what is the ultimate, long-term change you hope this program creates for the families and community you serve?",
+          "reply": "Got it. So, the core of your program is the weekly tutoring sessions and the family literacy workshops.\n\nTo help connect the dots, who typically leads those sessions and workshops? Is that where your staff mentors come in?",
           "finalIntent": "activities",
-          "stateIntent": null,
+          "stateIntent": "outputs_metrics",
           "patchSource": "analysis_only",
-          "responseDomain": null,
+          "responseDomain": "outputs_metrics",
           "effectiveResponseDomain": "activities",
           "resourceBucketsInPatch": 3,
           "failures": []
@@ -402,7 +402,7 @@
         {
           "turn": 3,
           "user": "For quality, we do facilitator observations; for fidelity, we use session checklists.",
-          "reply": "Okay, using observations and checklists are great ways to monitor quality and fidelity.\n\nNow, thinking about the tutoring sessions and workshops you mentioned, if they are successful, what is the most important long-term change you hope to create for your community?",
+          "reply": "Those are great, concrete methods for tracking how the program is delivered. It's smart to be thinking about both quality and fidelity.\n\nWhen you imagine those high-quality sessions running perfectly, what is the ultimate, long-term change you hope they create for the families and community you're serving?",
           "finalIntent": "quality_evidence",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -414,7 +414,7 @@
         {
           "turn": 4,
           "user": "Short term: stronger reading confidence. Medium term: improved attendance. Long term: grade-level proficiency.",
-          "reply": "Thanks, that's a great progression of outcomes. Achieving grade-level proficiency is a powerful long-term goal.\n\nThe impact statement builds on that. It describes the broader, lasting change that happens *because* a child becomes a proficient reader.\n\nThinking about that, what does achieving grade-level proficiency unlock for a child in their academic journey and their future?",
+          "reply": "That's a very clear progression from stronger confidence to better attendance, and ultimately to grade-level proficiency.\n\nThat final outcome is the perfect setup for thinking about your program's ultimate impact. The impact is the broader, lasting change that happens *because* students have become proficient readers.\n\nWhat does achieving that proficiency unlock for them in their education and their future?",
           "finalIntent": "outputs_metrics",
           "stateIntent": "outputs_metrics",
           "patchSource": "analysis_only",
@@ -433,7 +433,7 @@
         {
           "turn": 1,
           "user": "We hold weekly one-on-one coaching sessions with participants.",
-          "reply": "Got it, weekly one-on-one coaching sessions. That sounds like a key part of your program.\n\nTo get the big picture, what is the ultimate, long-term change you hope this coaching creates for your participants?",
+          "reply": "Thanks for sharing that. So, the core of your program involves weekly one-on-one coaching sessions.\n\nTo start thinking about the overall goal, what is the most important long-term change you hope to create for your participants?",
           "finalIntent": "activities",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -445,7 +445,7 @@
         {
           "turn": 2,
           "user": "Each session is 60 minutes and focuses on skill-building.",
-          "reply": "Thanks, that detail about the session's length and focus is helpful. It gives a clearer picture of the *activity* itself.\n\nRight now we're trying to describe the ultimate *why* behind that activity. Thinking about the skill-building you just mentioned, what is the bigger, long-term change you hope participants achieve in their lives as a result of building those skills?",
+          "reply": "That's helpful detail. So the sessions are an hour long and dedicated to building skills.\n\nThinking about that long-term change again, if participants are successful in building these new skills, what is the ultimate difference you hope to see in their lives?",
           "finalIntent": "activities",
           "stateIntent": "outputs_metrics",
           "patchSource": "analysis_only",
@@ -464,7 +464,7 @@
         {
           "turn": 1,
           "user": "We run monthly workshops where participants build professional portfolios. After six months, we expect 80% to have job interviews scheduled.",
-          "reply": "That's a great start. Building portfolios in workshops is a concrete activity, and aiming for 80% of participants to get interviews is a strong, measurable outcome.\n\nThinking bigger picture, what is the ultimate change you hope to see in your community or industry as a result of this work?",
+          "reply": "That's a fantastic outcome. Having 80% of your participants scheduling interviews is a clear sign of success.\n\nThinking bigger, if they succeed in those interviews and land jobs, what is the ultimate change you hope to create for them or the community?",
           "finalIntent": "activities",
           "stateIntent": "activities",
           "patchSource": "analysis_only",
@@ -483,7 +483,7 @@
         {
           "turn": 1,
           "user": "Immediately, we want students to feel welcomed. Within three months, we expect better attendance. Within two years, we hope students graduate on time.",
-          "reply": "Thanks, that's a great progression of goals, from an immediate welcome to the long-term achievement of on-time graduation.\n\nGraduating on time is a powerful result for your students. To define the program's ultimate *impact*, we want to think about what that achievement leads to on an even broader, community-wide scale.\n\nWhat is the bigger-picture change you hope to see as a result of more students graduating?",
+          "reply": "Thanks for sharing that timeline. It gives a great sense of how you see the program's effects unfolding, from the immediate feeling of being welcomed all the way to on-time graduation.\n\nThat goal of students graduating on time is a perfect example of a long-term outcome. To define the ultimate *impact*, we want to think about what success looks like even further down the road.\n\nWhat's the most important change you hope to see for these students or the community *because* they graduated on time?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -502,7 +502,7 @@
         {
           "turn": 1,
           "user": "We have program directors and peer mentors (people). We use curriculum workbooks and laptops (materials). We receive foundation grants and in-kind donations (funding). Our team has certifications in trauma-informed care (expertise).",
-          "reply": "Thanks, that's a clear picture of the resources you have in place.\n\nThinking about the big picture, what is the ultimate, long-term change you hope your program will achieve for the people or community you serve?",
+          "reply": "Thanks, that's a clear picture of the resources you're working with.\n\nNow let's think about the big picture. In the long term, what is the ultimate change you hope your program will achieve?",
           "finalIntent": "resources",
           "stateIntent": "resources",
           "patchSource": "analysis_only",
@@ -521,7 +521,7 @@
         {
           "turn": 1,
           "user": "We work in South Philadelphia and serve students from three schools there.",
-          "reply": "Got it, so your program is focused on students in three South Philadelphia schools.\n\nTo get started, let's think about the big picture. If your program is wildly successful, what is the ultimate, long-term change you hope to see for the community you serve?",
+          "reply": "Got it. It's helpful to know that your program is focused on students from those three schools in South Philadelphia.\n\nTo get started, let's think about the big picture. What is the ultimate, long-term change you hope to see in that community as a result of your work?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -533,7 +533,7 @@
         {
           "turn": 2,
           "user": "Actually, we also include students from West Philadelphia now.",
-          "reply": "Thanks for clarifying. So the program serves students from schools in both South and West Philadelphia.\n\nLet's go back to that big-picture question. Thinking about the students and communities in those areas, what is the ultimate, long-term change you hope your program contributes to?",
+          "reply": "Thanks for that correction. So your program serves students from schools in both South and West Philadelphia.\n\nWith that in mind, let's think about the long-term vision. If your program is incredibly successful, what ultimate change will we see in those communities?",
           "finalIntent": "impact",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -552,7 +552,7 @@
         {
           "turn": 1,
           "user": "How's the weather today? Anyway, our program serves youth in underserved neighborhoods.",
-          "reply": "Thanks for sharing that. It sounds like you're doing important work with youth in underserved neighborhoods.\n\nTo get started on your logic model, let's think about the big picture. What is the ultimate, long-term change you hope to see in their lives or in the community because of your program?",
+          "reply": "The weather's great, thanks for asking!\n\nIt's helpful to know that your program focuses on youth in underserved neighborhoods. To get a bit more specific, which city or geographic area do you work in?",
           "finalIntent": "impact_statement",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -564,12 +564,12 @@
         {
           "turn": 2,
           "user": "That's nice. So our long-term goal is college readiness.",
-          "reply": "That's a great, clear goal. \"College readiness\" helps set the direction for your program.\n\nFor the logic model's ultimate impact, we want to describe the final, most important change that happens *because* the youth are college-ready.\n\nWhat is the key achievement or change in status you hope this readiness leads to for them?",
-          "finalIntent": "impact",
-          "stateIntent": null,
+          "reply": "That's a great, clear goal. \"College readiness\" definitely points toward the ultimate change you're trying to create.\n\nTo make that as specific as possible for an impact statement, it helps to describe what happens *as a result* of being ready. What do you hope for these young people to achieve once they graduate from high school?",
+          "finalIntent": "geography",
+          "stateIntent": "geography",
           "patchSource": "analysis_only",
-          "responseDomain": null,
-          "effectiveResponseDomain": null,
+          "responseDomain": "geography",
+          "effectiveResponseDomain": "geography",
           "resourceBucketsInPatch": 0,
           "failures": []
         }
@@ -583,7 +583,7 @@
         {
           "turn": 1,
           "user": "Short term, 85% of participants attend regularly. Medium term, they complete job readiness training.",
-          "reply": "Thanks for sharing those. It's helpful to see the progression.\n\nOften, we think of a behavior like \"attending regularly\" as a medium-term outcome. The short-term outcomes are the initial changes in knowledge or attitude that lead to that behavior.\n\nWhat do you think changes for participants early on that motivates them to attend so regularly?",
+          "reply": "Thanks, that's a helpful start.\n\nRegular attendance is a great sign of engagement. We can think of that as a key behavior. Short-term outcomes are usually the changes in knowledge or attitude that happen *because* a person is attending.\n\nWhat's one of the first things you hope participants learn or believe differently as a result of showing up?",
           "finalIntent": "outputs_metrics",
           "stateIntent": "outputs_metrics",
           "patchSource": "analysis_only",
@@ -595,7 +595,7 @@
         {
           "turn": 2,
           "user": "Great, now let's polish the wording and make it logic-model appropriate.",
-          "reply": "Of course. Let's focus on crafting a strong impact statement.\n\nThe impact describes the ultimate, long-term change your program contributes to in the community. It's the \"so what?\" of all your efforts.\n\nIf your participants complete their job readiness training and become employed, what is the broader effect you hope to see in your community as a result?",
+          "reply": "Of course. Let's focus on defining the program's intended impact.\n\nThis is the big-picture, community-level change you hope to contribute to. It goes beyond what happens for the individual participants and describes the ultimate \"so what?\" of your work.\n\nThinking about your job readiness program, if many participants succeed over time, what is the broader, long-term change you hope to see in your community?",
           "finalIntent": "outputs_metrics",
           "stateIntent": "outputs_metrics",
           "patchSource": "analysis_only",
@@ -614,7 +614,7 @@
         {
           "turn": 1,
           "user": "Our resources include program staff, curriculum materials, grant funding, and trauma-informed training expertise.",
-          "reply": "Thanks, I've got that list of resources.\n\nNow, let's think about the big picture. What is the ultimate, long-term change you hope this program will create?",
+          "reply": "Thanks, that's a clear list of what you're working with—the staff, funding, curriculum, and expertise.\n\nNow, let's think about the big picture. What is the ultimate, long-term change you hope to see as a result of your program?",
           "finalIntent": "resources",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -626,7 +626,7 @@
         {
           "turn": 2,
           "user": "Let's begin with intended impact.",
-          "reply": "Of course. To begin shaping the intended impact statement, could you tell me about the specific population and community your program serves?",
+          "reply": "Perfect. For the intended impact, we want to capture the ultimate, big-picture change you're aiming for.\n\nWho are you serving, and what is the most significant, long-term difference you hope your program makes in their lives or their community?",
           "finalIntent": "impact",
           "stateIntent": null,
           "patchSource": "analysis_only",
@@ -638,12 +638,55 @@
         {
           "turn": 3,
           "user": "The STEM workforce in Philadelphia will be more representative of the demographics of our city.",
-          "reply": "That's a great start for an impact statement. It clearly describes a high-level, community-wide change.\n\nTo make it even more compelling, it helps to capture the \"so what?\" of that change. What is the ultimate benefit to the city or the STEM field when the workforce becomes more representative?",
+          "reply": "That's a powerful and clear goal for the future of Philadelphia's STEM workforce. It nicely captures the high-level, community-wide change you're aiming for.\n\nTo make it even more compelling, we can add a \"so what?\"—the reason this representation matters. What is the ultimate benefit to the city or its residents when the STEM workforce truly reflects its demographic diversity?",
           "finalIntent": "impact",
           "stateIntent": null,
           "patchSource": "analysis_only",
           "responseDomain": null,
           "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "id": "prefill-impact-focus-lock",
+      "description": "With prefilled implementation data, selecting intended impact should keep the assistant in impact refinement until release.",
+      "failures": [],
+      "turnResults": [
+        {
+          "turn": 1,
+          "user": "Our resources include program staff, curriculum materials, grant funding, and trauma-informed training expertise. We run weekly tutoring and mentoring sessions.",
+          "reply": "Thanks, that gives us a clear picture of your resources and key activities.\n\nNow let's think about the big picture. If your program is successful, what is the ultimate, long-term change you hope to see in the community?",
+          "finalIntent": "activities",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": "activities",
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 2,
+          "user": "Let's begin with intended impact.",
+          "reply": "Of course. To start, could you describe the ultimate, long-term change you hope to see for the youth you serve?",
+          "finalIntent": "impact",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": null,
+          "resourceBucketsInPatch": 4,
+          "failures": []
+        },
+        {
+          "turn": 3,
+          "user": "The intended impact is that youth in West Philadelphia graduate high school prepared for postsecondary pathways.",
+          "reply": "That's a strong goal, and it clearly describes a critical milestone for the young people you serve.\n\nAn impact statement often takes that one step further to describe the ultimate, long-term effect on the community. If more youth in West Philadelphia are graduating prepared for their next steps, what would that mean for the community in the long run?",
+          "finalIntent": "impact",
+          "stateIntent": null,
+          "patchSource": "analysis_only",
+          "responseDomain": null,
+          "effectiveResponseDomain": "impact_statement",
           "resourceBucketsInPatch": 4,
           "failures": []
         }

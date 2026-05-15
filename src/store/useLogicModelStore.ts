@@ -64,6 +64,21 @@ export interface LogicModel {
   outcomes: Outcomes;
 }
 
+export type ConversationFocusSection =
+  | "impact"
+  | "resources"
+  | "activities"
+  | "outputs_metrics"
+  | "quality_fidelity"
+  | "outcomes"
+  | "stakeholders";
+
+export interface ConversationFocusLock {
+  section: ConversationFocusSection;
+  reason: "bootstrap_recommendation" | "user_section_selection" | "carry_forward";
+  acquiredAtTurn: number;
+}
+
 export type RetentionSection =
   | "impact"
   | "resources"
@@ -178,6 +193,7 @@ export interface LogicModelDraft {
   model: LogicModel;
   messages: ChatMessage[];
   retentionMemory?: RetentionMemory;
+  focusLock?: ConversationFocusLock | null;
   transcript?: ConversationTranscript;
 }
 
@@ -189,6 +205,7 @@ interface LogicModelState {
   model: LogicModel;
   messages: ChatMessage[];
   retentionMemory: RetentionMemory;
+  focusLock: ConversationFocusLock | null;
   transcript: ConversationTranscript; // New: conversation transcript for analysis
   isLoading: boolean;
   activeRevisionProposal: AgentRevisionProposal | null;
@@ -210,6 +227,7 @@ interface LogicModelState {
   // Chat actions
   addMessage: (role: MessageRole, content: string, quickReplies?: QuickReply[]) => void;
   applyRetentionMemory: (memory: RetentionMemory) => void;
+  setFocusLock: (lock: ConversationFocusLock | null) => void;
   setLoading: (loading: boolean) => void;
   setActiveRevisionProposal: (proposal: AgentRevisionProposal | null) => void;
   setRevisionLifecycle: (lifecycle: AgentRevisionLifecycle) => void;
@@ -532,6 +550,7 @@ export const useLogicModelStore = create<LogicModelState>()(
     model: structuredClone(defaultModel),
     messages: getWelcomeMessages(),
     retentionMemory: createEmptyRetentionMemory(),
+    focusLock: null,
     transcript: createEmptyTranscript(), // New: empty transcript
     isLoading: false,
     activeRevisionProposal: null,
@@ -583,7 +602,7 @@ export const useLogicModelStore = create<LogicModelState>()(
       }),
 
     // ---- Full patch (used by AI JSON Update call) -------------------------
-    applyModelPatch: (patch) =>
+    applyModelPatch: (patch) => {
       set((state) => {
         if (patch.intended_impact) {
           Object.assign(state.model.intended_impact, patch.intended_impact);
@@ -684,7 +703,8 @@ export const useLogicModelStore = create<LogicModelState>()(
             );
           }
         }
-      }),
+      });
+    },
 
     // ---- Chat -------------------------------------------------------------
     addMessage: (role, content, quickReplies?) =>
@@ -705,6 +725,11 @@ export const useLogicModelStore = create<LogicModelState>()(
         state.retentionMemory = isRetentionMemory(memory)
           ? structuredClone(memory)
           : createEmptyRetentionMemory();
+      }),
+
+    setFocusLock: (lock) =>
+      set((state) => {
+        state.focusLock = lock ? structuredClone(lock) : null;
       }),
 
     setLoading: (loading) =>
@@ -729,6 +754,7 @@ export const useLogicModelStore = create<LogicModelState>()(
       model: structuredClone(get().model),
       messages: structuredClone(get().messages),
       retentionMemory: structuredClone(get().retentionMemory),
+      focusLock: structuredClone(get().focusLock),
       transcript: structuredClone(get().transcript),
     }),
 
@@ -773,6 +799,7 @@ export const useLogicModelStore = create<LogicModelState>()(
         state.retentionMemory = isRetentionMemory(draft.retentionMemory)
           ? structuredClone(draft.retentionMemory)
           : createEmptyRetentionMemory();
+        state.focusLock = draft.focusLock ? structuredClone(draft.focusLock) : null;
         state.transcript = draft.transcript
           ? structuredClone(draft.transcript)
           : createEmptyTranscript();
@@ -785,6 +812,7 @@ export const useLogicModelStore = create<LogicModelState>()(
         state.model = structuredClone(defaultModel);
         state.messages = getWelcomeMessages();
         state.retentionMemory = createEmptyRetentionMemory();
+        state.focusLock = null;
         state.transcript = createEmptyTranscript();
         state.activeRevisionProposal = null;
         state.revisionLifecycle = { status: "none" };

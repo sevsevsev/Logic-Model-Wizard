@@ -160,3 +160,23 @@ test("restoreDraft strips legacy activity categories from saved drafts", () => {
   assert.equal(nextModel.implementation.activities[0].category, undefined);
   assert.deepEqual(nextModel.implementation.activities[0].outputs, [{ text: "Meeting notes" }]);
 });
+
+test("focus lock persists in draft snapshots and clears on reset", () => {
+  resetStore();
+
+  const { setFocusLock, getDraftSnapshot, restoreDraft, resetModel } = useLogicModelStore.getState();
+  setFocusLock({
+    section: "impact",
+    reason: "user_section_selection",
+    acquiredAtTurn: 3,
+  });
+
+  const snapshot = getDraftSnapshot();
+  assert.equal(snapshot.focusLock?.section, "impact");
+
+  resetModel();
+  assert.equal(useLogicModelStore.getState().focusLock, null);
+
+  restoreDraft(snapshot);
+  assert.equal(useLogicModelStore.getState().focusLock?.section, "impact");
+});

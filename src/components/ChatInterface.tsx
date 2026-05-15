@@ -2,7 +2,13 @@
 
 import { useRef, useEffect, useState } from "react";
 import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download } from "lucide-react";
-import { useLogicModelStore, QuickReply, ChatMessage, RetentionMemory } from "@/store/useLogicModelStore";
+import {
+  useLogicModelStore,
+  QuickReply,
+  ChatMessage,
+  RetentionMemory,
+  ConversationFocusLock,
+} from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
 import type { DebugSnapshotCapture, LlmTraceMeta } from "@/lib/feedback/types";
@@ -44,11 +50,13 @@ export default function ChatInterface() {
   const messages = useLogicModelStore((s) => s.messages);
   const model = useLogicModelStore((s) => s.model);
   const retentionMemory = useLogicModelStore((s) => s.retentionMemory);
+  const focusLock = useLogicModelStore((s) => s.focusLock);
   const transcript = useLogicModelStore((s) => s.transcript);
   const isLoading = useLogicModelStore((s) => s.isLoading);
   const addMessage = useLogicModelStore((s) => s.addMessage);
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const applyRetentionMemory = useLogicModelStore((s) => s.applyRetentionMemory);
+  const setFocusLock = useLogicModelStore((s) => s.setFocusLock);
   const setLoading = useLogicModelStore((s) => s.setLoading);
   const setActiveRevisionProposal = useLogicModelStore((s) => s.setActiveRevisionProposal);
   const revisionLifecycle = useLogicModelStore((s) => s.revisionLifecycle);
@@ -123,7 +131,15 @@ export default function ChatInterface() {
           "Content-Type": "application/json",
           ...(collaboratorId ? { "x-user-id": collaboratorId } : {}),
         },
-        body: JSON.stringify({ message: text, history: messages, model, revisionLifecycle, retentionMemory, transcript }),
+        body: JSON.stringify({
+          message: text,
+          history: messages,
+          model,
+          revisionLifecycle,
+          retentionMemory,
+          focusLock,
+          transcript,
+        }),
       });
 
       const raw = await res.text();
@@ -148,6 +164,7 @@ export default function ChatInterface() {
               trace?: LlmTraceMeta | null;
             };
             retentionMemory?: unknown;
+            focusLock?: unknown;
             transcript?: unknown;
           }
         | null = null;
@@ -217,6 +234,13 @@ export default function ChatInterface() {
       }
       if (data.retentionMemory) {
         applyRetentionMemory(data.retentionMemory as RetentionMemory);
+      }
+      if (Object.prototype.hasOwnProperty.call(data ?? {}, "focusLock")) {
+        if (data?.focusLock === null || data?.focusLock === undefined) {
+          setFocusLock(null);
+        } else {
+          setFocusLock(data.focusLock as ConversationFocusLock);
+        }
       }
       if (data.transcript) {
         setTranscript(data.transcript as ConversationTranscript);

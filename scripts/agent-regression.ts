@@ -12,6 +12,21 @@ type ResourceBuckets = {
   knowledge: string[];
 };
 
+type FocusSection =
+  | "impact"
+  | "resources"
+  | "activities"
+  | "outputs_metrics"
+  | "quality_fidelity"
+  | "outcomes"
+  | "stakeholders";
+
+type FocusLock = {
+  section: FocusSection;
+  reason: "bootstrap_recommendation" | "user_section_selection" | "carry_forward";
+  acquiredAtTurn: number;
+};
+
 type LogicModel = {
   intended_impact: {
     population: string;
@@ -38,6 +53,7 @@ type LogicModel = {
 type ApiResponse = {
   reply?: string;
   modelPatch?: Partial<LogicModel> | null;
+  focusLock?: FocusLock | null;
   llmMeta?: {
     path?: string;
     fallbackReason?: string | null;
@@ -48,6 +64,12 @@ type ApiResponse = {
       patchSource?: string | null;
       responseDomain?: string | null;
       effectiveResponseDomain?: string | null;
+      strictSectionPatchContractEnabled?: boolean;
+      strictSectionPatchContract?: {
+        droppedByResponseDomain?: boolean;
+        droppedByFocusLock?: boolean;
+        focusLockDomain?: string | null;
+      };
     };
   };
 };
@@ -71,12 +93,17 @@ type Scenario = {
   seedHistory?: ChatMessage[];
   turns: ScenarioTurn[];
   finalCheck?: (state: ScenarioState) => string[];
+  requiredEnv?: {
+    name: string;
+    value?: string;
+  };
 };
 
 type ScenarioState = {
   history: ChatMessage[];
   model: LogicModel;
   responses: ApiResponse[];
+  focusLock: FocusLock | null;
 };
 
 type TurnResult = {
@@ -214,7 +241,13 @@ function resourceBucketCount(resources: unknown): number {
   return count;
 }
 
-async function postChat(body: { message: string; history: ChatMessage[]; model: LogicModel; userId: string }): Promise<ApiResponse> {
+async function postChat(body: {
+  message: string;
+  history: ChatMessage[];
+  model: LogicModel;
+  focusLock: FocusLock | null;
+  userId: string;
+}): Promise<ApiResponse> {
   const timeoutMs = readPositiveInt(process.env.AGENT_SCENARIO_REQUEST_TIMEOUT_MS, 120000);
   const maxRetries = readPositiveInt(process.env.AGENT_SCENARIO_REQUEST_RETRIES, 1) - 1;
 
@@ -235,6 +268,7 @@ async function postChat(body: { message: string; history: ChatMessage[]; model: 
           message: body.message,
           history: body.history,
           model: body.model,
+          focusLock: body.focusLock,
         }),
         signal: controller.signal,
       });
@@ -975,6 +1009,100 @@ const SCENARIOS: Scenario[] = [
       return failures;
     },
   },
+
+  // REGRESSION GUARD: Explicit section start should keep impact in focus after prefill
+  {
+    id: "prefill-impact-focus-lock",
+    description:
+      "With prefilled implementation data, selecting intended impact should keep the assistant in impact refinement until release.",
+    turns: [
+      {
+        user: "Our resources include program staff, curriculum materials, grant funding, and trauma-informed training expertise. We run weekly tutoring and mentoring sessions.",
+        expect: {
+          finalIntentOneOf: ["resources", "activities", "impact", "impact_statement"],
+          modelPatchMustHavePath: ["implementation.resources", "implementation.activities"],
+        },
+      },
+      {
+        user: "Let's begin with intended impact.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography"],
+          replyMustNotMatch: [/what\s+are\s+the\s+main\s+activities/i, /how\s+would\s+you\s+count/i],
+        },
+      },
+      {
+        user: "The intended impact is that youth in West Philadelphia graduate high school prepared for postsecondary pathways.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "long_term_help", "population_focus", "geography"],
+          modelPatchMustHavePath: ["intended_impact"],
+          replyMustNotMatch: [/what\s+activities\s+does\s+your\s+team\s+deliver/i, /what\s+resources\s+are\s+needed/i],
+        },
+      },
+    ],
+    finalCheck: ({ responses, focusLock }) => {
+      const failures: string[] = [];
+      const impactTurns = responses.slice(1);
+      for (const response of impactTurns) {
+        const intent = response.llmMeta?.trace?.finalIntent ?? null;
+        if (typeof intent === "string") {
+          const lower = intent.toLowerCase();
+          if (lower.includes("resource") || lower.includes("activity") || lower.includes("output")) {
+            failures.push(`unexpected intent drift while impact lock expected: ${intent}`);
+          }
+        }
+      }
+      if (focusLock?.section !== "impact") {
+        failures.push(`expected focus lock to remain on impact, got ${focusLock?.section ?? "none"}`);
+      }
+      return failures;
+    },
+  },
+  {
+    id: "strict-contract-impact-lock-gates-resources",
+    description:
+      "With strict section contract enabled, an impact focus lock should keep mixed turns from writing resource fields.",
+    requiredEnv: {
+      name: "ENABLE_STRICT_SECTION_PATCH_CONTRACT",
+      value: "true",
+    },
+    turns: [
+      {
+        user: "Let's begin with intended impact.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography"],
+        },
+      },
+      {
+        user: "For impact, we serve youth in West Philadelphia and want on-time graduation. Also we have mentors, laptops, and grant funding.",
+        expect: {
+          finalIntentOneOf: ["impact", "impact_statement", "impact_review", "population_focus", "geography", "long_term_help"],
+          modelPatchMustHavePath: ["intended_impact"],
+        },
+      },
+    ],
+    finalCheck: ({ responses }) => {
+      const failures: string[] = [];
+      const response = responses[1];
+      const trace = response?.llmMeta?.trace;
+
+      if (!trace?.strictSectionPatchContractEnabled) {
+        failures.push("strict section patch contract trace flag was not enabled");
+        return failures;
+      }
+
+      const droppedByFocusLock = trace.strictSectionPatchContract?.droppedByFocusLock;
+      if (!droppedByFocusLock) {
+        failures.push("expected strict contract to report focus-lock-based patch filtering");
+      }
+
+      const resourcesPatch = getPathValue(response?.modelPatch, "implementation.resources");
+      if (resourceBucketCount(resourcesPatch) > 0) {
+        failures.push("resource fields leaked into modelPatch while impact focus lock was active");
+      }
+
+      return failures;
+    },
+  },
 ];
 
 async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
@@ -983,6 +1111,7 @@ async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
   const responses: ApiResponse[] = [];
   const failures: string[] = [];
   const turnResults: TurnResult[] = [];
+  let focusLock: FocusLock | null = null;
 
   for (let index = 0; index < scenario.turns.length; index++) {
     const turn = scenario.turns[index];
@@ -993,6 +1122,7 @@ async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
         message: turn.user,
         history,
         model,
+        focusLock,
         userId: `agent-regression-${scenario.id}`,
       });
     } catch (error) {
@@ -1001,6 +1131,9 @@ async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
     }
 
     responses.push(response);
+    if (Object.prototype.hasOwnProperty.call(response, "focusLock")) {
+      focusLock = response.focusLock ?? null;
+    }
     mergeModel(model, response.modelPatch ?? null);
 
     history.push({ role: "user", content: turn.user });
@@ -1029,7 +1162,7 @@ async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
   }
 
   if (scenario.finalCheck) {
-    for (const failure of scenario.finalCheck({ history, model, responses })) {
+    for (const failure of scenario.finalCheck({ history, model, responses, focusLock })) {
       failures.push(`final: ${failure}`);
     }
   }
@@ -1130,7 +1263,21 @@ async function main(): Promise<void> {
   console.log(`Running agent regression scenarios against ${API_URL}`);
 
   const results: ScenarioResult[] = [];
+  let skipped = 0;
   for (const scenario of SCENARIOS) {
+    if (scenario.requiredEnv) {
+      const raw = process.env[scenario.requiredEnv.name];
+      const expected = scenario.requiredEnv.value ?? "true";
+      const actual = (raw ?? "").trim().toLowerCase();
+      if (actual !== expected.trim().toLowerCase()) {
+        skipped += 1;
+        console.log(
+          `\n--- ${scenario.id}: skipped (requires ${scenario.requiredEnv.name}=${expected}, got ${raw ?? "unset"})`
+        );
+        continue;
+      }
+    }
+
     console.log(`\n--- ${scenario.id}: ${scenario.description}`);
     const result = await runScenario(scenario);
     results.push(result);
@@ -1147,6 +1294,9 @@ async function main(): Promise<void> {
   await writeReport(results);
 
   const failed = results.filter((r) => r.failures.length > 0);
+  if (skipped > 0) {
+    console.log(`Skipped: ${skipped} scenario(s) due to env guards.`);
+  }
   console.log(`\nSummary: ${results.length - failed.length}/${results.length} scenarios passed.`);
   if (failed.length > 0) {
     process.exit(1);

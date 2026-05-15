@@ -1,8 +1,8 @@
 # Agent Scenario Report
 
-Generated: 2026-05-15T12:38:25.806Z
+Generated: 2026-05-15T13:47:16.044Z
 API: http://localhost:3300/api/chat
-Summary: 17/17 scenarios passed.
+Summary: 18/18 scenarios passed.
 
 ## Scenario Results
 
@@ -25,6 +25,7 @@ Summary: 17/17 scenarios passed.
 | extraction-irrelevant-data-isolation | PASS | 0 |
 | coaching-close-enough-then-refine | PASS | 0 |
 | resources-persist-through-impact-refinement | PASS | 0 |
+| prefill-impact-focus-lock | PASS | 0 |
 
 ## full-e2e-green-haven
 
@@ -36,7 +37,7 @@ Turn trace:
 |---|---|---|---|---|---|---:|---|
 | 1 | impact_statement | none | none | impact_statement | analysis_only | 1 | 0 |
 | 2 | resources | none | none | resources | analysis_only | 4 | 0 |
-| 3 | activities | none | none | activities | analysis_only | 4 | 0 |
+| 3 | activities | resources | resources | activities | analysis_only | 4 | 0 |
 | 4 | quality_evidence | outputs_metrics | outputs_metrics | quality_evidence | analysis_only | 4 | 0 |
 | 5 | outcomes_review | none | none | outcomes_review | analysis_only | 4 | 0 |
 
@@ -45,15 +46,15 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We are starting the Green Haven Community Garden in West Philadelphia. Our goal is to serve local residents by reducing 
-A-->>U: intent=impact_statement; buckets=1; That's a powerful mission for the Green Haven Community Garden. Your goals of reducing food insecurity and fostering community are a great s
+A-->>U: intent=impact_statement; buckets=1; That's a great start. The goals of reducing food insecurity and creating a space for community building are a fantastic foundation for your 
 U->>A: T2: We have two part-time coordinators, $5,000 in seed grants, donated tools from the city, and a partnership with a local h
-A-->>U: intent=resources; buckets=4; That's a great list of the resources you have to work with. Having staff, funding, tools, and expert guidance already in place gives you a s
+A-->>U: intent=resources; buckets=4; Thanks, that's a fantastic list of resources to start with. It sounds like you have a great foundation with staff, funding, and key material
 U->>A: T3: We hold weekly planting workshops, maintain 20 raised beds, and run a bi-weekly harvest distribution stand.
-A-->>U: intent=activities; buckets=4; Thanks for listing those activities. Holding workshops, maintaining the beds, and distributing the harvest are clearly the heart of your pro
+A-->>U: intent=activities; buckets=4; Those are very clear activities, thanks for sharing them. They give a great picture of what the program does day-to-day.  Thinking about tho
 U->>A: T4: We maintain quality by using organic-only soil standards. For fidelity, we use a weekly checklist to ensure every bed is
-A-->>U: intent=quality_evidence; buckets=4; It's great that you have clear standards for both quality and fidelity. Using organic soil and a weekly checklist are excellent ways to ensu
+A-->>U: intent=quality_evidence; buckets=4; That's excellent information on quality and fidelity. Using organic standards and a weekly checklist are great ways to ensure the garden is 
 U->>A: T5: Short term, we want residents to learn basic gardening. Medium term, we expect 200lbs of produce per season. Long term, 
-A-->>U: intent=outcomes_review; buckets=4; That's a helpful breakdown of the results you're aiming for, from immediate learning to long-term community change.  The "200 lbs of produce
+A-->>U: intent=outcomes_review; buckets=4; That's a very helpful breakdown of the changes you hope to see over time. The "200lbs of produce per season" is a fantastic example of a pro
 ```
 
 ## full-e2e-stepup-mentorship
@@ -72,33 +73,33 @@ Turn trace:
 | 6 | activities | none | none | activities | analysis_only | 4 | 0 |
 | 7 | quality_evidence | none | none | quality_evidence | analysis_only | 4 | 0 |
 | 8 | quality_evidence | none | none | quality_evidence | analysis_only | 4 | 0 |
-| 9 | outputs_metrics | outputs_metrics | outputs_metrics | outputs_metrics | analysis_only | 4 | 0 |
-| 10 | outputs_metrics | outputs_metrics | outputs_metrics | outputs_metrics | analysis_only | 4 | 0 |
+| 9 | outputs_metrics | none | none | none | analysis_only | 4 | 0 |
+| 10 | impact_statement | none | none | impact_statement | analysis_only | 4 | 0 |
 
 ```mermaid
 sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We work with high schoolers in the city to help them get jobs.
-A-->>U: intent=impact_statement; buckets=0; That's great, helping high schoolers find jobs is important work.  To start thinking about the logic model, let's look at the big picture. I
+A-->>U: intent=impact_statement; buckets=0; That's a great mission—helping high schoolers get jobs is so important.  To get started, let's think about the big picture. If your program 
 U->>A: T2: Our long-term goal is 100% college or trade school enrollment for our seniors.
-A-->>U: intent=impact_statement; buckets=0; That's a fantastic and clear goal for your students. Achieving 100% enrollment is a powerful long-term outcome.  To build on that for the lo
+A-->>U: intent=impact_statement; buckets=0; That’s a powerful and specific goal. Ensuring 100% of your seniors are enrolled in college or a trade school is a fantastic long-term outcom
 U->>A: T3: We have mentors and some funding from a local bank.
-A-->>U: intent=resources; buckets=2; Thanks for sharing that. Mentors and funding are definitely key resources for your program.  To make sure we capture the full picture for th
+A-->>U: intent=resources; buckets=2; Those are definitely important resources for your program! We'll circle back to the mentors and funding in just a bit.  For now, let's finis
 U->>A: T4: Oh, we also use a local library for meeting space and a licensed curriculum.
-A-->>U: intent=resources; buckets=4; Those are excellent resources to have. Access to a library and a licensed curriculum are definitely key components for your program.  To ret
+A-->>U: intent=resources; buckets=4; Thanks, those are more great examples of the resources your program uses. We'll be sure to capture the library space and curriculum.  Let's 
 U->>A: T5: We do mentorship meetings.
-A-->>U: intent=activities; buckets=4; Got it, mentorship meetings are a key activity for your program.  To make sure we get the impact section just right, let's focus on that for
+A-->>U: intent=activities; buckets=4; Got it, mentorship meetings are a key activity. We'll be sure to capture that.  Let's quickly try to wrap up the impact statement. We've est
 U->>A: T6: Each student meets with a mentor for 2 hours a week to work on college apps and career goals.
-A-->>U: intent=activities; buckets=4; That's a great, specific detail. Knowing that each student gets two hours a week with a mentor focused on college apps and career goals real
+A-->>U: intent=activities; buckets=4; Thanks, that's a very clear description of your mentorship meetings. Two hours a week focused on college apps and career goals sounds like a
 U->>A: T7: We check in with the mentors often.
-A-->>U: intent=quality_evidence; buckets=4; That's a great practice for ensuring the program stays on track. Checking in with mentors is a key part of maintaining quality.  When you ha
+A-->>U: intent=quality_evidence; buckets=4; That's a great practice for ensuring the mentorship is high-quality. We can definitely circle back to that when we discuss how you monitor y
 U->>A: T8: We use a standardized mentor handbook (fidelity) and require all mentors to have background checks and 10 hours of train
-A-->>U: intent=quality_evidence; buckets=4; That's fantastic. A standardized handbook, background checks, and required training are all strong indicators of a high-quality, reliable pr
+A-->>U: intent=quality_evidence; buckets=4; That's fantastic information. The standardized handbook, background checks, and training are all excellent examples of how you ensure your m
 U->>A: T9: We want them to succeed.
-A-->>U: intent=outputs_metrics; buckets=4; Of course, their success is the ultimate goal of all this work.  To help capture the scope of your program for the logic model, about how ma
+A-->>U: intent=outputs_metrics; buckets=4; Of course—their success is the ultimate goal, and that's a perfect way to put it.  Based on what you've said, we have a really strong draft 
 U->>A: T10: Short term is completing one college app. Medium term is getting an acceptance letter. Long term is that enrollment goal
-A-->>U: intent=outputs_metrics; buckets=4; That's a perfect way to lay it out. Seeing the progression from completing an application, to getting an acceptance letter, and finally to e
+A-->>U: intent=impact_statement; buckets=4; That's a fantastic way to map out the student journey! Seeing the progression from completing an application, to getting an acceptance lette
 ```
 
 ## impact-happy-path
@@ -117,9 +118,9 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We serve middle school students in North Philadelphia and our long-term goal is that they read on grade level and transi
-A-->>U: intent=impact_statement; buckets=0; That's a clear and powerful goal for your students.  When we think about the ultimate "impact," we're looking at the bigger picture. If your
+A-->>U: intent=impact_statement; buckets=0; That's a clear and powerful goal. Having students read on grade level and successfully transition to high school are crucial long-term outco
 U->>A: T2: Yes, that captures it.
-A-->>U: intent=resources; buckets=0; Excellent. It's helpful to have that ultimate goal clearly defined.  Now, let's shift gears and think about what your program needs to opera
+A-->>U: intent=resources; buckets=0; Excellent, we'll use that as our guiding impact statement.  To make that happen, a program needs resources. Let's start with the people invo
 ```
 
 ## resources-list-capture
@@ -137,7 +138,7 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We have program staff, volunteers, partner counselors, curriculum materials, laptops, grant funding, and staff training.
-A-->>U: intent=resources; buckets=4; Thanks for listing those resources. It's helpful to see what your program is working with.  Now, let's shift our focus to the big picture. W
+A-->>U: intent=resources; buckets=4; Thanks, that's a great list of the key resources you have in place.  Now, let's think about the big picture. What is the ultimate, long-term
 ```
 
 ## resources-no-silent-drop
@@ -149,16 +150,16 @@ Turn trace:
 | Turn | finalIntent | stateIntent | responseDomain | effectiveDomain | patchSource | resourceBucketsInPatch | turnFailures |
 |---|---|---|---|---|---|---:|---|
 | 1 | resources | resources | resources | resources | analysis_only | 3 | 0 |
-| 2 | resources | resources | resources | resources | analysis_only | 3 | 0 |
+| 2 | impact | none | none | none | analysis_only | 3 | 0 |
 
 ```mermaid
 sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: Staff mentors, school partners, donated laptops, grant funding, and evidence-based training.
-A-->>U: intent=resources; buckets=3; That's a very clear list of resources. Now, thinking about the big picture, what is the ultimate, long-term change you hope to see as a resu
+A-->>U: intent=resources; buckets=3; Thanks, that gives me a clear picture of the resources your program relies on.  Now, let's think about the ultimate goal. What is the long-t
 U->>A: T2: Anything else you need from me on resources?
-A-->>U: intent=resources; buckets=3; That's a great list of resources, thank you. It gives us a clear picture of what your program relies on. We can always come back to it if we
+A-->>U: intent=impact; buckets=3; No, that list is very clear for now. We can always come back to it if anything else comes to mind.  So, thinking about that big-picture goal
 ```
 
 ## impact-contradiction-explicit-correction
@@ -177,9 +178,9 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We serve middle school students in North Philadelphia and want them to read on grade level by high school.
-A-->>U: intent=impact_statement; buckets=0; That's a very clear and important goal. Having students read on grade level by high school is a powerful outcome for them.  For the logic mo
+A-->>U: intent=impact_statement; buckets=0; That's a great goal. Having students read on grade level is a powerful outcome.  For the logic model, the 'impact' describes the ultimate, l
 U->>A: T2: Correction: not North Philadelphia, it's West Philadelphia.
-A-->>U: intent=impact; buckets=0; Got it, thanks for that correction. West Philadelphia.  So, thinking about the future for those students in West Philadelphia who succeed in
+A-->>U: intent=impact; buckets=0; Thanks for that correction. I've updated the location to West Philadelphia.  So, thinking about those students in West Philadelphia who beco
 ```
 
 ## impact-ambiguous-input-single-clarifier
@@ -198,9 +199,9 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We want youth to thrive and succeed.
-A-->>U: intent=impact; buckets=0; That's a powerful goal to anchor your work.  When you picture a young person who is thriving and succeeding long after they've left your pro
+A-->>U: intent=impact; buckets=0; That's a powerful goal to have for your program.  To help bring that vision into focus for the logic model, it can be helpful to describe th
 U->>A: T2: Specifically, high school youth in Kensington graduating on time.
-A-->>U: intent=impact; buckets=0; That's a very clear and important goal.  So, after a young person in your program graduates on time, what's the next major step you hope to 
+A-->>U: intent=impact; buckets=0; Thank you, that's much more specific. Focusing on high school youth in Kensington and their on-time graduation really helps clarify the prog
 ```
 
 ## offtopic-smalltalk-no-model-pollution
@@ -221,7 +222,7 @@ participant A as Agent
 U->>A: T1: By the way, what's your favorite movie?
 A-->>U: intent=impact; buckets=0; I can help with your logic model, but I'm going to stay focused on that work. If you want to continue, tell me more about your intended impa
 U->>A: T2: Okay, we serve elementary students in South Philly and want stronger reading outcomes.
-A-->>U: intent=impact_statement; buckets=0; Thanks, that's a great starting point. Focusing on elementary students in South Philly and improving their reading is a very clear goal.  Th
+A-->>U: intent=impact_statement; buckets=0; Thanks, that's a great start. Focusing on stronger reading outcomes for elementary students in South Philly is a very clear goal.  An impact
 ```
 
 ## long-context-resources-retained-after-multi-section-flow
@@ -233,7 +234,7 @@ Turn trace:
 | Turn | finalIntent | stateIntent | responseDomain | effectiveDomain | patchSource | resourceBucketsInPatch | turnFailures |
 |---|---|---|---|---|---|---:|---|
 | 1 | resources | none | none | resources | analysis_only | 3 | 0 |
-| 2 | activities | none | none | activities | analysis_only | 3 | 0 |
+| 2 | activities | outputs_metrics | outputs_metrics | activities | analysis_only | 3 | 0 |
 | 3 | quality_evidence | none | none | quality_evidence | analysis_only | 3 | 0 |
 | 4 | outputs_metrics | outputs_metrics | outputs_metrics | outputs_metrics | analysis_only | 3 | 0 |
 
@@ -242,13 +243,13 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: Our resources are staff mentors, donated tablets, grant funding, and evidence-based training.
-A-->>U: intent=resources; buckets=3; Great, that gives us a clear picture of your resources.  To help frame all of this, let's start with the big picture. What is the ultimate, 
+A-->>U: intent=resources; buckets=3; Thanks, that's a great start for your resources. We can circle back to those details later.  For now, let's think about the big picture. Wha
 U->>A: T2: Main activities are weekly tutoring sessions and family literacy workshops.
-A-->>U: intent=activities; buckets=3; Got it. So the program's core activities are weekly tutoring sessions and family literacy workshops.  Connecting those activities to the big
+A-->>U: intent=activities; buckets=3; Got it. So, the core of your program is the weekly tutoring sessions and the family literacy workshops.  To help connect the dots, who typic
 U->>A: T3: For quality, we do facilitator observations; for fidelity, we use session checklists.
-A-->>U: intent=quality_evidence; buckets=3; Okay, using observations and checklists are great ways to monitor quality and fidelity.  Now, thinking about the tutoring sessions and works
+A-->>U: intent=quality_evidence; buckets=3; Those are great, concrete methods for tracking how the program is delivered. It's smart to be thinking about both quality and fidelity.  Whe
 U->>A: T4: Short term: stronger reading confidence. Medium term: improved attendance. Long term: grade-level proficiency.
-A-->>U: intent=outputs_metrics; buckets=3; Thanks, that's a great progression of outcomes. Achieving grade-level proficiency is a powerful long-term goal.  The impact statement builds
+A-->>U: intent=outputs_metrics; buckets=3; That's a very clear progression from stronger confidence to better attendance, and ultimately to grade-level proficiency.  That final outcom
 ```
 
 ## extraction-activity-not-outcome
@@ -267,9 +268,9 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We hold weekly one-on-one coaching sessions with participants.
-A-->>U: intent=activities; buckets=0; Got it, weekly one-on-one coaching sessions. That sounds like a key part of your program.  To get the big picture, what is the ultimate, lon
+A-->>U: intent=activities; buckets=0; Thanks for sharing that. So, the core of your program involves weekly one-on-one coaching sessions.  To start thinking about the overall goa
 U->>A: T2: Each session is 60 minutes and focuses on skill-building.
-A-->>U: intent=activities; buckets=0; Thanks, that detail about the session's length and focus is helpful. It gives a clearer picture of the *activity* itself.  Right now we're t
+A-->>U: intent=activities; buckets=0; That's helpful detail. So the sessions are an hour long and dedicated to building skills.  Thinking about that long-term change again, if pa
 ```
 
 ## extraction-mixed-intent-boundary
@@ -287,7 +288,7 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We run monthly workshops where participants build professional portfolios. After six months, we expect 80% to have job i
-A-->>U: intent=activities; buckets=0; That's a great start. Building portfolios in workshops is a concrete activity, and aiming for 80% of participants to get interviews is a str
+A-->>U: intent=activities; buckets=0; That's a fantastic outcome. Having 80% of your participants scheduling interviews is a clear sign of success.  Thinking bigger, if they succ
 ```
 
 ## extraction-outcome-accuracy
@@ -305,7 +306,7 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: Immediately, we want students to feel welcomed. Within three months, we expect better attendance. Within two years, we h
-A-->>U: intent=impact_statement; buckets=0; Thanks, that's a great progression of goals, from an immediate welcome to the long-term achievement of on-time graduation.  Graduating on ti
+A-->>U: intent=impact_statement; buckets=0; Thanks for sharing that timeline. It gives a great sense of how you see the program's effects unfolding, from the immediate feeling of being
 ```
 
 ## extraction-resource-bucket-accuracy
@@ -323,7 +324,7 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We have program directors and peer mentors (people). We use curriculum workbooks and laptops (materials). We receive fou
-A-->>U: intent=resources; buckets=4; Thanks, that's a clear picture of the resources you have in place.  Thinking about the big picture, what is the ultimate, long-term change y
+A-->>U: intent=resources; buckets=4; Thanks, that's a clear picture of the resources you're working with.  Now let's think about the big picture. In the long term, what is the u
 ```
 
 ## extraction-geography-consistency
@@ -342,9 +343,9 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: We work in South Philadelphia and serve students from three schools there.
-A-->>U: intent=impact_statement; buckets=0; Got it, so your program is focused on students in three South Philadelphia schools.  To get started, let's think about the big picture. If y
+A-->>U: intent=impact_statement; buckets=0; Got it. It's helpful to know that your program is focused on students from those three schools in South Philadelphia.  To get started, let's
 U->>A: T2: Actually, we also include students from West Philadelphia now.
-A-->>U: intent=impact; buckets=0; Thanks for clarifying. So the program serves students from schools in both South and West Philadelphia.  Let's go back to that big-picture q
+A-->>U: intent=impact; buckets=0; Thanks for that correction. So your program serves students from schools in both South and West Philadelphia.  With that in mind, let's thin
 ```
 
 ## extraction-irrelevant-data-isolation
@@ -356,16 +357,16 @@ Turn trace:
 | Turn | finalIntent | stateIntent | responseDomain | effectiveDomain | patchSource | resourceBucketsInPatch | turnFailures |
 |---|---|---|---|---|---|---:|---|
 | 1 | impact_statement | none | none | impact_statement | analysis_only | 0 | 0 |
-| 2 | impact | none | none | none | analysis_only | 0 | 0 |
+| 2 | geography | geography | geography | geography | analysis_only | 0 | 0 |
 
 ```mermaid
 sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: How's the weather today? Anyway, our program serves youth in underserved neighborhoods.
-A-->>U: intent=impact_statement; buckets=0; Thanks for sharing that. It sounds like you're doing important work with youth in underserved neighborhoods.  To get started on your logic m
+A-->>U: intent=impact_statement; buckets=0; The weather's great, thanks for asking!  It's helpful to know that your program focuses on youth in underserved neighborhoods. To get a bit 
 U->>A: T2: That's nice. So our long-term goal is college readiness.
-A-->>U: intent=impact; buckets=0; That's a great, clear goal. "College readiness" helps set the direction for your program.  For the logic model's ultimate impact, we want to
+A-->>U: intent=geography; buckets=0; That's a great, clear goal. "College readiness" definitely points toward the ultimate change you're trying to create.  To make that as speci
 ```
 
 ## coaching-close-enough-then-refine
@@ -384,9 +385,9 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: Short term, 85% of participants attend regularly. Medium term, they complete job readiness training.
-A-->>U: intent=outputs_metrics; buckets=1; Thanks for sharing those. It's helpful to see the progression.  Often, we think of a behavior like "attending regularly" as a medium-term ou
+A-->>U: intent=outputs_metrics; buckets=1; Thanks, that's a helpful start.  Regular attendance is a great sign of engagement. We can think of that as a key behavior. Short-term outcom
 U->>A: T2: Great, now let's polish the wording and make it logic-model appropriate.
-A-->>U: intent=outputs_metrics; buckets=1; Of course. Let's focus on crafting a strong impact statement.  The impact describes the ultimate, long-term change your program contributes 
+A-->>U: intent=outputs_metrics; buckets=1; Of course. Let's focus on defining the program's intended impact.  This is the big-picture, community-level change you hope to contribute to
 ```
 
 ## resources-persist-through-impact-refinement
@@ -406,9 +407,33 @@ sequenceDiagram
 participant U as User
 participant A as Agent
 U->>A: T1: Our resources include program staff, curriculum materials, grant funding, and trauma-informed training expertise.
-A-->>U: intent=resources; buckets=4; Thanks, I've got that list of resources.  Now, let's think about the big picture. What is the ultimate, long-term change you hope this progr
+A-->>U: intent=resources; buckets=4; Thanks, that's a clear list of what you're working with—the staff, funding, curriculum, and expertise.  Now, let's think about the big pictu
 U->>A: T2: Let's begin with intended impact.
-A-->>U: intent=impact; buckets=4; Of course. To begin shaping the intended impact statement, could you tell me about the specific population and community your program serves
+A-->>U: intent=impact; buckets=4; Perfect. For the intended impact, we want to capture the ultimate, big-picture change you're aiming for.  Who are you serving, and what is t
 U->>A: T3: The STEM workforce in Philadelphia will be more representative of the demographics of our city.
-A-->>U: intent=impact; buckets=4; That's a great start for an impact statement. It clearly describes a high-level, community-wide change.  To make it even more compelling, it
+A-->>U: intent=impact; buckets=4; That's a powerful and clear goal for the future of Philadelphia's STEM workforce. It nicely captures the high-level, community-wide change y
+```
+
+## prefill-impact-focus-lock
+
+With prefilled implementation data, selecting intended impact should keep the assistant in impact refinement until release.
+
+Turn trace:
+
+| Turn | finalIntent | stateIntent | responseDomain | effectiveDomain | patchSource | resourceBucketsInPatch | turnFailures |
+|---|---|---|---|---|---|---:|---|
+| 1 | activities | none | none | activities | analysis_only | 4 | 0 |
+| 2 | impact | none | none | none | analysis_only | 4 | 0 |
+| 3 | impact | none | none | impact_statement | analysis_only | 4 | 0 |
+
+```mermaid
+sequenceDiagram
+participant U as User
+participant A as Agent
+U->>A: T1: Our resources include program staff, curriculum materials, grant funding, and trauma-informed training expertise. We run
+A-->>U: intent=activities; buckets=4; Thanks, that gives us a clear picture of your resources and key activities.  Now let's think about the big picture. If your program is succe
+U->>A: T2: Let's begin with intended impact.
+A-->>U: intent=impact; buckets=4; Of course. To start, could you describe the ultimate, long-term change you hope to see for the youth you serve?
+U->>A: T3: The intended impact is that youth in West Philadelphia graduate high school prepared for postsecondary pathways.
+A-->>U: intent=impact; buckets=4; That's a strong goal, and it clearly describes a critical milestone for the young people you serve.  An impact statement often takes that on
 ```

@@ -47,6 +47,7 @@ function getCollaboratorId(): string | null {
 export default function DocumentBootstrap() {
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const addMessage = useLogicModelStore((s) => s.addMessage);
+  const setFocusLock = useLogicModelStore((s) => s.setFocusLock);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzingTick, setAnalyzingTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +135,20 @@ export default function DocumentBootstrap() {
         ? getBootstrapStartRecommendation(model, suggestions)
         : null;
       const refinementCoaching = buildRefinementCoaching(suggestions);
+
+      if (startRecommendation) {
+        const recommendedSection =
+          startRecommendation.section === "impact"
+            ? "impact"
+            : startRecommendation.section === "outcomes"
+              ? "outcomes"
+              : "resources";
+        setFocusLock({
+          section: recommendedSection,
+          reason: "bootstrap_recommendation",
+          acquiredAtTurn: useLogicModelStore.getState().messages.length,
+        });
+      }
 
       let message = "I reviewed your document and pre-filled your logic model";
       if (detected.length > 0) message += ` with **${detected.join(", ")}**`;
