@@ -8,9 +8,7 @@ import {
   looksSpecificGeography as guardrailLooksSpecificGeography,
   looksSpecificPopulation as guardrailLooksSpecificPopulation,
 } from "@/lib/chat/guardrails";
-import {
-  assertIntentWithLatestUserEvidence,
-} from "@/lib/chat/agenticContext";
+import { assertIntentWithLatestUserEvidence } from "@/lib/chat/agenticContext";
 import {
   applyGroundedReplyFallback,
   buildConflictClarificationPrompt,
@@ -30,6 +28,7 @@ import { classifyIntakeSignals, looksLikeBroadProgramFrame } from "@/lib/chat/in
 
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { runConversationalTurn } from "@/lib/chat/conversationalPipeline";
+import { extractModelFromTranscript } from "@/lib/chat/modelExtractor";
 
 import { normalizeTranscript } from "@/lib/chat/transcript";
 import type { AgentRevisionLifecycle } from "@/lib/agent/types";
@@ -44,7 +43,7 @@ const SYSTEM_PROMPT = buildSystemPrompt();
 const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
 const DEBUG_AGENTIC_CONTEXT = process.env.DEBUG_AGENTIC_CONTEXT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
-const ENABLE_STRICT_SECTION_PATCH_CONTRACT = process.env.ENABLE_STRICT_SECTION_PATCH_CONTRACT === "true";
+const ENABLE_STRICT_SECTION_PATCH_CONTRACT = process.env.ENABLE_STRICT_SECTION_PATCH_CONTRACT !== "false";
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -1353,6 +1352,19 @@ function isModelSufficientlyPopulated(model: LogicModel | undefined): boolean {
   return hasActivities && hasOutcomes && hasImpact;
 }
 
+function hasPlacementSensitivePatch(patch: Partial<LogicModel> | null): boolean {
+  if (!patch) return false;
+
+  return Boolean(
+    (patch.implementation?.activities?.length ?? 0) > 0 ||
+      (patch.outcomes?.short_term?.length ?? 0) > 0 ||
+      (patch.outcomes?.medium_term?.length ?? 0) > 0 ||
+      (patch.outcomes?.long_term?.length ?? 0) > 0 ||
+      (patch.implementation?.quality_fidelity?.quality?.length ?? 0) > 0 ||
+      (patch.implementation?.quality_fidelity?.fidelity?.length ?? 0) > 0
+  );
+}
+
 /**
  * Gemini-based validation — diagnose and fix placement issues on the full model.
  * Only called when model is sufficiently populated AND issues are detected.
@@ -1572,6 +1584,31 @@ export async function POST(req: NextRequest) {
       message.trim(),
       { synthesizeWhenComplete: true }
     );
+    const heuristicPatch = normalizeMergedActivityPatch(
+      buildHeuristicNarrativePatch(message.trim())
+    );
+    modelPatch = mergeModelPatchPreferPrimary(modelPatch, heuristicPatch);
+    modelPatch = applyResourcesTurnHeuristic(
+      modelPatch,
+      message.trim(),
+      effectiveResponseDomain ?? responseDomain,
+      modelSnapshot?.implementation?.resources
+    );
+    modelPatch = applyActivitiesTurnHeuristic(
+      modelPatch,
+      message.trim(),
+      effectiveResponseDomain ?? responseDomain
+    );
+    modelPatch = applyQualityTurnHeuristic(
+      modelPatch,
+      message.trim(),
+      effectiveResponseDomain ?? responseDomain
+    );
+    modelPatch = applyOutcomesTurnHeuristic(
+      modelPatch,
+      message.trim(),
+      effectiveResponseDomain ?? responseDomain
+    );
     modelPatch = removeBlankImpactFacetFields(modelPatch);
     stageTimings.compiledStatementPolicyMs = captureDurationMs(compiledPolicyStartedAt);
 
@@ -1581,6 +1618,7 @@ export async function POST(req: NextRequest) {
       responseDomain: effectiveResponseDomain ?? responseDomain,
       focusLock: resolvedFocusLock,
       enabled: ENABLE_STRICT_SECTION_PATCH_CONTRACT,
+      latestUserMessage: message.trim(),
     });
     modelPatch = removeBlankImpactFacetFields(sectionContract.patch);
     stageTimings.sectionPatchContractMs = captureDurationMs(sectionContractStartedAt);
@@ -1600,12 +1638,13 @@ export async function POST(req: NextRequest) {
     const validationStartedAt = Date.now();
     let validatedSnapshot: LogicModel | undefined = mergedSnapshot;
     
-    if (
-      mergedSnapshot !== undefined &&
-      isModelSufficientlyPopulated(mergedSnapshot)
-    ) {
+    let validationTriggerReason: "none" | "full_model" | "targeted_patch" = "none";
+    if (mergedSnapshot !== undefined) {
       const qualityIssues = detectModelQualityIssues(mergedSnapshot);
-      if (qualityIssues.hasIssues) {
+      const shouldRunFullValidation = isModelSufficientlyPopulated(mergedSnapshot);
+      const shouldRunTargetedValidation = hasPlacementSensitivePatch(modelPatch);
+      if (qualityIssues.hasIssues && (shouldRunFullValidation || shouldRunTargetedValidation)) {
+        validationTriggerReason = shouldRunFullValidation ? "full_model" : "targeted_patch";
         validatedSnapshot = await validateAndFixModelPlacement({
           apiKey,
           model: mergedSnapshot,
@@ -1644,9 +1683,54 @@ export async function POST(req: NextRequest) {
     );
     stageTimings.conflictPromptMs = captureDurationMs(conflictPromptStartedAt);
 
+    const explicitActivityRevisionDetected =
+      /\b(correction|instead\s+of|actually|i\s+meant|replace)\b/i.test(message.trim()) &&
+      /\b(activity|activities|session|sessions|workshop|workshops|tutoring|mentoring|coaching)\b/i.test(message.trim()) &&
+      safeHistory.some(
+        (entry) =>
+          entry.role === "user" &&
+          /\b(run|hold|host|facilitate|conduct|lead|mentor|coach|session|workshop|tutoring|mentoring|coaching|activities)\b/i.test(
+            entry.content
+          )
+      );
+
+    const revisionFallbackPrompt =
+      explicitActivityRevisionDetected && !conflictPrompt
+        ? "I see a revision to your earlier activity details. I have two different versions now. Which version should we keep?"
+        : undefined;
+
+    const candidateReplyStartedAt = Date.now();
+    let candidateReply = conflictPrompt ?? revisionFallbackPrompt ?? conversational.reply;
+    const contextConflictFlags = detectContextConflicts({
+      history: safeHistory,
+      userMessage: message.trim(),
+      reply: candidateReply,
+      modelPatch,
+      mergedModel: validatedSnapshot,
+    });
+
+    if (
+      contextConflictFlags.includes("repeated_prompt_risk") ||
+      contextConflictFlags.includes("asks_for_known_information")
+    ) {
+      const nextIntent = assertIntentWithLatestUserEvidence(
+        inferIntentFromModelState(validatedSnapshot),
+        message.trim(),
+        validatedSnapshot
+      );
+      const canonicalQuestion = nextIntent ? buildCanonicalQuestionForIntent(nextIntent) : undefined;
+      if (
+        canonicalQuestion &&
+        canonicalQuestion.trim().toLowerCase() !== candidateReply.trim().toLowerCase()
+      ) {
+        candidateReply = canonicalQuestion;
+      }
+    }
+    stageTimings.conflictDetectionMs = captureDurationMs(candidateReplyStartedAt);
+
     const groundedReplyStartedAt = Date.now();
     const groundedReply = applyGroundedReplyFallback({
-      reply: conflictPrompt ?? conversational.reply,
+      reply: candidateReply,
       modelPatch,
       nextSection: readinessAfterTurn.nextSection,
     });
@@ -1705,6 +1789,11 @@ export async function POST(req: NextRequest) {
       effectiveResponseDomain ??
       responseDomain ??
       focusSection;
+    const evidenceAdjustedNextIntent = assertIntentWithLatestUserEvidence(
+      inferIntentFromModelState(validatedSnapshot),
+      message.trim(),
+      validatedSnapshot
+    );
 
     return NextResponse.json({
       reply: finalReply,
@@ -1723,6 +1812,7 @@ export async function POST(req: NextRequest) {
           initialIntent: effectiveResponseDomain ?? responseDomain ?? null,
           stateIntent: responseDomain ?? null,
           finalIntent: finalTraceIntent,
+          evidenceAdjustedNextIntent: evidenceAdjustedNextIntent ?? null,
           resolutionSource: "minimal_conversational_pipeline",
           responseDomain: responseDomain ?? null,
           effectiveResponseDomain: effectiveResponseDomain ?? null,
@@ -1732,9 +1822,16 @@ export async function POST(req: NextRequest) {
             droppedByFocusLock: sectionContract.droppedByFocusLock,
             focusLockDomain: sectionContract.focusLockContractDomain,
           },
+          patchConstraintApplied:
+            sectionContract.droppedByResponseDomain || sectionContract.droppedByFocusLock,
+          offTopicMarked: offTopicTangent,
+          contextConflictFlags,
+          validationTriggerReason,
           patchSource: "analysis_only",
           retrieval: conversational.retrieval.trace,
-          usedExtractionFallback: false,
+          usedExtractionFallback: conversational.extraction.usedFallback,
+          extractionMode: conversational.extraction.mode,
+          extractionAttestedUserTurns: conversational.extraction.attestedUserTurnIndices,
           usedHeuristicMerge: false,
           routeRewritesEnabled: false,
           nextSection: readinessAfterTurn.nextSection,
@@ -1748,8 +1845,226 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const totalMs = captureDurationMs(requestStartedAt);
     stageTimings.totalRequestMs = totalMs;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const recoverableGenerationError =
+      /agent failed to generate response|429|too many requests|spending cap|fetch failed/i.test(errorMessage);
+
+    if (recoverableGenerationError) {
+      const fallbackReadinessBefore = computeSectionReadiness(modelSnapshot);
+      const fallbackResolvedFocusLock = resolveFocusLockBeforeTurn({
+        currentLock: safeFocusLock,
+        userMessage: message.trim(),
+        turnIndex: safeHistory.length + 1,
+      });
+      const fallbackFocusSection = fallbackResolvedFocusLock?.section ?? fallbackReadinessBefore.nextSection;
+
+      const fallbackTranscriptWithUserTurn = normalizeTranscript({
+        turns: [
+          ...(normalizedTranscript.turns ?? []),
+          {
+            role: "user",
+            content: message.trim(),
+            timestamp: Date.now(),
+          },
+        ],
+        questionsAsked: normalizedTranscript.questionsAsked ?? [],
+        topicsCovered: normalizedTranscript.topicsCovered ?? [],
+      });
+      const fallbackAnalysis = await extractModelFromTranscript(fallbackTranscriptWithUserTurn, {
+        mode: "latest_turn",
+      });
+
+      let fallbackPatch = applyCompiledStatementPolicy(
+        mergeModelPatchPreferPrimary(
+          fallbackAnalysis.model,
+          normalizeMergedActivityPatch(buildHeuristicNarrativePatch(message.trim()))
+        ),
+        modelSnapshot,
+        message.trim(),
+        { synthesizeWhenComplete: true }
+      );
+      fallbackPatch = applyResourcesTurnHeuristic(
+        fallbackPatch,
+        message.trim(),
+        effectiveResponseDomain ?? responseDomain,
+        modelSnapshot?.implementation?.resources
+      );
+      fallbackPatch = applyActivitiesTurnHeuristic(
+        fallbackPatch,
+        message.trim(),
+        effectiveResponseDomain ?? responseDomain
+      );
+      fallbackPatch = applyQualityTurnHeuristic(
+        fallbackPatch,
+        message.trim(),
+        effectiveResponseDomain ?? responseDomain
+      );
+      fallbackPatch = applyOutcomesTurnHeuristic(
+        fallbackPatch,
+        message.trim(),
+        effectiveResponseDomain ?? responseDomain
+      );
+      fallbackPatch = removeBlankImpactFacetFields(fallbackPatch);
+
+      const fallbackSectionContract = enforceSectionPatchContract({
+        patch: fallbackPatch,
+        responseDomain: effectiveResponseDomain ?? responseDomain,
+        focusLock: fallbackResolvedFocusLock,
+        enabled: ENABLE_STRICT_SECTION_PATCH_CONTRACT,
+        latestUserMessage: message.trim(),
+      });
+      fallbackPatch = removeBlankImpactFacetFields(fallbackSectionContract.patch);
+
+      const fallbackOffTopic = isOffTopicTangent(message.trim(), safeHistory);
+      if (fallbackOffTopic) {
+        fallbackPatch = null;
+      }
+
+      const fallbackMergedSnapshot = applyPatchToSnapshot(modelSnapshot, fallbackPatch);
+      const fallbackEvidenceLedger = buildEvidenceLedgerFromTurn({
+        userMessage: message.trim(),
+        modelPatch: fallbackPatch,
+        historyLength: safeHistory.length,
+      });
+      const fallbackReadinessAfter = computeSectionReadiness(fallbackMergedSnapshot, fallbackEvidenceLedger);
+      const fallbackRetentionMemory = updateClaimMemoryFromTurn({
+        previous: safeRetentionMemory,
+        userMessage: message.trim(),
+        modelPatch: fallbackPatch,
+        turnIndex: safeHistory.length + 1,
+      });
+      const fallbackConflictPrompt = buildConflictClarificationPrompt(
+        fallbackRetentionMemory,
+        fallbackReadinessAfter.nextSection
+      );
+      const fallbackIntent = assertIntentWithLatestUserEvidence(
+        inferIntentFromModelState(fallbackMergedSnapshot),
+        message.trim(),
+        fallbackMergedSnapshot
+      );
+      const explicitSectionSelection = detectExplicitSectionSelection(message.trim());
+      const userSelectedImpact =
+        explicitSectionSelection === "impact" ||
+        /\b(intended\s+impact|impact\s+statement|long[-\s]?term\s+goal)\b/i.test(message.trim());
+      const fallbackIntentForQuestion =
+        effectiveResponseDomain ??
+        responseDomain ??
+        fallbackIntent;
+      const normalizedFallbackIntent: QuestionIntent | string = (() => {
+        if (fallbackIntentForQuestion === "section_refine" && (fallbackFocusSection === "impact" || userSelectedImpact)) {
+          return "impact";
+        }
+        if (fallbackIntentForQuestion === "resources" && userSelectedImpact) {
+          return "impact";
+        }
+        return fallbackIntentForQuestion ?? fallbackFocusSection;
+      })();
+      const fallbackFinalIntent =
+        normalizedFallbackIntent;
+      let fallbackQuestion =
+        typeof normalizedFallbackIntent === "string"
+          ? buildCanonicalQuestionForIntent(normalizedFallbackIntent as QuestionIntent)
+          : undefined;
+
+      if (
+        !fallbackQuestion &&
+        (fallbackFocusSection === "impact" || userSelectedImpact || isGenericOutcomeUserMessage(message.trim()))
+      ) {
+        const readiness = inferImpactDraftReadiness(
+          fallbackMergedSnapshot,
+          safeHistory,
+          message.trim()
+        );
+        fallbackQuestion = buildImpactMissingFollowUp(readiness.missingIntent);
+      }
+
+      const fallbackExplicitActivityRevisionDetected =
+        /\b(correction|instead\s+of|actually|i\s+meant|replace)\b/i.test(message.trim()) &&
+        /\b(activity|activities|session|sessions|workshop|workshops|tutoring|mentoring|coaching)\b/i.test(message.trim()) &&
+        safeHistory.some(
+          (entry) =>
+            entry.role === "user" &&
+            /\b(run|hold|host|facilitate|conduct|lead|mentor|coach|session|workshop|tutoring|mentoring|coaching|activities)\b/i.test(
+              entry.content
+            )
+        );
+
+      if (fallbackExplicitActivityRevisionDetected && !fallbackConflictPrompt) {
+        fallbackQuestion =
+          "I see a revision to your earlier activity details. I have two different versions now. Which version should we keep?";
+      }
+
+      let fallbackReply =
+        fallbackConflictPrompt ??
+        fallbackQuestion ??
+        "Thanks. I captured what I could from your message. What is the next key detail you want to add?";
+      if (fallbackOffTopic) {
+        fallbackReply = buildOffTopicRedirect(fallbackFocusSection);
+      }
+
+      const fallbackOutgoingFocusLock = resolveFocusLockAfterTurn({
+        currentLock: fallbackResolvedFocusLock,
+        userMessage: message.trim(),
+        readinessAfterTurn: fallbackReadinessAfter,
+        assistantReply: fallbackReply,
+      });
+
+      return NextResponse.json({
+        reply: fallbackReply,
+        modelPatch: fallbackPatch,
+        retentionMemory: fallbackRetentionMemory,
+        focusLock: fallbackOutgoingFocusLock,
+        revisionProposal: null,
+        quickReplies: undefined,
+        transcript: normalizedTranscript,
+        analysis: {
+          model: fallbackAnalysis.model,
+          completeness: {
+            population: fallbackAnalysis.completeness.population,
+            geography: fallbackAnalysis.completeness.geography,
+            activities: fallbackAnalysis.completeness.activities,
+            outcomes: fallbackAnalysis.completeness.outcomes,
+            quality: fallbackAnalysis.completeness.quality,
+            intent: fallbackAnalysis.completeness.intent,
+          },
+          gaps: fallbackAnalysis.gaps,
+          suggestedNextQuestions: fallbackAnalysis.suggestedNextQuestions,
+          extraction: {
+            mode: fallbackAnalysis.extraction.mode,
+            attestedUserTurnIndices: fallbackAnalysis.extraction.attestedUserTurnIndices,
+          },
+        },
+        llmMeta: {
+          path: "conversational_fallback",
+          model: "unavailable",
+          fallbackReason: "recoverable_generation_error",
+          trace: {
+            initialIntent: effectiveResponseDomain ?? responseDomain ?? null,
+            stateIntent: responseDomain ?? null,
+            finalIntent: fallbackFinalIntent,
+            responseDomain: responseDomain ?? null,
+            effectiveResponseDomain: effectiveResponseDomain ?? null,
+            strictSectionPatchContractEnabled: ENABLE_STRICT_SECTION_PATCH_CONTRACT,
+            strictSectionPatchContract: {
+              droppedByResponseDomain: fallbackSectionContract.droppedByResponseDomain,
+              droppedByFocusLock: fallbackSectionContract.droppedByFocusLock,
+              focusLockDomain: fallbackSectionContract.focusLockContractDomain,
+            },
+            offTopicMarked: fallbackOffTopic,
+            recoverableGenerationError: true,
+            errorMessage,
+            nextSection: fallbackReadinessAfter.nextSection,
+            focusLockSection: fallbackOutgoingFocusLock?.section ?? null,
+            focusLockReason: fallbackOutgoingFocusLock?.reason ?? null,
+            openConflictQuestions: fallbackRetentionMemory.questions.filter((q) => q.status === "open").length,
+            timings: stageTimings,
+          },
+        },
+      });
+    }
+
     console.error("[chat-route] Conversational pipeline error:", JSON.stringify({
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage,
       totalMs,
       stageTimings,
     }));
@@ -2033,9 +2348,21 @@ function buildScopedImplementation(
 
 function constrainPatchToResponseDomain(
   patch: Partial<LogicModel> | null,
-  responseDomain: QuestionIntent | undefined
+  responseDomain: QuestionIntent | undefined,
+  latestUserMessage?: string
 ): Partial<LogicModel> | null {
   if (!patch || !responseDomain) return patch;
+
+  const userText = latestUserMessage?.trim() ?? "";
+  const hasExplicitOutcomeCue =
+    /\b(short[-\s]?term|medium[-\s]?term|long[-\s]?term|within\s+\d+\s+(?:weeks?|months?|years?)|we\s+(?:expect|hope|aim|want))\b/i.test(
+      userText
+    );
+  const hasExplicitResourceCue = Boolean(extractResourcesHeuristic(userText));
+  const hasExplicitActivityCue =
+    /\b(run|hold|host|facilitate|conduct|lead|mentor|coach|workshops?|sessions?|classes?|tutoring|mentoring|activities)\b/i.test(
+      userText
+    );
 
   const constrained: Partial<LogicModel> = {};
   if (patch.stakeholders?.length) {
@@ -2056,16 +2383,26 @@ function constrainPatchToResponseDomain(
       break;
     }
     case "resources": {
-      const implementation = buildScopedImplementation(patch.implementation, ["resources"]);
+      const allowedImplementationKeys: Array<"resources" | "activities" | "outputs_metrics" | "quality_fidelity"> = ["resources"];
+      if (hasExplicitActivityCue) allowedImplementationKeys.push("activities");
+      const implementation = buildScopedImplementation(patch.implementation, allowedImplementationKeys);
       if (implementation) {
         constrained.implementation = implementation;
+      }
+      if (hasExplicitOutcomeCue && patch.outcomes) {
+        constrained.outcomes = patch.outcomes;
       }
       break;
     }
     case "activities": {
-      const implementation = buildScopedImplementation(patch.implementation, ["activities"]);
+      const allowedImplementationKeys: Array<"resources" | "activities" | "outputs_metrics" | "quality_fidelity"> = ["activities"];
+      if (hasExplicitResourceCue) allowedImplementationKeys.push("resources");
+      const implementation = buildScopedImplementation(patch.implementation, allowedImplementationKeys);
       if (implementation) {
         constrained.implementation = implementation;
+      }
+      if (hasExplicitOutcomeCue && patch.outcomes) {
+        constrained.outcomes = patch.outcomes;
       }
       break;
     }
@@ -2074,12 +2411,18 @@ function constrainPatchToResponseDomain(
       if (implementation) {
         constrained.implementation = implementation;
       }
+      if (hasExplicitOutcomeCue && patch.outcomes) {
+        constrained.outcomes = patch.outcomes;
+      }
       break;
     }
     case "quality_evidence": {
       const implementation = buildScopedImplementation(patch.implementation, ["quality_fidelity"]);
       if (implementation) {
         constrained.implementation = implementation;
+      }
+      if (hasExplicitOutcomeCue && patch.outcomes) {
+        constrained.outcomes = patch.outcomes;
       }
       break;
     }
@@ -2151,6 +2494,7 @@ function enforceSectionPatchContract(args: {
   responseDomain: QuestionIntent | undefined;
   focusLock: ConversationFocusLock | null;
   enabled: boolean;
+  latestUserMessage?: string;
 }): {
   patch: Partial<LogicModel> | null;
   droppedByResponseDomain: boolean;
@@ -2174,7 +2518,7 @@ function enforceSectionPatchContract(args: {
     JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
   if (args.responseDomain) {
-    const constrained = constrainPatchToResponseDomain(nextPatch, args.responseDomain);
+    const constrained = constrainPatchToResponseDomain(nextPatch, args.responseDomain, args.latestUserMessage);
     droppedByResponseDomain = !patchEquals(nextPatch, constrained);
     nextPatch = constrained;
   }
@@ -2184,7 +2528,7 @@ function enforceSectionPatchContract(args: {
     : undefined;
 
   if (focusLockContractDomain) {
-    const constrained = constrainPatchToResponseDomain(nextPatch, focusLockContractDomain);
+    const constrained = constrainPatchToResponseDomain(nextPatch, focusLockContractDomain, args.latestUserMessage);
     droppedByFocusLock = !patchEquals(nextPatch, constrained);
     nextPatch = constrained;
   }
@@ -2647,7 +2991,7 @@ function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undef
     case "population_focus":
       return "I can see a draft intended impact statement, but it still needs a clearer population anchor. Who is this impact statement really about?";
     case "geography":
-      return "I can see the draft intended impact statement, but it still needs a place anchor. What place should anchor this intended impact statement (for example, citywide, neighborhoods, or specific sites) before we lock resources?";
+      return "I can see the draft intended impact statement, but it still needs a place anchor. Where should this intended impact statement be anchored (for example, citywide, neighborhoods, or specific sites) before we lock resources?";
     case "impact_specificity":
       return "I can see the draft intended impact statement, but it still needs a sharper long-term outcome. What concrete long-term change should this intended impact statement point to in 10 years?";
     case "resources":
@@ -3054,6 +3398,14 @@ function isOffTopicTangent(userMessage: string, history: ChatMessage[]): boolean
   const text = userMessage.trim();
   if (!text || !text.includes("?")) return false;
   if (isLogicModelConceptQuestion(text)) return false;
+
+  // Keep operational questions in-scope when they are about delivery, volume, or timing.
+  if (/(when|how many|how much|how long|how often|what schedule|what cadence|what budget)/i.test(text)) {
+    if (/(session|workshop|class|participant|student|attendance|output|metric|resource|staff|volunteer|funding|quality|fidelity|outcome|program)/i.test(text)) {
+      return false;
+    }
+  }
+
   if (/\b(logic model|impact|resources|activities|outputs?|outcomes?|quality|fidelity|stakeholders?)\b/i.test(text)) {
     return false;
   }

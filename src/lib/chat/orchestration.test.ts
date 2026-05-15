@@ -203,3 +203,49 @@ test("conflict clarification prompt returns open conflict question", () => {
   assert.ok(prompt);
   assert.match(String(prompt), /which one/i);
 });
+
+test("retention memory opens conflict question for explicit revision on activities", () => {
+  const initial = updateClaimMemoryFromTurn({
+    previous: createEmptyClaimMemory(),
+    userMessage: "We run weekly tutoring sessions.",
+    turnIndex: 1,
+    modelPatch: {
+      implementation: {
+        resources: { human: [], material: [], financial: [], knowledge: [] },
+        activities: [{ item: "", actions: ["weekly tutoring sessions"], outputs: [] }],
+        outputs_metrics: [],
+        quality_fidelity: { fidelity: [], quality: [] },
+      },
+    },
+  });
+
+  const revised = updateClaimMemoryFromTurn({
+    previous: initial,
+    userMessage: "Correction: instead of tutoring, we run mentoring circles.",
+    turnIndex: 2,
+    modelPatch: {
+      implementation: {
+        resources: { human: [], material: [], financial: [], knowledge: [] },
+        activities: [{ item: "", actions: ["mentoring circles"], outputs: [] }],
+        outputs_metrics: [],
+        quality_fidelity: { fidelity: [], quality: [] },
+      },
+    },
+  });
+
+  assert.equal(revised.conflicts.length, 1);
+  assert.equal(revised.conflicts[0].section, "activities");
+  assert.equal(revised.questions.some((question) => question.status === "open"), true);
+});
+
+test("conflict detector flags known-information repeat when asking for population already captured", () => {
+  const flags = detectContextConflicts({
+    history: [],
+    userMessage: "We already shared this.",
+    reply: "Who is your program for?",
+    modelPatch: null,
+    mergedModel: createModel(),
+  });
+
+  assert.ok(flags.includes("asks_for_known_information"));
+});

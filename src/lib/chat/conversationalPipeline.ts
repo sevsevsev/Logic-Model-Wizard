@@ -124,11 +124,46 @@ export interface ConversationalTurnResult {
   reply: string;
   transcript: ConversationTranscript;
   analysis: Awaited<ReturnType<typeof extractModelFromTranscript>>;
+  extraction: {
+    mode: "latest_turn" | "transcript";
+    usedFallback: boolean;
+    attestedUserTurnIndices: number[];
+  };
   retrieval: {
     knowledgeChunkCount: number;
     trace: Awaited<ReturnType<typeof retrieveKnowledgeWithTrace>>["trace"];
   };
   modelUsed: string;
+}
+
+function hasMeaningfulModelPatch(model: Partial<LogicModel>): boolean {
+  const hasImpact = Boolean(
+    model.intended_impact &&
+      (model.intended_impact.population?.trim() ||
+        model.intended_impact.geography?.trim() ||
+        model.intended_impact.long_term_goal?.trim() ||
+        model.intended_impact.compiled_statement?.trim())
+  );
+  const hasStakeholders = (model.stakeholders?.length ?? 0) > 0;
+  const hasResources = Boolean(
+    model.implementation?.resources &&
+      ((model.implementation.resources.human?.length ?? 0) > 0 ||
+        (model.implementation.resources.material?.length ?? 0) > 0 ||
+        (model.implementation.resources.financial?.length ?? 0) > 0 ||
+        (model.implementation.resources.knowledge?.length ?? 0) > 0)
+  );
+  const hasActivities = (model.implementation?.activities?.length ?? 0) > 0;
+  const hasQuality = Boolean(
+    (model.implementation?.quality_fidelity?.fidelity?.length ?? 0) > 0 ||
+      (model.implementation?.quality_fidelity?.quality?.length ?? 0) > 0
+  );
+  const hasOutcomes = Boolean(
+    (model.outcomes?.short_term?.length ?? 0) > 0 ||
+      (model.outcomes?.medium_term?.length ?? 0) > 0 ||
+      (model.outcomes?.long_term?.length ?? 0) > 0
+  );
+
+  return hasImpact || hasStakeholders || hasResources || hasActivities || hasQuality || hasOutcomes;
 }
 
 export async function runConversationalTurn(
@@ -198,12 +233,24 @@ export async function runConversationalTurn(
   }
 
   const withAssistantTurn = addTurn(withUserTurn, "assistant", reply);
-  const analysis = await extractModelFromTranscript(withAssistantTurn);
+  const latestTurnAnalysis = await extractModelFromTranscript(withAssistantTurn, {
+    mode: "latest_turn",
+  });
+
+  const shouldFallbackToTranscript = !hasMeaningfulModelPatch(latestTurnAnalysis.model);
+  const analysis = shouldFallbackToTranscript
+    ? await extractModelFromTranscript(withAssistantTurn, { mode: "transcript" })
+    : latestTurnAnalysis;
 
   return {
     reply,
     transcript: withAssistantTurn,
     analysis,
+    extraction: {
+      mode: analysis.extraction.mode,
+      usedFallback: shouldFallbackToTranscript,
+      attestedUserTurnIndices: analysis.extraction.attestedUserTurnIndices,
+    },
     retrieval: {
       knowledgeChunkCount: relevantKnowledge.length + comparisonKnowledge.length,
       trace: retrievalTrace,

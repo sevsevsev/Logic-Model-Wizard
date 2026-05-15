@@ -106,4 +106,34 @@ test("extractModelFromTranscript captures neighborhood geography like Kensington
 
   const analysis = await extractModelFromTranscript(transcript);
   assert.equal(analysis.model.intended_impact?.geography, "Kensington");
+  assert.match(String(analysis.model.intended_impact?.long_term_goal ?? ""), /graduating on time/i);
+});
+
+test("extractModelFromTranscript latest_turn mode only attests latest user turn", async () => {
+  const transcript: ConversationTranscript = {
+    turns: [
+      {
+        role: "user",
+        content: "Our resources are staff mentors, grant funding, and laptops.",
+        timestamp: Date.now(),
+      },
+      {
+        role: "assistant",
+        content: "Thanks. What are your core activities?",
+        timestamp: Date.now(),
+      },
+      {
+        role: "user",
+        content: "We hold weekly tutoring sessions.",
+        timestamp: Date.now(),
+      },
+    ],
+    questionsAsked: [],
+    topicsCovered: [],
+  };
+
+  const analysis = await extractModelFromTranscript(transcript, { mode: "latest_turn" });
+  assert.equal(analysis.extraction.mode, "latest_turn");
+  assert.deepEqual(analysis.extraction.attestedUserTurnIndices, [3]);
+  assert.equal(analysis.model.implementation?.resources?.human?.length ?? 0, 0);
 });

@@ -112,6 +112,61 @@ const SINGLETON_FIELD_PATHS = new Set<string>([
   "intended_impact.compiled_statement",
 ]);
 
+const REVISION_CONFLICT_FIELD_PREFIXES = [
+  "implementation.activities",
+  "implementation.resources",
+  "outcomes.",
+];
+
+function looksLikeExplicitRevision(text: string): boolean {
+  return /\b(correction|actually|instead|not\s+that|replace|rather\s+than|update\s+that|change\s+that|i\s+meant)\b/i.test(text);
+}
+
+function canEscalateRevisionConflict(fieldPath: string): boolean {
+  return REVISION_CONFLICT_FIELD_PREFIXES.some((prefix) => fieldPath.startsWith(prefix));
+}
+
+function createConflictForClaim(args: {
+  base: ClaimMemoryState;
+  claim: ClaimRecord;
+  activeSameField: ClaimRecord[];
+}): void {
+  const latestPrior = args.activeSameField[args.activeSameField.length - 1];
+  if (!latestPrior) return;
+
+  for (const prior of args.activeSameField) {
+    prior.status = "conflicted";
+  }
+  args.claim.status = "conflicted";
+
+  const conflictId = `conflict-${args.claim.turnIndex}-${args.claim.fieldPath}-${args.base.conflicts.length + 1}`;
+  const conflict: ClaimConflict = {
+    id: conflictId,
+    fieldPath: args.claim.fieldPath,
+    section: args.claim.section,
+    existingValue: latestPrior.value,
+    incomingValue: args.claim.value,
+    status: "open",
+    createdTurnIndex: args.claim.turnIndex,
+  };
+  args.base.conflicts.push(conflict);
+
+  const existingOpenQuestion = args.base.questions.find(
+    (q) => q.status === "open" && q.conflictId === conflict.id
+  );
+  if (!existingOpenQuestion) {
+    args.base.questions.push({
+      id: `question-${args.base.questions.length + 1}`,
+      section: conflict.section,
+      prompt: sectionPromptForConflict(conflict.section, conflict.existingValue, conflict.incomingValue),
+      reason: "conflict",
+      status: "open",
+      conflictId: conflict.id,
+      createdTurnIndex: args.claim.turnIndex,
+    });
+  }
+}
+
 export function createEmptyClaimMemory(): ClaimMemoryState {
   return {
     claims: [],
@@ -315,6 +370,7 @@ export function updateClaimMemoryFromTurn(args: {
     sourceText: args.userMessage,
     turnIndex: args.turnIndex,
   });
+  const explicitRevision = looksLikeExplicitRevision(args.userMessage);
 
   for (const claim of incomingClaims) {
     const activeSameField = base.claims.filter(
@@ -331,38 +387,24 @@ export function updateClaimMemoryFromTurn(args: {
     }
 
     if (SINGLETON_FIELD_PATHS.has(claim.fieldPath) && activeSameField.length > 0) {
-      for (const prior of activeSameField) {
-        prior.status = "conflicted";
-      }
-      claim.status = "conflicted";
+      createConflictForClaim({
+        base,
+        claim,
+        activeSameField,
+      });
+    }
 
-      const latestPrior = activeSameField[activeSameField.length - 1];
-      const conflictId = `conflict-${claim.turnIndex}-${claim.fieldPath}-${base.conflicts.length + 1}`;
-      const conflict: ClaimConflict = {
-        id: conflictId,
-        fieldPath: claim.fieldPath,
-        section: claim.section,
-        existingValue: latestPrior.value,
-        incomingValue: claim.value,
-        status: "open",
-        createdTurnIndex: claim.turnIndex,
-      };
-      base.conflicts.push(conflict);
-
-      const existingOpenQuestion = base.questions.find(
-        (q) => q.status === "open" && q.conflictId === conflict.id
-      );
-      if (!existingOpenQuestion) {
-        base.questions.push({
-          id: `question-${base.questions.length + 1}`,
-          section: conflict.section,
-          prompt: sectionPromptForConflict(conflict.section, conflict.existingValue, conflict.incomingValue),
-          reason: "conflict",
-          status: "open",
-          conflictId: conflict.id,
-          createdTurnIndex: claim.turnIndex,
-        });
-      }
+    if (
+      claim.status !== "conflicted" &&
+      explicitRevision &&
+      canEscalateRevisionConflict(claim.fieldPath) &&
+      activeSameField.length > 0
+    ) {
+      createConflictForClaim({
+        base,
+        claim,
+        activeSameField,
+      });
     }
 
     base.claims.push(claim);
@@ -390,6 +432,10 @@ export function buildSectionScopedMemoryContext(memory: ClaimMemoryState | undef
     .filter((question) => question.section === section && question.status === "open")
     .slice(-2)
     .map((question) => `- ${question.prompt}`);
+  const crossSectionConfirmed = memory.claims
+    .filter((claim) => claim.section !== section && claim.status === "confirmed")
+    .slice(-3)
+    .map((claim) => `- [${claim.section}] ${claim.fieldPath}: ${claim.value}`);
 
   const lines: string[] = [];
   if (confirmed.length > 0) {
@@ -400,6 +446,9 @@ export function buildSectionScopedMemoryContext(memory: ClaimMemoryState | undef
   }
   if (openQuestions.length > 0) {
     lines.push("Open clarifications:", ...openQuestions);
+  }
+  if (crossSectionConfirmed.length > 0) {
+    lines.push("Recent retained facts from other sections:", ...crossSectionConfirmed);
   }
 
   return lines.join("\n");
@@ -635,6 +684,14 @@ export function detectContextConflicts(args: {
   const merged = args.mergedModel;
   const asksGeography = /what (city|geography|location)|where (are|is) (your|the) (program|work)/i.test(args.reply);
   if (asksGeography && merged?.intended_impact.geography?.trim()) {
+    flags.push("asks_for_known_information");
+  }
+  const asksPopulation = /who (is|are) (this|the program|your program) for|who do you serve|target population/i.test(args.reply);
+  if (asksPopulation && merged?.intended_impact.population?.trim()) {
+    flags.push("asks_for_known_information");
+  }
+  const asksLongTermGoal = /what (long.?term|ultimate) (goal|change|outcome)|what difference/i.test(args.reply);
+  if (asksLongTermGoal && merged?.intended_impact.long_term_goal?.trim()) {
     flags.push("asks_for_known_information");
   }
 

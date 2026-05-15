@@ -18,6 +18,14 @@ export interface ExtractionAnalysis {
   };
   gaps: string[]; // Missing critical fields
   suggestedNextQuestions: string[];
+  extraction: {
+    mode: "latest_turn" | "transcript";
+    attestedUserTurnIndices: number[];
+  };
+}
+
+interface ExtractModelOptions {
+  mode?: "latest_turn" | "transcript";
 }
 
 /**
@@ -25,10 +33,26 @@ export interface ExtractionAnalysis {
  * This is deterministic (no LLM call), making it reliable and debuggable.
  */
 export async function extractModelFromTranscript(
-  transcript: ConversationTranscript
+  transcript: ConversationTranscript,
+  options?: ExtractModelOptions
 ): Promise<ExtractionAnalysis> {
-  const userMessages = transcript.turns
-    .filter((t) => t.role === "user")
+  const mode = options?.mode ?? "transcript";
+  const userTurns = transcript.turns
+    .map((turn, index) => ({
+      role: turn.role,
+      content: turn.content,
+      turnIndex: index + 1,
+    }))
+    .filter((t) => t.role === "user");
+
+  const scopedUserTurns =
+    mode === "latest_turn"
+      ? userTurns.slice(-1)
+      : userTurns;
+
+  const attestedUserTurnIndices = scopedUserTurns.map((turn) => turn.turnIndex);
+
+  const userMessages = scopedUserTurns
     .map((t) => t.content)
     .join(" ");
   const fullText = userMessages;
@@ -185,6 +209,10 @@ export async function extractModelFromTranscript(
     completeness,
     gaps,
     suggestedNextQuestions,
+    extraction: {
+      mode,
+      attestedUserTurnIndices,
+    },
   };
 }
 
@@ -232,6 +260,8 @@ function extractLongTermGoal(userMessages: string, fullText: string): string {
     /(?:our\s+goal\s+is|we\s+aim\s+to|we\s+hope\s+to|over\s+time\s+we\s+expect)\s+([^.!?]+)/i,
     /\b(?:so that|ultimately|over time)\s+([^.!?]+)/i,
     /(?:we want|we aim|we seek)\s+([^.!?]+)/i,
+    /\b(?:students?|youth|participants?)\b[^.!?]{0,120}\b(graduat(?:e|ing)\s+on\s+time[^.!?]*)/i,
+    /\b(graduat(?:e|ing)\s+on\s+time[^.!?]*)/i,
   ];
 
   for (const pattern of patterns) {

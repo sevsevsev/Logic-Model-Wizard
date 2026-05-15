@@ -70,6 +70,13 @@ type ApiResponse = {
         droppedByFocusLock?: boolean;
         focusLockDomain?: string | null;
       };
+      patchConstraintApplied?: boolean;
+      offTopicMarked?: boolean;
+      contextConflictFlags?: string[];
+      validationTriggerReason?: string;
+      extractionMode?: string;
+      extractionAttestedUserTurns?: number[];
+      usedExtractionFallback?: boolean;
     };
   };
 };
@@ -687,6 +694,57 @@ const SCENARIOS: Scenario[] = [
       }
       return failures;
     },
+  },
+  {
+    id: "operational-question-stays-in-scope",
+    description: "Operational delivery questions should not be marked as off-topic tangents.",
+    seedHistory: [
+      {
+        role: "assistant",
+        content: "Let's keep building the activities section for your logic model.",
+      },
+    ],
+    turns: [
+      {
+        user: "How many sessions should we run each week for this program?",
+        expect: {
+          finalIntentOneOf: ["activities", "outputs_metrics", "quality_fidelity"],
+          replyMustNotMatch: [/stay focused/i, /I can help with your logic model, but I'm going to stay focused/i],
+        },
+      },
+    ],
+    finalCheck: ({ responses }) => {
+      const failures: string[] = [];
+      if (responses[0]?.llmMeta?.trace?.offTopicMarked === true) {
+        failures.push("operational in-scope question was incorrectly marked off-topic");
+      }
+      return failures;
+    },
+  },
+  {
+    id: "activity-explicit-revision-prompts-conflict",
+    description: "Explicit activity correction should generate a conflict clarification prompt.",
+    seedHistory: [
+      {
+        role: "assistant",
+        content: "What are the main activity categories your team delivers in a typical cycle?",
+      },
+    ],
+    turns: [
+      {
+        user: "We run weekly tutoring sessions.",
+        expect: {
+          finalIntentOneOf: ["activities"],
+          modelPatchMustHavePath: ["implementation.activities"],
+        },
+      },
+      {
+        user: "Correction: instead of tutoring, we run mentoring circles.",
+        expect: {
+          replyMustContainAny: ["which version should we keep", "Which version should we keep"],
+        },
+      },
+    ],
   },
   {
     id: "long-context-resources-retained-after-multi-section-flow",
