@@ -712,7 +712,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
   const populationRegexes = [
     /(?:enrolls?|serves?|supports?|targets?|works with)\s+([^.!?]+)/i,
     /(?:for|with|to)\s+((?:k-?12|middle school|high school|elementary)\s+students?)/i,
-    /\b(students?\s+in\s+(?:k-?12|middle school|high school|elementary)(?:\s+school)?)\b/i,
+    /\b(students?\s+in\s+((?:k-?12|middle school|high school|elementary)(?:\s+school)?)\b/i,
     /\bto\s+([^.!?]*(?:students?|youth|young adults?|adults?|participants?))/i,
     /\b((?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+grad(?:e|ers?))\b/i,
     /\b([0-9]{1,2}(?:st|nd|rd|th)\s+graders?)\b/i,
@@ -890,7 +890,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     for (const clause of outcomeClauses) {
       // CRITICAL: Skip activity-describing clauses to prevent activities from being misclassified as outcomes
       if (
-        /\b(?:hold|run|deliver|offer|provide|conduct|lead|teach|mentor|coach|meet|connect|facilitate|organize|host)\b/i.test(clause) ||
+        /\b(?:hold|run|deliver|offer|provide|conduct|lead|teach|mentor|coach|meet|connect|facilitate|organize|host|deliver)\b/i.test(clause) ||
         /\b(?:sessions?|workshops?|classes?|meetings?|programs?|activities?|activities|trainings?|courses?)\b/i.test(clause) ||
         /\b(?:focus(?:es|ed|ing)?|designed|aimed|intended)\s+(?:on|to|at)\s+(?:skill|training|learning|development|instruction)\b/i.test(clause)
       ) {
@@ -1129,7 +1129,7 @@ function normalizeMergedActivityPatch(
   }
 
   const dosageRegex = /\b\d+\s+(?:lessons?|sessions?|classes?|participants?|students?)[^.,;]*/i;
-  const deliveryRegex = /(push into classrooms|deliver|offer|provide).*(lessons?|curriculum|sessions?)|(lessons? throughout the year)/i;
+  const deliveryRegex = /(push into classrooms|deliver|offer|provide).*(lessons?|curriculum|sessions?)/i;
   const dosageOnlyRegex = /(goal is to|target|aim is to).*(lessons?|sessions?|classes?)/i;
 
   const normalizedActivities: NonNullable<NonNullable<Partial<LogicModel>["implementation"]>["activities"]> = [];
@@ -1511,7 +1511,7 @@ export async function POST(req: NextRequest) {
   const requestUserId = req.headers.get("x-user-id")?.trim() || undefined;
 
   // Cap history depth to prevent token-stuffing attacks
-  const safeHistory = ((Array.isArray(history) ? history : []) as ChatMessage[])
+  const safeHistory = ((Array.isArray(history) ? history : []) as ChatMessage[]
     .slice(-40)
     .filter(
       (m) =>
@@ -2281,7 +2281,7 @@ function inferEffectiveResponseDomain(
     return "outcomes_review";
   }
 
-  if (/\b(fidelity|quality|standards?|checklist|rubric|adherence|implementation\s+quality|check[-\s]?ins?|monitor(?:ing)?|supervision)\b/i.test(userMessage)) {
+  if (/\b(fidelity|quality|standards?|background checks?|participant\s+satisfaction)/i.test(userMessage)) {
     return "quality_evidence";
   }
 
@@ -2360,7 +2360,7 @@ function constrainPatchToResponseDomain(
     );
   const hasExplicitResourceCue = Boolean(extractResourcesHeuristic(userText));
   const hasExplicitActivityCue =
-    /\b(run|hold|host|facilitate|conduct|lead|mentor|coach|workshops?|sessions?|classes?|tutoring|mentoring|activities)\b/i.test(
+    /\b(run|hold|host|facilitate|conduct|lead|mentor|coach|workshops?|sessions?|classes?|tutoring|mentoring|coaching)\b/i.test(
       userText
     );
 
@@ -2991,9 +2991,9 @@ function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undef
     case "population_focus":
       return "I can see a draft intended impact statement, but it still needs a clearer population anchor. Who is this impact statement really about?";
     case "geography":
-      return "I can see the draft intended impact statement, but it still needs a place anchor. Where should this intended impact statement be anchored (for example, citywide, neighborhoods, or specific sites) before we lock resources?";
+      return "I can see the draft intended impact statement, but it still needs a place anchor. What place should we anchor that statement to (for example, citywide, neighborhoods, or specific schools)?";
     case "impact_specificity":
-      return "I can see the draft intended impact statement, but it still needs a sharper long-term outcome. What concrete long-term change should this intended impact statement point to in 10 years?";
+      return "I can see the draft intended impact statement, but it still needs a sharper long-term outcome. What exact long-term difference should it point to in 10 years?";
     case "resources":
       return "What are the key resources needed to run this program (people, materials, funding, and expertise)?";
     case "activities":
@@ -3433,7 +3433,7 @@ function getConceptTangentQuickReplies(): QuickReply[] {
 }
 
 function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
-  if (/(work on|refine|improve|tighten|revise|edit).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|tighten|revise|edit|wording|better capture)|does\s+this\s+statement\s+better\s+capture/i.test(reply)) {
+  if (/(work on|refine|improve|tighten|revise|edit).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|tighten|revise|edit|wording|better capture)|does\s+that\s+capture|capture.*intent)/i.test(reply)) {
     return "impact_review";
   }
 
@@ -3445,7 +3445,7 @@ function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
     return "impact_change_type";
   }
 
-  if (/(to make this specific|what exact difference|be able to point to in 10 years|graduating high school|persisting in college|reduced justice-system involvement)/i.test(reply)) {
+  if (/(to make this specific|what exact difference|be able to point to in 10 years|graduat|persist|stable\s+employment|justice-system)/i.test(reply)) {
     return "impact_specificity";
   }
 
@@ -3453,7 +3453,7 @@ function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
     return "impact_review";
   }
 
-  if (/(10 years|ten years|long.term goal|if.*succeed|what would be different|ultimate change|working to achieve)/i.test(reply)) {
+  if (/(10 years|ten years|long-term goal|if.*succeed|what would be different|ultimate change|working to achieve)/i.test(reply)) {
     return "long_term_help";
   }
 
@@ -3469,7 +3469,7 @@ function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
     return "activities";
   }
 
-  if (/(how would you count|unit of measure|participants|sessions|outputs?|track.*deliver|attendance|hours of service|how many|count\b|measure\b|metrics?)/i.test(reply)) {
+  if (/(how would you count|unit of measure|participants|sessions|outputs?|track.*deliver|attendance|hours\s+of\s+service|how many|count\b|measure\b|metrics?)/i.test(reply)) {
     return "outputs_metrics";
   }
 
@@ -3484,7 +3484,7 @@ function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
     return "resources";
   }
 
-  if (/(short.term|medium.term|what.*know|what.*doing differently|knowledge change|behavior change|condition change|what.*expect)/i.test(reply)) {
+  if (/(short-term|medium-term|what.*know|what.*doing differently|knowledge change|behavior change|condition change|what.*expect)/i.test(reply)) {
     return "outcomes_review";
   }
 

@@ -10,6 +10,7 @@ import {
 } from "@/lib/chat/transcript";
 import { extractModelFromTranscript } from "@/lib/chat/modelExtractor";
 import { retrieveKnowledgeWithTrace } from "@/lib/rag/retrieval";
+import { skillRegistry } from '../agent/skills';
 
 interface RunConversationalTurnInput {
   apiKey: string;
@@ -257,4 +258,28 @@ export async function runConversationalTurn(
     },
     modelUsed,
   };
+}
+
+// Example integration point for invoking a skill
+async function invokeSkill(skillName: string, context: any) {
+  const skill = skillRegistry.get(skillName);
+  if (!skill) {
+    throw new Error(`Skill ${skillName} not found.`);
+  }
+  return await skill.execute(context);
+}
+
+// Example usage within the pipeline
+async function processTurn(context: any) {
+  // ...existing code...
+
+  // Invoke a skill for procedural knowledge
+  try {
+    const result = await invokeSkill('Validate User Input', context);
+    context = { ...context, validationResult: result };
+  } catch (error) {
+    console.error('Skill invocation failed:', error);
+  }
+
+  // ...existing code...
 }
