@@ -31,6 +31,7 @@ import { runConversationalTurn } from "@/lib/chat/conversationalPipeline";
 import { extractModelFromTranscript } from "@/lib/chat/modelExtractor";
 
 import { normalizeTranscript } from "@/lib/chat/transcript";
+import { initializeSkills } from "@/lib/agent/skills/registration";
 import type { AgentRevisionLifecycle } from "@/lib/agent/types";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
@@ -40,6 +41,10 @@ import type { ConversationFocusLock } from "@/store/useLogicModelStore";
 // System prompt — encodes all spec rules
 // ---------------------------------------------------------------------------
 const SYSTEM_PROMPT = buildSystemPrompt();
+
+// Initialize agent skills at startup
+initializeSkills();
+
 const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
 const DEBUG_AGENTIC_CONTEXT = process.env.DEBUG_AGENTIC_CONTEXT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
