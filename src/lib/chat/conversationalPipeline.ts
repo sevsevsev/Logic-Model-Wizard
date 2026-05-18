@@ -1,3 +1,48 @@
+// Generate a summary and recommendations after ingestion
+export function summarizeLogicModelState(model: Partial<LogicModelState>): string {
+  const sections: { key: keyof LogicModelState; label: string }[] = [
+    { key: 'intendedImpact', label: 'Intended Impact' },
+    { key: 'implementation', label: 'Implementation' },
+    { key: 'outcomes', label: 'Outcomes' },
+    // Add other domains as needed
+  ];
+  const summary: string[] = [];
+  const missing: string[] = [];
+  for (const { key, label } of sections) {
+    const section = model[key];
+    const suff = getSectionSufficiency(section as SectionState);
+    if (suff === 'sufficient' || suff === 'confirmed') {
+      summary.push(`${label}: populated and sufficient.`);
+    } else if (suff === 'present') {
+      summary.push(`${label}: partially populated, may need more detail.`);
+      missing.push(label);
+    } else {
+      summary.push(`${label}: missing.`);
+      missing.push(label);
+    }
+  }
+  let result = `Here’s what I found in your logic model after document upload:`;
+  result += '\n' + summary.join('\n');
+  if (missing.length > 0) {
+    result += `\n\nTo complete your logic model, let's focus on: ${missing.join(', ')}.`;
+  } else {
+    result += `\n\nYour logic model is fully populated! Let me know if you want to review or refine any section.`;
+  }
+  return result;
+}
+import { getSectionSufficiency } from "./agenticContext";
+import type { SectionState, LogicModelState, SectionSufficiency } from "@/lib/agent/logicModelSectionState";
+// Reflection: To avoid brittle or obsessive behavior, always:
+// - Check for 'sufficient' or 'confirmed' before prompting for a section.
+// - Avoid repeated prompts for the same missing field in rapid succession.
+// - Allow user to override sufficiency if they disagree with the agent's assessment.
+// - If a section is 'present' but not 'sufficient', prompt gently and only once per session unless user provides new info.
+// - Never block progress on a single missing field—allow partial completion and forward movement.
+// Helper: Should prompt for section based on sufficiency
+function shouldPromptForSection(section?: SectionState): boolean {
+  const suff = getSectionSufficiency(section);
+  return suff === 'empty' || suff === 'present';
+}
 import { generateGeminiContentWithFallback } from "@/lib/llm/generate";
 import { getConversationalAgentInstruction } from "@/lib/agent/conversationalInstructions";
 import type { LogicModel } from "@/store/useLogicModelStore";
@@ -11,6 +56,7 @@ import {
 import { extractModelFromTranscript } from "@/lib/chat/modelExtractor";
 import { retrieveKnowledgeWithTrace } from "@/lib/rag/retrieval";
 import { skillRegistry } from '../agent/skills';
+import { buildSkillInformedQuery } from '@/lib/agent/skills/retrieval-mapping';
 
 interface RunConversationalTurnInput {
   apiKey: string;
@@ -135,6 +181,21 @@ export interface ConversationalTurnResult {
     trace: Awaited<ReturnType<typeof retrieveKnowledgeWithTrace>>["trace"];
   };
   modelUsed: string;
+  /** Skill assessment results that informed retrieval and response */
+  skillAssessment?: {
+    dependencyCheck?: {
+      skill: string;
+      gaps: string[];
+      severity: "high" | "medium" | "low";
+      guidance: string;
+    };
+    qualityAssessment?: {
+      skill: string;
+      componentScores: Record<string, number>;
+      topGaps: string[];
+      guidance: string;
+    };
+  };
 }
 
 function hasMeaningfulModelPatch(model: Partial<LogicModel>): boolean {
@@ -175,9 +236,63 @@ export async function runConversationalTurn(
 
   const withUserTurn = addTurn(transcript, "user", input.message.trim());
 
+  // ───────────────────────────────────────────────────────────────────
+  // Skill Assessment: Check procedural dependencies early
+  // ───────────────────────────────────────────────────────────────────
+  let skillAssessment: ConversationalTurnResult["skillAssessment"];
+  let skillContextForRetrieval;
+  
+  try {
+    const dependencyEnforcer = skillRegistry.get("procedural-dependency-enforcer");
+    if (dependencyEnforcer) {
+      const skillContext = {
+        modelSnapshot: input.modelSnapshot || {},
+        userMessage: input.message,
+        history: [],
+        questionIntent: input.sectionFocus || input.message,
+      };
+      
+      const dependencyResult = await dependencyEnforcer.execute(skillContext as any);
+      
+      if (dependencyResult && typeof dependencyResult === "object" && dependencyResult.success) {
+        const gaps = [];
+        const resultData = dependencyResult.data as any;
+        
+        if (resultData?.violation) {
+          gaps.push(resultData.violation);
+        }
+        
+        if (gaps.length > 0) {
+          skillAssessment = {
+            dependencyCheck: {
+              skill: "procedural-dependency-enforcer",
+              gaps,
+              severity: (resultData?.severity as any) || "medium",
+              guidance: dependencyResult.message || "",
+            },
+          };
+          // Use first gap for retrieval context
+          skillContextForRetrieval = {
+            skillName: "procedural-dependency-enforcer",
+            gap: gaps[0],
+            gaps,
+            modelState: (input.modelSnapshot || {}) as Record<string, unknown>,
+          };
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Skill assessment error:", error);
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // Retrieval: Use skill context if available
+  // ───────────────────────────────────────────────────────────────────
   const comparisonQuery = buildComparisonRetrievalQuery(input.message, input.sectionFocus);
   const [primaryRetrieval, comparisonRetrieval] = await Promise.all([
-    retrieveKnowledgeWithTrace(input.message, topK),
+    retrieveKnowledgeWithTrace(input.message, topK, {
+      skillContext: skillContextForRetrieval,
+    }),
     retrieveKnowledgeWithTrace(
       comparisonQuery,
       Math.max(4, Math.min(topK, 6))
@@ -243,6 +358,37 @@ export async function runConversationalTurn(
     ? await extractModelFromTranscript(withAssistantTurn, { mode: "transcript" })
     : latestTurnAnalysis;
 
+  // ───────────────────────────────────────────────────────────────────
+  // Post-Extraction Skill Assessment: Validate component quality
+  // ───────────────────────────────────────────────────────────────────
+  try {
+    const qualityValidator = skillRegistry.get("component-quality-validator");
+    if (qualityValidator && analysis.model) {
+      const skillContext = {
+        modelSnapshot: analysis.model as any,
+        userMessage: input.message,
+        history: [],
+      };
+      
+      const qualityResult = await qualityValidator.execute(skillContext as any);
+      
+      if (qualityResult && typeof qualityResult === "object" && qualityResult.success) {
+        if (!skillAssessment) {
+          skillAssessment = {};
+        }
+        const resultData = qualityResult.data as any;
+        skillAssessment.qualityAssessment = {
+          skill: "component-quality-validator",
+          componentScores: resultData?.componentScores || {},
+          topGaps: resultData?.topGaps || [],
+          guidance: qualityResult.message || "",
+        };
+      }
+    }
+  } catch (error) {
+    console.error("Quality assessment error:", error);
+  }
+
   return {
     reply,
     transcript: withAssistantTurn,
@@ -257,6 +403,7 @@ export async function runConversationalTurn(
       trace: retrievalTrace,
     },
     modelUsed,
+    skillAssessment,
   };
 }
 

@@ -47,7 +47,7 @@ function limitMessagesForSnapshot(messages: ChatMessage[]): ChatMessage[] {
 }
 
 export default function ChatInterface() {
-  const messages = useLogicModelStore((s) => s.messages);
+  // Wider chat window: add a max-w-3xl and center
   const model = useLogicModelStore((s) => s.model);
   const retentionMemory = useLogicModelStore((s) => s.retentionMemory);
   const focusLock = useLogicModelStore((s) => s.focusLock);
@@ -540,7 +540,7 @@ export default function ChatInterface() {
   const showTextInput = !activeReplies || typeInputVisible;
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white max-w-3xl mx-auto px-2 sm:px-6 md:px-8">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#9fc3da] bg-[#edf3f8]">
         <div>

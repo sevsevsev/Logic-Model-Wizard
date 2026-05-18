@@ -1,3 +1,5 @@
+import { handleDocumentIngestionAndPopulate } from "@/lib/chat/ingestionSummary";
+import { mapSuggestionsToLogicModelState } from "@/lib/agent/logicModelSectionState";
 import { NextRequest, NextResponse } from "next/server";
 import { createRequire } from "module";
 import mammoth from "mammoth";
@@ -736,8 +738,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Map suggestions to LogicModelState
+    const logicModelState = mapSuggestionsToLogicModelState(safeSuggestions);
+    // Compose agent's first reply (can be empty or a default message)
+    const agentReply = parsed.summary || "We extracted draft suggestions from your files.";
+    // Prepend summary and recommendations
+    const replyWithSummary = await handleDocumentIngestionAndPopulate(logicModelState, agentReply);
     return NextResponse.json({
-      summary: parsed.summary || "We extracted draft suggestions from your files.",
+      summary: replyWithSummary,
       suggestions: safeSuggestions,
     });
   } catch (error) {

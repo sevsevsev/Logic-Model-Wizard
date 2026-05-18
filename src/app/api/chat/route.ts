@@ -717,7 +717,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
   const populationRegexes = [
     /(?:enrolls?|serves?|supports?|targets?|works with)\s+([^.!?]+)/i,
     /(?:for|with|to)\s+((?:k-?12|middle school|high school|elementary)\s+students?)/i,
-    /\b(students?\s+in\s+((?:k-?12|middle school|high school|elementary)(?:\s+school)?)\b/i,
+    /\b(students?\s+in\s+((?:k-?12|middle school|high school|elementary)(?:\s+school)?))\b/i,
     /\bto\s+([^.!?]*(?:students?|youth|young adults?|adults?|participants?))/i,
     /\b((?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+grad(?:e|ers?))\b/i,
     /\b([0-9]{1,2}(?:st|nd|rd|th)\s+graders?)\b/i,
@@ -1516,7 +1516,7 @@ export async function POST(req: NextRequest) {
   const requestUserId = req.headers.get("x-user-id")?.trim() || undefined;
 
   // Cap history depth to prevent token-stuffing attacks
-  const safeHistory = ((Array.isArray(history) ? history : []) as ChatMessage[]
+  const safeHistory = ((Array.isArray(history) ? history : []) as ChatMessage[])
     .slice(-40)
     .filter(
       (m) =>
@@ -1844,6 +1844,7 @@ export async function POST(req: NextRequest) {
           focusLockReason: outgoingFocusLock?.reason ?? null,
           openConflictQuestions: updatedRetentionMemory.questions.filter((q) => q.status === "open").length,
           timings: stageTimings,
+          skillAssessment: conversational.skillAssessment,
         },
       },
     });
@@ -3438,7 +3439,7 @@ function getConceptTangentQuickReplies(): QuickReply[] {
 }
 
 function detectQuickReplyIntent(reply: string): QuestionIntent | undefined {
-  if (/(work on|refine|improve|tighten|revise|edit).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|tighten|revise|edit|wording|better capture)|does\s+that\s+capture|capture.*intent)/i.test(reply)) {
+  if (/(work on|refine|improve|tighten|revise|edit).*(impact statement|intended impact)|(impact statement|intended impact).*(refine|improve|tighten|revise|edit|wording|better capture)|does\s+that\s+capture|capture.*intent/i.test(reply)) {
     return "impact_review";
   }
 

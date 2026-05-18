@@ -1,9 +1,20 @@
 import type { LogicModel } from "@/store/useLogicModelStore";
+import type { SectionState, LogicModelState, SectionSufficiency, Provenance } from "@/lib/agent/logicModelSectionState";
 import type { GuardrailIntent } from "@/lib/chat/guardrails";
 import { looksSpecificGeography, looksSpecificPopulation } from "@/lib/chat/guardrails";
 import { classifyIntakeSignals } from "@/lib/chat/intakeSignals";
 
-type KnowledgePatch = Partial<LogicModel> | null;
+// KnowledgePatch now supports both legacy and section-state logic model
+type KnowledgePatch = Partial<LogicModel> | Partial<LogicModelState> | null;
+// Helper: get sufficiency state for a section (returns 'empty' if not present)
+export function getSectionSufficiency(section?: SectionState): SectionSufficiency {
+  return section?.sufficiency ?? 'empty';
+}
+
+// Helper: get provenance for a section
+export function getSectionProvenance(section?: SectionState): Provenance | undefined {
+  return section?.provenance;
+}
 
 export interface ContextSignalSummary {
   hasPopulationCue: boolean;
