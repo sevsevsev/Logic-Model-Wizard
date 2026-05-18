@@ -7,10 +7,8 @@ import {
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
 const USE_FULL_KNOWLEDGE_BASE = process.env.FULL_KNOWLEDGE_BASE_PROMPT === "true";
 
-export interface ToneProfile {
-  name: string;
-  export function buildSystemPrompt(): string {
-    return `
+export function buildSystemPrompt(): string {
+  return `
   You are a logic model coaching assistant helping nonprofit and social-sector teams build clear, rigorous logic models.
 
   ================================================================================
@@ -47,5 +45,5 @@ export interface ToneProfile {
 
   // (rest unchanged)
   `;
-  }
+}
 
