@@ -22,8 +22,17 @@ interface ModelState {
 /**
  * Checks if a component has meaningful content
  */
-function hasContent(text: string | undefined): boolean {
-  return Boolean(text && text.trim().length > 0);
+function hasContent(value: unknown): boolean {
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (value && typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+  return false;
 }
 
 /**
@@ -39,7 +48,7 @@ function assessModelState(modelSnapshot: LogicModel | undefined): ModelState {
   const hasLongTermGoal = hasContent(impact?.long_term_goal);
   const hasResources = hasContent(impl?.resources);
   const hasActivities = hasContent(impl?.activities);
-  const hasOutputs = hasContent(impl?.outputs);
+  const hasOutputs = hasContent(impl?.outputs_metrics);
   const hasShortTermOutcomes = hasContent(outcomes?.short_term);
   const hasMediumTermOutcomes = hasContent(outcomes?.medium_term);
   const hasLongTermOutcomes = hasContent(outcomes?.long_term);

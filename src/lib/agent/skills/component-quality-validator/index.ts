@@ -212,6 +212,15 @@ function validateActivitiesQuality(text: string): ComponentQualityAssessment {
   };
 }
 
+function summarizeActivities(activities: LogicModel["implementation"]["activities"]): string {
+  return activities
+    .map((activity) => {
+      const outputs = activity.outputs.map((output) => output.text).join(" ");
+      return [activity.item, ...activity.actions, outputs].filter(Boolean).join(" ");
+    })
+    .join(" ");
+}
+
 /**
  * Scores outcomes quality (0-100)
  */
@@ -313,7 +322,7 @@ export const componentQualityValidatorSkill: AgentSkill = {
         assessments.geography = validateGeographyQuality(impact.geography);
       }
       if (impl?.activities) {
-        assessments.activities = validateActivitiesQuality(impl.activities);
+        assessments.activities = validateActivitiesQuality(summarizeActivities(impl.activities));
       }
       if (outcomes?.short_term || outcomes?.medium_term || outcomes?.long_term) {
         assessments.outcomes = validateOutcomesQuality(

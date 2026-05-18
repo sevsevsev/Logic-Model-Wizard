@@ -1,6 +1,9 @@
 import type { LogicModelState, SectionState } from "@/lib/agent/logicModelSectionState";
 
-function getSectionLabelSummary(label: string, section?: SectionState): { line: string; missing: boolean } {
+function getSectionLabelSummary(
+  label: string,
+  section?: SectionState<unknown>
+): { line: string; missing: boolean } {
   const sufficiency = section?.sufficiency ?? "empty";
 
   if (sufficiency === "sufficient" || sufficiency === "confirmed") {

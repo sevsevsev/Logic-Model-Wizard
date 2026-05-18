@@ -6,6 +6,21 @@ import { classifyIntakeSignals } from "@/lib/chat/intakeSignals";
 
 // KnowledgePatch now supports both legacy and section-state logic model
 type KnowledgePatch = Partial<LogicModel> | Partial<LogicModelState> | null;
+
+function isLegacyPatch(patch: KnowledgePatch): patch is Partial<LogicModel> {
+  return Boolean(
+    patch &&
+      ("intended_impact" in patch || "implementation" in patch || "outcomes" in patch)
+  );
+}
+
+function hasSectionValue(section?: SectionState<unknown>): boolean {
+  const value = section?.value;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return false;
+}
 // Helper: get sufficiency state for a section (returns 'empty' if not present)
 export function getSectionSufficiency(section?: SectionState): SectionSufficiency {
   return section?.sufficiency ?? 'empty';
@@ -60,6 +75,26 @@ function detectSignalsFromText(text: string): ContextSignalSummary {
 }
 
 function detectSignalsFromPatch(patch: KnowledgePatch): ContextSignalSummary {
+  if (!patch) {
+    return {
+      hasPopulationCue: false,
+      hasGeographyCue: false,
+      hasResourceCue: false,
+      hasActivityCue: false,
+      hasOutcomeCue: false,
+    };
+  }
+
+  if (!isLegacyPatch(patch)) {
+    return {
+      hasPopulationCue: hasSectionValue(patch.intendedImpact),
+      hasGeographyCue: hasSectionValue(patch.intendedImpact),
+      hasResourceCue: hasSectionValue(patch.implementation),
+      hasActivityCue: hasSectionValue(patch.implementation),
+      hasOutcomeCue: hasSectionValue(patch.outcomes),
+    };
+  }
+
   const impact = patch?.intended_impact;
   const activities = patch?.implementation?.activities ?? [];
   const resources = patch?.implementation?.resources;

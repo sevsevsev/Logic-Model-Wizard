@@ -222,7 +222,8 @@ function computeMetadataFeatures(chunk: RetrievedChunk, query: string, skillCont
   skillRelevanceBoost?: number;
   skillGapMatch?: boolean;
 } {
-  const metadata = chunk.metadata || chunk.skillMetadata;
+  const metadata: Record<string, unknown> | undefined =
+    chunk.metadata ?? (chunk.skillMetadata ? { ...chunk.skillMetadata } : undefined);
   let metadataBoost = 0;
   let qualityScore: number | undefined;
   let sourceWeight: number | undefined;

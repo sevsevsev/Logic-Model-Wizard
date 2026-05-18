@@ -51,8 +51,8 @@ export interface SectionState<T = string> {
 }
 
 export interface LogicModelState {
-  intendedImpact: SectionState;
-  implementation: SectionState;
-  outcomes: SectionState;
+  intendedImpact: SectionState<BootstrapSuggestion["value"]>;
+  implementation: SectionState<BootstrapSuggestion["value"]>;
+  outcomes: SectionState<BootstrapSuggestion["value"]>;
   // Add other domains as needed
 }

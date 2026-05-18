@@ -49,6 +49,7 @@ function limitMessagesForSnapshot(messages: ChatMessage[]): ChatMessage[] {
 export default function ChatInterface() {
   // Wider chat window: add a max-w-3xl and center
   const model = useLogicModelStore((s) => s.model);
+  const messages = useLogicModelStore((s) => s.messages);
   const retentionMemory = useLogicModelStore((s) => s.retentionMemory);
   const focusLock = useLogicModelStore((s) => s.focusLock);
   const transcript = useLogicModelStore((s) => s.transcript);
