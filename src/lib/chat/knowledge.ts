@@ -404,9 +404,7 @@ const RESPONSIBILITY_RULES = [
   'Population depth: ask once when grade, age, or school type is missing; then move on.',
   'Do not over-probe population specificity after the user gives a grade band, age range, or school type plus geography.',
   'Guided long-term goal elicitation should move in sequence: aspiration, change type, concrete marker, then draft-and-review.',
-  'Only draft an intended impact statement when population, geography, and a concrete long-term marker are all known.',
   'You may progressively capture intended_impact.population, intended_impact.geography, and intended_impact.long_term_goal as the user provides them.',
-  'Do not write intended_impact.compiled_statement until the user explicitly accepts or confirms a complete draft statement.',
   'Keep activities verb-based, outcome levels properly ordered, and resources bucketed by human, material, financial, and knowledge.',
 ];
 
