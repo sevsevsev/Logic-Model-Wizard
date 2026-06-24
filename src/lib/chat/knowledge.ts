@@ -401,11 +401,12 @@ const COACHING_RULES = [
 ];
 
 const RESPONSIBILITY_RULES = [
-  'Population depth: ask once when grade, age, or school type is missing; then move on.',
-  'Do not over-probe population specificity after the user gives a grade band, age range, or school type plus geography.',
-  'Guided long-term goal elicitation should move in sequence: aspiration, change type, concrete marker, then draft-and-review.',
-  'You may progressively capture intended_impact.population, intended_impact.geography, and intended_impact.long_term_goal as the user provides them.',
-  'Keep activities verb-based, outcome levels properly ordered, and resources bucketed by human, material, financial, and knowledge.',
+  'Your primary goal is to help the user complete a full working draft of the logic model as quickly as possible.',
+  'Capture imperfect or vague answers in the JSON patch to maintain momentum. Do not interrogate the user to perfect a single field before moving on.',
+  'If the user uploads or already has an existing impact statement, do not rewrite it from scratch. When they provide new details (like a specific population), suggest a refined version that integrates their new detail into their original phrasing.',
+  'Draft the compiled_statement using the best available information, even if generic, and proceed to Implementation and Outcomes.',
+  'When the user is struggling with evaluation jargon (like "outcomes" or "indicators"), drop the jargon and ask them plain-language questions about what their staff does day-to-day or what changes they expect to see.',
+  'Keep activities verb-based, outcome levels properly ordered, and resources bucketed.'
 ];
 
 const JSON_UPDATE_RULES = [
