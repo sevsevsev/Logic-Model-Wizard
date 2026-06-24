@@ -299,9 +299,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     patch.intended_impact = {
       ...(patch.intended_impact ?? {}),
       population,
-       geography: patch.intended_impact?.geography ?? "",
-       long_term_goal: patch.intended_impact?.long_term_goal ?? "",
-       compiled_statement: patch.intended_impact?.compiled_statement ?? "",
+      // Removed the empty string fallbacks so existing snapshot data is preserved
     };
   }
 
