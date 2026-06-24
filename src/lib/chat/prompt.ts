@@ -5,6 +5,7 @@ import {
   buildKnowledgeBase,
   buildResponsibilities,
 } from "@/lib/chat/knowledge";
+import { NEXT_INTENT_VALUES } from "@/lib/chat/extractionSchema";
 
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
 const USE_FULL_KNOWLEDGE_BASE = process.env.FULL_KNOWLEDGE_BASE_PROMPT === "true";
@@ -110,4 +111,71 @@ export function buildSystemPrompt(profile: ToneProfile = defaultToneProfile): st
   }
 
   return sections.join("\n\n");
+}
+
+export function buildRoutingExtractionPrompt(): string {
+  return `You are a strict JSON extraction and routing engine.
+
+Task:
+- Read the latest user message, chat history, and current model snapshot.
+- Return exactly one JSON object with exactly these four keys:
+  1) model_patch
+  2) internal_reasoning
+  3) next_intent
+  4) agent_reply
+
+Schema:
+{
+  "model_patch": {
+    "intended_impact": {
+      "population": "string",
+      "geography": "string",
+      "long_term_goal": "string",
+      "compiled_statement": "string"
+    },
+    "stakeholders": ["string" | { "id": "string", "label": "string", "type": "string" }],
+    "implementation": {
+      "resources": {
+        "human": ["string"],
+        "material": ["string"],
+        "financial": ["string"],
+        "knowledge": ["string"]
+      },
+      "quality_fidelity": {
+        "fidelity": ["string"],
+        "quality": ["string"]
+      },
+      "activities": [
+        {
+          "item": "string",
+          "category": "string",
+          "actions": ["string"],
+          "outputs": ["string" | { "text": "string", "category": "string" }],
+          "stakeholderLabels": ["string"]
+        }
+      ]
+    },
+    "outcomes": {
+      "short_term": ["string" | { "statement": "string", "stakeholderLabels": ["string"] }],
+      "medium_term": ["string" | { "statement": "string", "stakeholderLabels": ["string"] }],
+      "long_term": ["string" | { "statement": "string", "stakeholderLabels": ["string"] }]
+    }
+  },
+  "internal_reasoning": "string",
+  "next_intent": "${NEXT_INTENT_VALUES.join(" | ")}",
+  "agent_reply": "string"
+}
+
+Rules:
+- Return JSON only (no markdown, no prose outside JSON).
+- Include all four top-level keys every turn.
+- In model_patch, include only newly provided or refined fields.
+- Omit unchanged fields inside model_patch.
+- Prefer draft completion over rigid quality checks.
+- internal_reasoning is private scratchpad text for routing; keep it concise and focused on momentum.
+- Accept good-enough user inputs; avoid evaluation jargon in agent_reply.
+- Route next_intent toward emptier sections until a full draft exists.
+- If the user mixes Activities and Outputs, silently map each detail into the correct model_patch field and continue.
+- If the user struggles with intended impact abstraction, pivot through concrete activities and draft a baseline impact statement.
+- Ask exactly one focused next-step question in agent_reply.`;
 }

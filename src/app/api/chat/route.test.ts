@@ -40,7 +40,7 @@ function createModel(): LogicModel {
   };
 }
 
-test("chat route injects causal review instruction when model is structurally complete", async () => {
+test("chat route accepts structured routing envelope and returns agent reply", async () => {
   process.env.GEMINI_API_KEY = "test-key";
 
   const calls: Array<{ url: string; payload: unknown }> = [];
@@ -57,8 +57,17 @@ test("chat route injects causal review instruction when model is structurally co
           content: {
             parts: [
               {
-                text:
-                  "Let\'s inspect the weakest causal link together.\n<question_intent>causal_review</question_intent>\n<model_patch>{\"intended_impact\":{\"long_term_goal\":\"graduate high school\"}}</model_patch>",
+                text: JSON.stringify({
+                  model_patch: {
+                    intended_impact: {
+                      long_term_goal: "graduate high school",
+                    },
+                  },
+                  internal_reasoning:
+                    "Model is already complete enough to move into causal review.",
+                  next_intent: "causal_review",
+                  agent_reply: "Let's inspect the weakest causal link together.",
+                }),
               },
             ],
           },
@@ -92,10 +101,11 @@ test("chat route injects causal review instruction when model is structurally co
     };
     const text = payload.contents?.[payload.contents.length - 1]?.parts?.[0]?.text ?? "";
 
-    assert.match(
-      text,
-      /\[Causal Review Instruction\][\s\S]*Review the causal chain \(Resources -> Activities -> Outputs -> Short\/Medium\/Long Outcomes\)/
-    );
+    assert.match(text, /\[Current Logic Model Snapshot\]/);
+
+    const json = (await res.json()) as { reply?: string; modelPatch?: Partial<LogicModel> | null };
+    assert.equal(json.reply, "Let's inspect the weakest causal link together.");
+    assert.equal(json.modelPatch?.intended_impact?.long_term_goal, "graduate high school");
   } finally {
     global.fetch = originalFetch;
   }
@@ -112,8 +122,18 @@ test("chat route bypasses repeated impact specificity gate and advances to resou
           content: {
             parts: [
               {
-                text:
-                  "Thanks for clarifying.\n<question_intent>impact_specificity</question_intent>\n<model_patch>{\"intended_impact\":{\"long_term_goal\":\"better opportunities\"}}</model_patch>",
+                text: JSON.stringify({
+                  model_patch: {
+                    intended_impact: {
+                      long_term_goal: "better opportunities",
+                    },
+                  },
+                  internal_reasoning:
+                    "Impact is good-enough for now; move into resources to keep draft momentum.",
+                  next_intent: "resources",
+                  agent_reply:
+                    "Good enough for now—let's move to resources. What people, materials, funding, and know-how do you need?",
+                }),
               },
             ],
           },
@@ -163,7 +183,7 @@ test("chat route bypasses repeated impact specificity gate and advances to resou
     const json = (await res.json()) as { reply?: string; modelPatch?: Partial<LogicModel> | null };
     assert.equal(
       json.reply,
-      "What are the key resources needed to run this program (people, materials, funding, and expertise)?"
+      "Good enough for now—let's move to resources. What people, materials, funding, and know-how do you need?"
     );
     assert.equal(Boolean(json.modelPatch?.intended_impact), true);
   } finally {
@@ -182,8 +202,18 @@ test("chat route preserves an existing impact draft when the user clarifies the 
           content: {
             parts: [
               {
-                text:
-                  "Got it — we can strengthen that draft.\n<question_intent>impact_review</question_intent>\n<model_patch>{\"intended_impact\":{\"long_term_goal\":\"achieve strong foundational literacy skills\"}}</model_patch>",
+                text: JSON.stringify({
+                  model_patch: {
+                    intended_impact: {
+                      long_term_goal: "achieve strong foundational literacy skills",
+                    },
+                  },
+                  internal_reasoning:
+                    "Keep the existing compiled draft and refine goal wording with user's literacy clarification.",
+                  next_intent: "intended_impact",
+                  agent_reply:
+                    "That helps—I've strengthened the impact draft around foundational literacy. What wording would you refine next?",
+                }),
               },
             ],
           },

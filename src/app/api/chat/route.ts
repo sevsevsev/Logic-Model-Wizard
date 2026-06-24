@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildSystemPrompt } from "@/lib/chat/prompt";
+import { buildRoutingExtractionPrompt, buildSystemPrompt } from "@/lib/chat/prompt";
+import {
+  routingExtractionSchema,
+  type RoutingExtraction,
+  type LogicModelPatchExtraction,
+} from "@/lib/chat/extractionSchema";
 import {
   buildCompiledStatement as guardrailBuildCompiledStatement,
-  hasConcreteImpactMarker as guardrailHasConcreteImpactMarker,
-  inferImpactDraftReadiness,
-  inferNextRequiredIntent,
   isExplicitImpactAcceptance as guardrailIsExplicitImpactAcceptance,
-  looksSpecificGeography as guardrailLooksSpecificGeography,
-  looksSpecificPopulation as guardrailLooksSpecificPopulation,
 } from "@/lib/chat/guardrails";
-import type { ImpactDraftReadiness } from "@/lib/chat/guardrails";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
 
@@ -17,65 +16,9 @@ import type { ChatMessage } from "@/store/useLogicModelStore";
 // System prompt — encodes all spec rules
 // ---------------------------------------------------------------------------
 const SYSTEM_PROMPT = buildSystemPrompt();
+const ROUTING_EXTRACTION_PROMPT = buildRoutingExtractionPrompt();
 const CHAT_INTENT_DEBUG = process.env.DEBUG_CHAT_INTENT === "true";
 const ENABLE_RESPONSE_CHIPS = process.env.ENABLE_RESPONSE_CHIPS === "true";
-
-const PATCH_EXTRACTION_PROMPT = `You are a strict JSON extraction engine.
-
-Task:
-- Read the latest user message and current model snapshot.
-- Extract ONLY the logic model fields that were newly provided or refined in the latest turn.
-- Return JSON only. No prose, no markdown, no code fences.
-
-Schema:
-{
-  "stakeholders": [
-    { "id": "string", "label": "string", "type": "string" }
-  ],
-  "intended_impact": {
-    "population": "string",
-    "geography": "string",
-    "long_term_goal": "string",
-    "compiled_statement": "string"
-  },
-  "implementation": {
-    "resources": {
-      "human": ["string"],
-      "material": ["string"],
-      "financial": ["string"],
-      "knowledge": ["string"]
-    },
-    "quality_fidelity": {
-      "fidelity": ["string"],
-      "quality": ["string"]
-    },
-    "activities": [
-      {
-        "item": "string",
-        "category": "string",
-        "actions": ["string"],
-        "outputs": [{ "text": "string", "category": "string" }],
-        "stakeholderLabels": ["string"]
-      }
-    ]
-  },
-  "outcomes": {
-    "short_term": [{ "statement": "string", "stakeholderLabels": ["string"] }],
-    "medium_term": [{ "statement": "string", "stakeholderLabels": ["string"] }],
-    "long_term": [{ "statement": "string", "stakeholderLabels": ["string"] }]
-  }
-}
-
-Rules:
-- Omit unchanged fields entirely.
-- Omit empty strings/arrays.
-- Never infer user confirmation from assistant phrasing.
-- Silently normalize discrete formatting issues in extracted values (for example, convert noun-only activities into concise verb phrases) inside JSON fields.
-- Do not ask the user to rephrase minor formatting issues before writing model_patch.
-- If nothing changed, return {}.`;
-
-const CAUSAL_REVIEW_CONTEXT_INSTRUCTION =
-  "The logic model is fully drafted. Review the causal chain (Resources -> Activities -> Outputs -> Short/Medium/Long Outcomes). Identify the single weakest link or leap in logic. Ask the user one collaborative question to bridge that specific gap.";
 
 function splitSentences(text: string): string[] {
   return text
@@ -445,7 +388,7 @@ function normalizeMergedActivityPatch(
   };
 }
 
-async function extractModelPatchFallback({
+async function extractRoutingEnvelopeFallback({
   apiKey,
   history,
   userMessage,
@@ -455,9 +398,9 @@ async function extractModelPatchFallback({
   history: ChatMessage[];
   userMessage: string;
   modelSnapshot?: LogicModel;
-}): Promise<Partial<LogicModel> | null> {
+}): Promise<RoutingExtraction | null> {
   const extractionPayload = {
-    system_instruction: { parts: [{ text: PATCH_EXTRACTION_PROMPT }] },
+    system_instruction: { parts: [{ text: ROUTING_EXTRACTION_PROMPT }] },
     contents: [
       {
         role: "user",
@@ -501,14 +444,13 @@ async function extractModelPatchFallback({
   }
 
   try {
-    const parsed = JSON.parse(extractionText) as Partial<LogicModel>;
-    if (!parsed || typeof parsed !== "object") {
+    const rawParsed = JSON.parse(extractionText);
+    const parsed = routingExtractionSchema.safeParse(rawParsed);
+    if (!parsed.success) {
       return null;
     }
-    if (Object.keys(parsed).length === 0) {
-      return null;
-    }
-    return parsed;
+
+    return parsed.data;
   } catch {
     return null;
   }
@@ -569,22 +511,9 @@ export async function POST(req: NextRequest) {
   // -------------------------------------------------------------------------
 
   // Build Gemini contents array from chat history
-  const impactDraftReadiness = inferImpactDraftReadiness(
-    modelSnapshot,
-    safeHistory,
-    message.trim()
-  );
-
   const modelContextText = modelSnapshot
     ? `\n\n[Current Logic Model Snapshot]\n${JSON.stringify(modelSnapshot)}`
     : "";
-
-  const impactReadinessText = buildImpactReadinessInstruction(impactDraftReadiness);
-  const preTurnIntent = inferIntentFromModelState(modelSnapshot);
-  const causalReviewInstructionText =
-    preTurnIntent === "causal_review"
-      ? `\n\n[Causal Review Instruction]\n${CAUSAL_REVIEW_CONTEXT_INSTRUCTION}`
-      : "";
 
   const contents = [
     ...safeHistory.map((msg) => ({
@@ -593,16 +522,17 @@ export async function POST(req: NextRequest) {
     })),
     {
       role: "user",
-      parts: [{ text: `${message.trim()}${modelContextText}${impactReadinessText}${causalReviewInstructionText}` }],
+      parts: [{ text: `${message.trim()}${modelContextText}` }],
     },
   ];
 
   const geminiPayload = {
-    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    system_instruction: { parts: [{ text: `${SYSTEM_PROMPT}\n\n${ROUTING_EXTRACTION_PROMPT}` }] },
     contents,
     generationConfig: {
       temperature: 0.4,
       maxOutputTokens: 2048,
+      responseMimeType: "application/json",
     },
   };
 
@@ -624,34 +554,44 @@ export async function POST(req: NextRequest) {
   const rawText: string =
     geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
-  // Split coaching reply from hidden tags
-  const intentMatch = rawText.match(/<question_intent>([\s\S]*?)<\/question_intent>/);
-  const patchMatch = rawText.match(/<model_patch>([\s\S]*?)<\/model_patch>/);
-  let questionIntent = normalizeQuestionIntent(intentMatch?.[1]);
-  let reply = rawText
-    .replace(/<question_intent>[\s\S]*?<\/question_intent>/g, "")
-    .replace(/<model_patch>[\s\S]*?<\/model_patch>/g, "")
-    .trim();
+  let routingEnvelope: RoutingExtraction | null = null;
 
-  let modelPatch: Partial<LogicModel> | null = null;
-  if (patchMatch?.[1]) {
-    try {
-      const parsed = JSON.parse(patchMatch[1].trim()) as Partial<LogicModel>;
-      modelPatch = parsed && typeof parsed === "object" && Object.keys(parsed).length > 0 ? parsed : null;
-    } catch {
-      // Malformed patch — ignore, don't crash
+  try {
+    const parsed = routingExtractionSchema.safeParse(JSON.parse(rawText));
+    if (parsed.success) {
+      routingEnvelope = parsed.data;
     }
+  } catch {
+    // Fall through to deterministic extraction fallback.
   }
 
-  // Fallback path: if the model did not emit <model_patch> tags,
-  // run a strict extraction pass so the Logic Mirror still updates.
-  if (!modelPatch) {
-    modelPatch = await extractModelPatchFallback({
+  if (!routingEnvelope) {
+    routingEnvelope = await extractRoutingEnvelopeFallback({
       apiKey,
       history: safeHistory,
       userMessage: message.trim(),
       modelSnapshot,
     });
+  }
+
+  if (!routingEnvelope) {
+    return NextResponse.json(
+      { error: "Unable to parse structured LLM routing response." },
+      { status: 502 }
+    );
+  }
+
+  let questionIntent = mapRoutingIntentToQuestionIntent(routingEnvelope.next_intent);
+  let reply = routingEnvelope.agent_reply.trim();
+  if (!reply) {
+    reply = "Thanks. What would you like to refine next in the draft?";
+    questionIntent = "section_refine";
+  }
+
+  const extractedPatch: LogicModelPatchExtraction = routingEnvelope.model_patch;
+  let modelPatch = extractedPatch as Partial<LogicModel> | null;
+  if (modelPatch && Object.keys(modelPatch).length === 0) {
+    modelPatch = null;
   }
 
   try {
@@ -668,70 +608,6 @@ export async function POST(req: NextRequest) {
     modelPatch = null;
   }
 
-  let patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
-
-  if (!impactDraftReadiness.bypassed && shouldRequestImpactSpecificity(modelPatch)) {
-    if (modelPatch) {
-      const { intended_impact: _omit, ...remainingPatch } = modelPatch;
-      modelPatch = remainingPatch;
-    }
-    reply = "Let's make that impact statement more specific. What exact long-term difference should we be able to point to in 10 years (for example, sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
-    questionIntent = "impact_specificity";
-  }
-
-  if (shouldSkipPopulationFocusProbe(reply, message.trim(), patchedSnapshot)) {
-    reply = "Thanks — that already sounds specific enough for who you reach.\n\nIf your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
-    questionIntent = "impact_aspiration";
-  }
-
-  if (!impactDraftReadiness.ready && shouldBlockImpactDraft(reply, questionIntent, modelPatch)) {
-    if (modelPatch?.intended_impact) {
-      const { intended_impact: _omit, ...remainingPatch } = modelPatch;
-      modelPatch = remainingPatch;
-    }
-
-    questionIntent = impactDraftReadiness.missingIntent;
-    reply = buildImpactMissingFollowUp(impactDraftReadiness.missingIntent);
-  }
-
-  let bypassAdvancedIntent: QuestionIntent | undefined;
-
-  if (impactDraftReadiness.bypassed) {
-    const impactBypassPatch = buildImpactBypassPatch(
-      modelSnapshot,
-      modelPatch,
-      message.trim(),
-      impactDraftReadiness.missingIntent
-    );
-
-    modelPatch = mergeModelPatchPreferPrimary(modelPatch, impactBypassPatch);
-    patchedSnapshot = applyPatchToSnapshot(modelSnapshot, modelPatch);
-
-    const bypassIntent = inferPostImpactBypassIntent(patchedSnapshot);
-    if (bypassIntent) {
-      bypassAdvancedIntent = bypassIntent;
-      questionIntent = bypassIntent;
-      const canonicalQuestion = buildCanonicalQuestionForIntent(bypassIntent);
-      if (canonicalQuestion) {
-        reply = canonicalQuestion;
-      }
-    }
-  }
-
-  let stateIntent = inferIntentFromModelState(patchedSnapshot);
-  stateIntent = assertIntentWithLatestUserEvidence(stateIntent, message.trim(), patchedSnapshot);
-  if (bypassAdvancedIntent) {
-    stateIntent = bypassAdvancedIntent;
-  }
-
-  // Only force canonical phase question when we captured turn data; otherwise
-  // keep model reply to avoid repeating stale prompts that feel like ignored input.
-  if (modelPatch) {
-    const deterministic = enforceDeterministicPhaseQuestion(reply, questionIntent, stateIntent);
-    reply = deterministic.reply;
-    questionIntent = deterministic.questionIntent;
-  }
-
   const contextText = [
     ...safeHistory.map((msg) => msg.content),
     message.trim(),
@@ -746,13 +622,13 @@ export async function POST(req: NextRequest) {
   if (CHAT_INTENT_DEBUG) {
     console.info("[chat-intent]", {
       explicitIntent: questionIntent ?? null,
-      stateIntent: stateIntent ?? null,
       fallbackIntent: intentResolution.fallbackIntent ?? null,
       chosenIntent: intentResolution.intent ?? null,
       source: intentResolution.source,
+      llmNextIntent: routingEnvelope.next_intent,
+      llmInternalReasoning: routingEnvelope.internal_reasoning,
       quickReplyCount: quickReplies?.length ?? 0,
       responseChipsEnabled: ENABLE_RESPONSE_CHIPS,
-      impactDraftReadiness,
     });
   }
 
@@ -785,27 +661,28 @@ type QuestionIntent =
   | "causal_review"
   | "section_refine";
 
-type ParsedQuestionIntent = QuestionIntent | "none";
+type ParsedQuestionIntent = QuestionIntent;
 
-function normalizeQuestionIntent(raw: string | undefined): ParsedQuestionIntent | undefined {
-  const normalized = raw?.trim().toLowerCase();
-  switch (normalized) {
-    case "impact_aspiration":
-    case "impact_change_type":
-    case "impact_specificity":
-    case "impact_review":
-    case "long_term_help":
-    case "geography":
-    case "population_focus":
+function mapRoutingIntentToQuestionIntent(
+  nextIntent: RoutingExtraction["next_intent"]
+): ParsedQuestionIntent | undefined {
+  switch (nextIntent) {
+    case "intended_impact":
+      return "impact_aspiration";
     case "resources":
+      return "resources";
     case "activities":
+      return "activities";
     case "outputs_metrics":
-    case "quality_evidence":
-    case "outcomes_review":
+      return "outputs_metrics";
+    case "quality_fidelity":
+      return "quality_evidence";
+    case "outcomes":
+      return "outcomes_review";
     case "causal_review":
+      return "causal_review";
     case "section_refine":
-    case "none":
-      return normalized;
+      return "section_refine";
     default:
       return undefined;
   }
@@ -887,140 +764,6 @@ function isIntentCompatibleWithQuestion(intent: QuestionIntent, questionText: st
   return patterns.some((pattern) => pattern.test(questionText));
 }
 
-const POPULATION_FOCUS_PROBE_REGEX =
-  /(particular subset|specific group|particular group|subgroup|specific schools|backgrounds?|circumstances?|confirm who you reach)/i;
-
-function looksSpecificPopulation(text: string): boolean {
-  return guardrailLooksSpecificPopulation(text);
-}
-
-function looksSpecificGeography(text: string): boolean {
-  return guardrailLooksSpecificGeography(text);
-}
-
-function shouldSkipPopulationFocusProbe(
-  reply: string,
-  userMessage: string,
-  modelSnapshot?: LogicModel
-): boolean {
-  if (!POPULATION_FOCUS_PROBE_REGEX.test(reply)) return false;
-
-  const userSpecific = looksSpecificPopulation(userMessage) && looksSpecificGeography(userMessage);
-  if (userSpecific) return true;
-
-  if (!modelSnapshot) return false;
-  const population = modelSnapshot.intended_impact.population ?? "";
-  const geography = modelSnapshot.intended_impact.geography ?? "";
-
-  return looksSpecificPopulation(population) && looksSpecificGeography(geography);
-}
-
-function hasConcreteImpactMarker(text: string): boolean {
-  return guardrailHasConcreteImpactMarker(text);
-}
-
-function buildImpactReadinessInstruction(readiness: ImpactDraftReadiness): string {
-  if (readiness.bypassed) {
-    return `\n\n[Impact Draft Readiness]\nready: yes (bypassed after prior specificity attempt)\nCapture best-available values, draft the impact statement if possible, and advance to the next section.`;
-  }
-
-  if (readiness.ready) {
-    return `\n\n[Impact Draft Readiness]\nready: yes\nYou may propose a one-sentence draft intended impact statement, then confirm it with the user.`;
-  }
-
-  const missing = [];
-  if (!readiness.populationKnown) missing.push("specific population");
-  if (!readiness.geographyKnown) missing.push("specific geography");
-  if (!readiness.concreteOutcomeKnown) missing.push("concrete long-term marker");
-
-  return `\n\n[Impact Draft Readiness]\nready: no\nmissing: ${missing.join(", ")}\nDo NOT draft an intended impact statement yet. Ask one focused follow-up question only for the next missing item.`;
-}
-
-function shouldBlockImpactDraft(
-  reply: string,
-  questionIntent: ParsedQuestionIntent | undefined,
-  modelPatch: Partial<LogicModel> | null
-): boolean {
-  if (questionIntent === "impact_review") return true;
-  if (modelPatch?.intended_impact && Object.keys(modelPatch.intended_impact).length > 0) return true;
-
-  return /(draft\s+(?:intended\s+)?impact|does\s+that\s+capture|capture\s+your\s+intent|revise\s+the\s+impact\s+statement)/i.test(
-    reply
-  );
-}
-
-function buildImpactMissingFollowUp(missingIntent: QuestionIntent | undefined): string {
-  switch (missingIntent) {
-    case "population_focus":
-      return "Before I draft an impact statement, who exactly is the primary population you serve?";
-    case "geography":
-      return "Before I draft an impact statement, what specific geography should we anchor it to (for example, citywide, neighborhoods, or specific schools)?";
-    case "impact_specificity":
-    default:
-      return "Before I draft an impact statement, what exact long-term difference should we be able to point to in 10 years (for example: sustained school progression, credential completion, stable employment, stable housing, improved health, or reduced justice-system involvement)?";
-  }
-}
-
-function inferPostImpactBypassIntent(model: LogicModel | undefined): QuestionIntent {
-  const resources = model?.implementation.resources;
-  const hasResources =
-    (resources?.human.length ?? 0) > 0 ||
-    (resources?.material.length ?? 0) > 0 ||
-    (resources?.financial.length ?? 0) > 0 ||
-    (resources?.knowledge.length ?? 0) > 0;
-
-  if (!hasResources) {
-    return "resources";
-  }
-
-  const hasActivities = (model?.implementation.activities.length ?? 0) > 0;
-  if (!hasActivities) {
-    return "activities";
-  }
-
-  return "outputs_metrics";
-}
-
-function buildImpactBypassPatch(
-  modelSnapshot: LogicModel | undefined,
-  modelPatch: Partial<LogicModel> | null,
-  latestUserMessage: string,
-  missingIntent: QuestionIntent | undefined
-): Partial<LogicModel> | null {
-  const latest = latestUserMessage.trim();
-  const snapshotImpact = modelSnapshot?.intended_impact;
-  const patchImpact = modelPatch?.intended_impact;
-
-  let population = patchImpact?.population ?? snapshotImpact?.population ?? "";
-  let geography = patchImpact?.geography ?? snapshotImpact?.geography ?? "";
-  let longTermGoal = patchImpact?.long_term_goal ?? snapshotImpact?.long_term_goal ?? "";
-
-  if (!population && missingIntent === "population_focus" && latest) {
-    population = latest;
-  }
-
-  if (!geography && missingIntent === "geography" && latest) {
-    geography = latest;
-  }
-
-  if (!longTermGoal && missingIntent === "impact_specificity" && latest) {
-    longTermGoal = latest;
-  }
-
-  const compiled = buildCompiledStatement(population, geography, longTermGoal);
-  const intendedImpactPatch: Partial<LogicModel["intended_impact"]> = {};
-
-  if (population) intendedImpactPatch.population = population;
-  if (geography) intendedImpactPatch.geography = geography;
-  if (longTermGoal) intendedImpactPatch.long_term_goal = longTermGoal;
-  if (compiled) intendedImpactPatch.compiled_statement = compiled;
-
-  if (Object.keys(intendedImpactPatch).length === 0) {
-    return null;
-  }
-
-  return { intended_impact: intendedImpactPatch } as Partial<LogicModel>;
-}
 
 function isExplicitImpactAcceptance(text: string): boolean {
   return guardrailIsExplicitImpactAcceptance(text);
@@ -1113,128 +856,6 @@ function isLogicModelShape(value: unknown): value is LogicModel {
     Array.isArray(outcomes.medium_term) &&
     Array.isArray(outcomes.long_term)
   );
-}
-
-function inferIntentFromModelState(model: LogicModel | undefined): QuestionIntent | undefined {
-  return inferNextRequiredIntent(model);
-}
-
-function assertIntentWithLatestUserEvidence(
-  inferredIntent: QuestionIntent | undefined,
-  latestUserMessage: string,
-  mergedModel: LogicModel | undefined
-): QuestionIntent | undefined {
-  if (!inferredIntent) return undefined;
-
-  if (inferredIntent === "population_focus" && looksSpecificPopulation(latestUserMessage)) {
-    const knownGeography = looksSpecificGeography(mergedModel?.intended_impact.geography ?? latestUserMessage);
-    return knownGeography ? "impact_specificity" : "geography";
-  }
-
-  if (inferredIntent === "geography" && looksSpecificGeography(latestUserMessage)) {
-    return "impact_specificity";
-  }
-
-  return inferredIntent;
-}
-
-/**
- * Returns a new model snapshot with the patch applied so that
- * `inferIntentFromModelState` sees this turn's extracted data rather than
- * the stale client-sent snapshot. This prevents the bot from re-asking a
- * question the user just answered in the same turn.
- */
-function applyPatchToSnapshot(
-  snapshot: LogicModel | undefined,
-  patch: Partial<LogicModel> | null
-): LogicModel | undefined {
-  if (!snapshot || !patch) return snapshot;
-  return {
-    ...snapshot,
-    intended_impact: patch.intended_impact
-      ? { ...snapshot.intended_impact, ...patch.intended_impact }
-      : snapshot.intended_impact,
-    stakeholders: patch.stakeholders ?? snapshot.stakeholders,
-    implementation: patch.implementation
-      ? { ...snapshot.implementation, ...patch.implementation }
-      : snapshot.implementation,
-    outcomes: patch.outcomes
-      ? { ...snapshot.outcomes, ...patch.outcomes }
-      : snapshot.outcomes,
-  };
-}
-
-function buildCanonicalQuestionForIntent(intent: QuestionIntent): string | undefined {
-  switch (intent) {
-    case "population_focus":
-      return "Who exactly is the primary population your program serves?";
-    case "geography":
-      return "What specific geography should anchor this logic model (for example, citywide, neighborhoods, or specific sites)?";
-    case "impact_specificity":
-      return "If your program succeeds in 10 years, what concrete long-term change should we expect to see for that population?";
-    case "resources":
-      return "What are the key resources needed to run this program (people, materials, funding, and expertise)?";
-    case "activities":
-      return "What are the main activity categories your team delivers in a typical cycle?";
-    case "outputs_metrics":
-      return "How will you count whether those activities happened (for example participants reached, sessions delivered, or hours)?";
-    case "outcomes_review":
-      return "What is one short-term knowledge change, one medium-term behavior change, and one long-term condition change you expect?";
-    case "quality_evidence":
-      return "How will you track implementation fidelity and delivery quality as activities are delivered?";
-    case "section_refine":
-      return "Which section would you like to refine next: impact, resources, activities, outputs, or outcomes?";
-    case "causal_review":
-      return "The logic model is fully drafted. Looking across Resources -> Activities -> Outputs -> Short/Medium/Long Outcomes, what is the single weakest link or leap in logic we should strengthen first?";
-    default:
-      return undefined;
-  }
-}
-
-function enforceDeterministicPhaseQuestion(
-  reply: string,
-  questionIntent: ParsedQuestionIntent | undefined,
-  stateIntent: QuestionIntent | undefined
-): { reply: string; questionIntent: ParsedQuestionIntent | undefined } {
-  if (!stateIntent) {
-    return { reply, questionIntent };
-  }
-
-  const canonicalQuestion = buildCanonicalQuestionForIntent(stateIntent);
-  if (!canonicalQuestion) {
-    return { reply, questionIntent };
-  }
-
-  const focus = getQuestionFocusText(reply);
-  const explicitCompatible =
-    questionIntent && questionIntent !== "none"
-      ? isIntentCompatibleWithQuestion(questionIntent, focus.text)
-      : false;
-
-  if (focus.hasQuestion && explicitCompatible && questionIntent === stateIntent) {
-    return { reply, questionIntent };
-  }
-
-  return {
-    reply: canonicalQuestion,
-    questionIntent: stateIntent,
-  };
-}
-
-function shouldRequestImpactSpecificity(modelPatch: Partial<LogicModel> | null): boolean {
-  const impact = modelPatch?.intended_impact;
-  if (!impact) return false;
-
-  const candidate = `${impact.compiled_statement ?? ""} ${impact.long_term_goal ?? ""}`.trim();
-  if (!candidate) return false;
-
-  const hasConcreteMarker = hasConcreteImpactMarker(candidate);
-
-  const genericSignal = /(better outcomes|opportunity awareness|improved lives|better lives|positive change|thrive|successful futures|be successful|wellbeing|well-being|economic opportunities)/i.test(
-    candidate
-  );
-
-  return genericSignal && !hasConcreteMarker;
 }
 
 function getQuickRepliesForIntent(intent: QuestionIntent): QuickReply[] | undefined {
@@ -1593,17 +1214,12 @@ function resolveQuickReplyIntent(
   fallbackIntent?: QuestionIntent;
   source:
     | "explicit"
-    | "explicit-none"
     | "forced-review"
     | "fallback"
     | "fallback-overrode-explicit"
     | "suppressed-mismatch"
     | "none";
 } {
-  if (explicitIntent === "none") {
-    return { intent: undefined, fallbackIntent: undefined, source: "explicit-none" };
-  }
-
   const questionFocus = getQuestionFocusText(reply);
   const fallbackIntent = detectQuickReplyIntent(questionFocus.text);
 
