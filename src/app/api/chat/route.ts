@@ -999,25 +999,6 @@ function enforceCompiledStatementAcceptance(
   return modelPatch;
 }
 
-  if (modelPatch.intended_impact.compiled_statement?.trim()) {
-    return modelPatch;
-  }
-
-  const population =
-    modelPatch.intended_impact.population ?? modelSnapshot?.intended_impact.population ?? "";
-  const geography =
-    modelPatch.intended_impact.geography ?? modelSnapshot?.intended_impact.geography ?? "";
-  const longTermGoal =
-    modelPatch.intended_impact.long_term_goal ?? modelSnapshot?.intended_impact.long_term_goal ?? "";
-
-  const compiled = buildCompiledStatement(population, geography, longTermGoal);
-  if (compiled) {
-    modelPatch.intended_impact.compiled_statement = compiled;
-  }
-
-  return modelPatch;
-}
-
 function isLogicModelShape(value: unknown): value is LogicModel {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
