@@ -305,9 +305,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     patch.intended_impact = {
       ...(patch.intended_impact ?? {}),
       population,
-       geography: patch.intended_impact?.geography ?? "",
-       long_term_goal: patch.intended_impact?.long_term_goal ?? "",
-       compiled_statement: patch.intended_impact?.compiled_statement ?? "",
+      // Removed the empty string fallbacks so existing snapshot data is preserved
     };
   }
 
@@ -1039,11 +1037,24 @@ function enforceCompiledStatementAcceptance(
   const accepted = isExplicitImpactAcceptance(latestUserMessage);
   if (!accepted) {
     const existingCompiled = modelSnapshot?.intended_impact.compiled_statement?.trim() ?? "";
-    const patchCompiled = modelPatch.intended_impact.compiled_statement?.trim() ?? "";
+    let patchCompiled = modelPatch.intended_impact.compiled_statement?.trim() ?? "";
+
+    const population = modelPatch.intended_impact.population ?? modelSnapshot?.intended_impact.population ?? "";
+    const geography = modelPatch.intended_impact.geography ?? modelSnapshot?.intended_impact.geography ?? "";
+    const longTermGoal = modelPatch.intended_impact.long_term_goal ?? modelSnapshot?.intended_impact.long_term_goal ?? "";
 
     // Refinement turns should preserve the best available draft rather than blanking it out.
-    if (!patchCompiled && existingCompiled) {
-      modelPatch.intended_impact.compiled_statement = existingCompiled;
+    if (!patchCompiled) {
+      const compiled = buildCompiledStatement(population, geography, longTermGoal);
+      if (compiled) {
+        patchCompiled = compiled;
+      } else if (existingCompiled) {
+        patchCompiled = existingCompiled;
+      }
+    }
+
+    if (patchCompiled) {
+      modelPatch.intended_impact.compiled_statement = patchCompiled;
     }
 
     if (Object.keys(modelPatch.intended_impact).length === 0) {

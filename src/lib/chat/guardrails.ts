@@ -223,17 +223,6 @@ export function inferNextRequiredIntent(model: LogicModel | undefined): Guardrai
     return "outcomes_review";
   }
 
-  const hasIntendedImpactEntry = [
-    model.intended_impact.population,
-    model.intended_impact.geography,
-    model.intended_impact.long_term_goal,
-    model.intended_impact.compiled_statement,
-  ].some((value) => isNonEmpty(value));
-
-  const structurallyComplete = hasIntendedImpactEntry && activities.length > 0 && hasOutcomes;
-  if (structurallyComplete) {
-    return "causal_review";
-  }
-
-  return "section_refine";
+  // Trigger holistic review once all sections have data
+  return "causal_review";
 }
