@@ -9,6 +9,7 @@ import {
   looksSpecificGeography as guardrailLooksSpecificGeography,
   looksSpecificPopulation as guardrailLooksSpecificPopulation,
 } from "@/lib/chat/guardrails";
+import type { ImpactDraftReadiness } from "@/lib/chat/guardrails";
 import type { LogicModel } from "@/store/useLogicModelStore";
 import type { ChatMessage } from "@/store/useLogicModelStore";
 
@@ -298,7 +299,9 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     }
   );
 
-  const patch: Partial<LogicModel> = {};
+  const patch: Omit<Partial<LogicModel>, "intended_impact"> & {
+    intended_impact?: Partial<LogicModel["intended_impact"]>;
+  } = {};
 
   if (populationCandidates.length > 0) {
     const population = dedupeStrings(populationCandidates)[0];
@@ -330,7 +333,7 @@ function buildHeuristicNarrativePatch(userMessage: string): Partial<LogicModel> 
     };
   }
 
-  return Object.keys(patch).length > 0 ? patch : null;
+  return Object.keys(patch).length > 0 ? (patch as Partial<LogicModel>) : null;
 }
 
 function mergeModelPatchPreferPrimary(
@@ -1016,7 +1019,7 @@ function buildImpactBypassPatch(
     return null;
   }
 
-  return { intended_impact: intendedImpactPatch };
+  return { intended_impact: intendedImpactPatch } as Partial<LogicModel>;
 }
 
 function isExplicitImpactAcceptance(text: string): boolean {
