@@ -983,16 +983,21 @@ function enforceCompiledStatementAcceptance(
 ): Partial<LogicModel> | null {
   if (!modelPatch?.intended_impact) return modelPatch;
 
-  const accepted = isExplicitImpactAcceptance(latestUserMessage);
-  if (!accepted) {
-    if ("compiled_statement" in modelPatch.intended_impact) {
-      modelPatch.intended_impact.compiled_statement = "";
+  // We no longer wipe out the statement if the user doesn't explicitly accept it.
+  // We simply auto-compile the statement if all pieces are present and the LLM hasn't already drafted one.
+  const population = modelPatch.intended_impact.population ?? modelSnapshot?.intended_impact.population ?? "";
+  const geography = modelPatch.intended_impact.geography ?? modelSnapshot?.intended_impact.geography ?? "";
+  const longTermGoal = modelPatch.intended_impact.long_term_goal ?? modelSnapshot?.intended_impact.long_term_goal ?? "";
+
+  if (!modelPatch.intended_impact.compiled_statement) {
+    const compiled = buildCompiledStatement(population, geography, longTermGoal);
+    if (compiled) {
+      modelPatch.intended_impact.compiled_statement = compiled;
     }
-    if (Object.keys(modelPatch.intended_impact).length === 0) {
-      delete modelPatch.intended_impact;
-    }
-    return modelPatch;
   }
+
+  return modelPatch;
+}
 
   if (modelPatch.intended_impact.compiled_statement?.trim()) {
     return modelPatch;
