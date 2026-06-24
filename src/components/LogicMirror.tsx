@@ -1,9 +1,14 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { useLogicModelStore } from "@/store/useLogicModelStore";
 import { Check, Plus, Users, MapPin, Target, Wrench, Zap, TrendingUp, X } from "lucide-react";
 import DraftControls from "@/components/DraftControls";
+
+// ---------------------------------------------------------------------------
+// UI context — propagates reviewMode to sub-components without prop drilling
+// ---------------------------------------------------------------------------
+const ReviewModeContext = createContext(false);
 
 const DEFAULT_ACTIVITY_GROUP = "__ungrouped__";
 
@@ -46,6 +51,7 @@ function PillList({
   const [isAdding, setIsAdding] = useState(false);
 
   const safeItems = Array.isArray(items) ? items : [];
+  const reviewMode = useContext(ReviewModeContext);
 
   const startEditing = (index: number) => {
     setEditingIndex(index);
@@ -70,6 +76,7 @@ function PillList({
   };
 
   if (safeItems.length === 0) {
+    if (reviewMode) return null;
     return (
       <div className="space-y-1.5">
         <p className="text-xs italic text-slate-400 px-1">{empty}</p>
@@ -178,7 +185,7 @@ function PillList({
         )
       ))}
 
-      {onAdd && (
+      {onAdd && !reviewMode && (
         isAdding ? (
           <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1">
             <input
@@ -225,17 +232,55 @@ function PillList({
   );
 }
 
+function FieldValue({ value }: { value: string | undefined }) {
+  const reviewMode = useContext(ReviewModeContext);
+  if (!value) {
+    if (reviewMode) return null;
+    return <span className="italic text-slate-400">Not yet defined</span>;
+  }
+  const isPlaceholder = /\[.+?\]/.test(value);
+  return (
+    <span className="text-base text-slate-700">
+      {value}
+      {isPlaceholder && (
+        <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 border border-amber-300 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium">
+          draft
+        </span>
+      )}
+    </span>
+  );
+}
+
 function Card({
   header,
   children,
+  isEmpty,
+  sectionKey,
+  isActive,
+  onSectionClick,
 }: {
   header: React.ReactNode;
   children: React.ReactNode;
+  isEmpty?: boolean;
+  sectionKey?: string;
+  isActive?: boolean;
+  onSectionClick?: (key: string) => void;
 }) {
+  const reviewMode = useContext(ReviewModeContext);
+  const borderClass =
+    isEmpty && !reviewMode ? "border-dashed border-slate-300" : "border-solid border-slate-200";
+  const bgClass = isEmpty && !reviewMode ? "bg-gray-50" : "bg-white";
+  const paddingClass = reviewMode ? "p-2" : "p-3";
+  const ringClass = isActive ? "ring-2 ring-[#47aad8] ring-offset-1" : "";
   return (
-    <div className="rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+    <div
+      className={`rounded-lg border ${borderClass} shadow-md overflow-hidden transition-all ${ringClass}`}
+      onClick={sectionKey && onSectionClick ? () => onSectionClick(sectionKey) : undefined}
+      role="region"
+      aria-label={sectionKey ?? undefined}
+    >
       {header}
-      <div className="bg-slate-50 p-3 space-y-2">{children}</div>
+      <div className={`${bgClass} ${paddingClass} space-y-2`}>{children}</div>
     </div>
   );
 }
@@ -259,6 +304,7 @@ function OutcomeList({
   const [draftValue, setDraftValue] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const safeItems = Array.isArray(items) ? items : [];
+  const reviewMode = useContext(ReviewModeContext);
 
   const startEditing = (index: number) => {
     setEditingIndex(index);
@@ -283,6 +329,7 @@ function OutcomeList({
   };
 
   if (safeItems.length === 0) {
+    if (reviewMode) return null;
     return (
       <div className="space-y-1.5">
         <p className="text-xs italic text-slate-400 px-1">{empty}</p>
@@ -399,7 +446,7 @@ function OutcomeList({
         )
       ))}
 
-      {onAdd && (
+      {onAdd && !reviewMode && (
         isAdding ? (
           <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1">
             <input
@@ -464,6 +511,7 @@ function OutputList({
   const [draftSubcategory, setDraftSubcategory] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const safeItems = Array.isArray(items) ? items : [];
+  const reviewMode = useContext(ReviewModeContext);
 
   const startEditing = (index: number) => {
     setEditingIndex(index);
@@ -542,6 +590,7 @@ function OutputList({
   );
 
   if (safeItems.length === 0) {
+    if (reviewMode) return null;
     return (
       <div className="space-y-1.5">
         <p className="text-xs italic text-slate-400 px-1">{empty}</p>
@@ -599,7 +648,7 @@ function OutputList({
         )
       )}
 
-      {onAdd &&
+      {onAdd && !reviewMode &&
         (isAdding ? (
           editor
         ) : (
@@ -632,8 +681,27 @@ export default function LogicMirror() {
   const updateResources = useLogicModelStore((s) => s.updateResources);
   const updateOutcomes = useLogicModelStore((s) => s.updateOutcomes);
   const updateIntendedImpact = useLogicModelStore((s) => s.updateIntendedImpact);
+  const reviewMode = useLogicModelStore((s) => s.reviewMode);
+  const activeSection = useLogicModelStore((s) => s.activeSection);
+  const setActiveSection = useLogicModelStore((s) => s.setActiveSection);
   const { intended_impact, implementation, outcomes } = model;
   const { resources, activities } = implementation;
+
+  const impactIsEmpty =
+    !intended_impact.population &&
+    !intended_impact.geography &&
+    !intended_impact.long_term_goal &&
+    !intended_impact.compiled_statement;
+  const resourcesIsEmpty =
+    resources.human.length === 0 &&
+    resources.material.length === 0 &&
+    resources.financial.length === 0 &&
+    resources.knowledge.length === 0;
+  const activitiesIsEmpty = activities.length === 0;
+  const outcomesIsEmpty =
+    outcomes.short_term.length === 0 &&
+    outcomes.medium_term.length === 0 &&
+    outcomes.long_term.length === 0;
   const [editingImpact, setEditingImpact] = useState(false);
   const [impactDraft, setImpactDraft] = useState(intended_impact.compiled_statement);
   const [editingActivityMeta, setEditingActivityMeta] = useState<number | null>(null);
@@ -675,6 +743,7 @@ export default function LogicMirror() {
   }
 
   return (
+    <ReviewModeContext.Provider value={reviewMode}>
     <div className="h-full overflow-y-auto bg-[linear-gradient(180deg,#f7fbff_0,#eef4f9_100%)] p-4">
       <div className="max-w-2xl mx-auto space-y-4">
 
@@ -695,26 +764,26 @@ export default function LogicMirror() {
               color="bg-[#edf3f8] text-[#0b315b]"
             />
           }
+          isEmpty={impactIsEmpty}
+          sectionKey="impact"
+          isActive={activeSection === "impact"}
+          onSectionClick={setActiveSection}
         >
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <p className="text-[10px] font-semibold uppercase text-slate-400 mb-0.5 flex items-center gap-1">
+              <p className="text-sm font-semibold uppercase text-slate-400 mb-0.5 flex items-center gap-1">
                 <Users size={10} /> Population
               </p>
-              <p className="text-sm text-slate-700">
-                {intended_impact.population || (
-                  <span className="italic text-slate-400">Not yet defined</span>
-                )}
+              <p className="text-base">
+                <FieldValue value={intended_impact.population} />
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase text-slate-400 mb-0.5 flex items-center gap-1">
+              <p className="text-sm font-semibold uppercase text-slate-400 mb-0.5 flex items-center gap-1">
                 <MapPin size={10} /> Geography
               </p>
-              <p className="text-sm text-slate-700">
-                {intended_impact.geography || (
-                  <span className="italic text-slate-400">Not yet defined</span>
-                )}
+              <p className="text-base">
+                <FieldValue value={intended_impact.geography} />
               </p>
             </div>
           </div>
@@ -760,7 +829,7 @@ export default function LogicMirror() {
               </button>
             )
           )}
-          {!intended_impact.compiled_statement && !editingImpact && (
+          {!intended_impact.compiled_statement && !editingImpact && !reviewMode && (
             <button
               onClick={() => {
                 setImpactDraft("");
@@ -782,12 +851,16 @@ export default function LogicMirror() {
               color="bg-[#e4f2fb] text-[#0b315b]"
             />
           }
+          isEmpty={resourcesIsEmpty}
+          sectionKey="resources"
+          isActive={activeSection === "resources"}
+          onSectionClick={setActiveSection}
         >
           <div className="grid grid-cols-2 gap-3">
             {(["human", "material", "financial", "knowledge"] as const).map(
               (bucket) => (
                 <div key={bucket}>
-                  <p className="text-[10px] font-semibold uppercase text-slate-400 mb-1 capitalize">
+                  <p className="text-sm font-semibold uppercase text-slate-400 mb-1 capitalize">
                     {bucket}
                   </p>
                   <PillList
@@ -820,8 +893,13 @@ export default function LogicMirror() {
               color="bg-[#fff3df] text-[#0b315b]"
             />
           }
+          isEmpty={activitiesIsEmpty}
+          sectionKey="activities"
+          isActive={activeSection === "activities"}
+          onSectionClick={setActiveSection}
         >
           <div className="space-y-3">
+            {!reviewMode && (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => {
@@ -857,6 +935,7 @@ export default function LogicMirror() {
                 <Plus size={11} /> Add group
               </button>
             </div>
+            )}
 
             {topLevelMode === "activity" && (
               <div className="rounded-md border border-[#9fc3da] bg-white p-3 space-y-2">
@@ -1072,7 +1151,7 @@ export default function LogicMirror() {
                         }}
                         className="text-left"
                       >
-                        <span className="block text-[10px] uppercase font-semibold text-slate-400 mb-0.5">
+                        <span className="block text-sm uppercase font-semibold text-slate-400 mb-0.5">
                           Group / Category
                         </span>
                         <span className="text-xs font-semibold text-[#0b315b] hover:text-[#082746]">
@@ -1100,7 +1179,7 @@ export default function LogicMirror() {
                   )}
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className="text-[10px] uppercase font-semibold text-slate-400">
+                      <p className="text-sm uppercase font-semibold text-slate-400">
                         Activities
                       </p>
                       <button
@@ -1179,7 +1258,7 @@ export default function LogicMirror() {
                   </div>
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className="text-[10px] uppercase font-semibold text-slate-400">
+                      <p className="text-sm uppercase font-semibold text-slate-400">
                         Outputs
                       </p>
                       <button
@@ -1306,6 +1385,10 @@ export default function LogicMirror() {
               color="bg-[#e7f6ea] text-[#0b315b]"
             />
           }
+          isEmpty={outcomesIsEmpty}
+          sectionKey="outcomes"
+          isActive={activeSection === "outcomes"}
+          onSectionClick={setActiveSection}
         >
           {(
             [
@@ -1315,7 +1398,7 @@ export default function LogicMirror() {
             ] as const
           ).map(({ key, label, sub, color }) => (
             <div key={key}>
-              <p className={`text-xs font-semibold ${color} mb-0.5`}>
+              <p className={`text-sm font-semibold ${color} mb-0.5`}>
                 {label}{" "}
                 <span className="font-normal text-slate-400 text-[10px]">({sub})</span>
               </p>
@@ -1353,6 +1436,7 @@ export default function LogicMirror() {
         </div>
       </div>
     </div>
+    </ReviewModeContext.Provider>
   );
 }
 

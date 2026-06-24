@@ -170,3 +170,74 @@ test("chat route bypasses repeated impact specificity gate and advances to resou
     global.fetch = originalFetch;
   }
 });
+
+test("chat route preserves an existing impact draft when the user clarifies the statement", async () => {
+  process.env.GEMINI_API_KEY = "test-key";
+
+  const originalFetch = global.fetch;
+  global.fetch = (async () => {
+    const body = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text:
+                  "Got it — we can strengthen that draft.\n<question_intent>impact_review</question_intent>\n<model_patch>{\"intended_impact\":{\"long_term_goal\":\"achieve strong foundational literacy skills\"}}</model_patch>",
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const model = createModel();
+    model.intended_impact.population = "6th graders";
+    model.intended_impact.geography = "West Philadelphia schools";
+    model.intended_impact.long_term_goal = "graduate high school";
+    model.intended_impact.compiled_statement =
+      "6th graders in West Philadelphia schools will graduate high school";
+
+    const req = new NextRequest("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        message: "We focus on literacy as the foundation.",
+        history: [
+          {
+            id: "a1",
+            role: "assistant",
+            content:
+              "Tell me about your program — what does it do, and who does it serve?",
+            timestamp: Date.now() - 1000,
+          },
+          {
+            id: "u1",
+            role: "user",
+            content: "We work with 6th graders enrolled in West Philadelphia schools.",
+            timestamp: Date.now() - 900,
+          },
+        ],
+        model,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await POST(req);
+    assert.equal(res.status, 200);
+
+    const json = (await res.json()) as { modelPatch?: Partial<LogicModel> | null };
+    assert.equal(
+      json.modelPatch?.intended_impact?.compiled_statement,
+      model.intended_impact.compiled_statement
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

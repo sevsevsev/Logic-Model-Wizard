@@ -1038,9 +1038,14 @@ function enforceCompiledStatementAcceptance(
 
   const accepted = isExplicitImpactAcceptance(latestUserMessage);
   if (!accepted) {
-    if ("compiled_statement" in modelPatch.intended_impact) {
-      modelPatch.intended_impact.compiled_statement = "";
+    const existingCompiled = modelSnapshot?.intended_impact.compiled_statement?.trim() ?? "";
+    const patchCompiled = modelPatch.intended_impact.compiled_statement?.trim() ?? "";
+
+    // Refinement turns should preserve the best available draft rather than blanking it out.
+    if (!patchCompiled && existingCompiled) {
+      modelPatch.intended_impact.compiled_statement = existingCompiled;
     }
+
     if (Object.keys(modelPatch.intended_impact).length === 0) {
       delete modelPatch.intended_impact;
     }

@@ -50,6 +50,8 @@ export default function DraftControls() {
   const model = useLogicModelStore((s) => s.model);
   const messages = useLogicModelStore((s) => s.messages);
   const restoreDraft = useLogicModelStore((s) => s.restoreDraft);
+  const reviewMode = useLogicModelStore((s) => s.reviewMode);
+  const setReviewMode = useLogicModelStore((s) => s.setReviewMode);
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -302,6 +304,30 @@ export default function DraftControls() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Draft / Review toggle */}
+          <div className="flex items-center gap-0.5 rounded-full border border-slate-200 bg-slate-50 p-0.5">
+            <button
+              onClick={() => setReviewMode(false)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                !reviewMode
+                  ? "bg-white shadow-sm text-[#0b315b] border border-slate-200"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Draft
+            </button>
+            <button
+              onClick={() => setReviewMode(true)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                reviewMode
+                  ? "bg-[#0b315b] text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Review
+            </button>
+          </div>
+
           <button
             onClick={triggerImport}
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"

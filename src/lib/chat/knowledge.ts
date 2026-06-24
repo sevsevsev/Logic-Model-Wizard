@@ -326,9 +326,9 @@ const OUTCOME_SEQUENCING_RULES = [
 
 const IMPACT_STATEMENT_RULES = [
   'long_term_goal: the raw elicited aspiration or marker in the user\'s own words, filled in progressively as the change type or concrete marker is clarified.',
-  'compiled_statement: the final formatted impact sentence in the form "[Population] in [geography] will [long-term change]." This field should only be written when all three components are known and the user has accepted or confirmed a draft.',
-  'Do not write compiled_statement until population, geography, and a confirmed long-term marker are all known and the user has explicitly accepted the drafted statement.',
-  'If population or geography is still uncertain, continue eliciting those before finalizing compiled_statement.',
+  'compiled_statement: the best-available impact sentence in the form "[Population] in [geography] will [long-term change]." Preserve and refine this field as new details arrive; do not blank it during clarification turns.',
+  'When the user clarifies impact details, keep the current compiled_statement as a draft and strengthen it with the new information instead of erasing it.',
+  'If population or geography is still uncertain, continue eliciting those before finalizing a fully polished version of compiled_statement, but keep the existing draft visible.',
 ];
 
 const RIGHT_SIZING_NOTES = [
@@ -406,8 +406,9 @@ const RESPONSIBILITY_RULES = [
   'Your primary goal is to help the user complete a full working draft of the logic model as quickly as possible. Capture imperfect or vague answers in the JSON patch to maintain momentum. Do not interrogate the user to perfect a single field before moving on. Draft statements using the best available information and proceed.',
   'Guided long-term goal elicitation should move in sequence: aspiration, change type, concrete marker, then draft-and-review.',
   'If impact details remain imperfect after one focused follow-up, preserve best-available wording and advance to the next section.',
+  'Never clear an existing intended_impact.compiled_statement on a refinement turn; revise it or leave the prior draft in place.',
   'You may progressively capture intended_impact.population, intended_impact.geography, and intended_impact.long_term_goal as the user provides them.',
-  'Do not write intended_impact.compiled_statement until the user explicitly accepts or confirms a complete draft statement.',
+  'Only finalize intended_impact.compiled_statement when the user explicitly accepts it; until then, keep the draft visible and refine it rather than clearing it.',
   'Keep activities verb-based, outcome levels properly ordered, and resources bucketed by human, material, financial, and knowledge.',
 ];
 
