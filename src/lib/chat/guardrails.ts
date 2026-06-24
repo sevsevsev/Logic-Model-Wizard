@@ -1,4 +1,5 @@
 import type { LogicModel } from "@/store/useLogicModelStore";
+import type { ChatMessage } from "@/store/useLogicModelStore";
 
 export type GuardrailIntent =
   | "impact_specificity"
@@ -11,6 +12,45 @@ export type GuardrailIntent =
   | "outcomes_review"
   | "causal_review"
   | "section_refine";
+
+type ImpactMissingIntent = "population_focus" | "geography" | "impact_specificity";
+
+export interface ImpactDraftReadiness {
+  ready: boolean;
+  populationKnown: boolean;
+  geographyKnown: boolean;
+  concreteOutcomeKnown: boolean;
+  missingIntent?: ImpactMissingIntent;
+  bypassed?: boolean;
+}
+
+const IMPACT_GATING_ATTEMPT_PATTERNS: Record<ImpactMissingIntent, RegExp> = {
+  population_focus:
+    /(who exactly is the primary population|who exactly do you serve|which students specifically|particular subset|specific group)/i,
+  geography:
+    /(what specific geography|where do you serve|citywide|neighborhoods|zip codes|specific schools)/i,
+  impact_specificity:
+    /(what exact long-term difference|point to in 10 years|concrete long-term change|make that impact statement more specific)/i,
+};
+
+function isNonEmpty(value: string | undefined | null): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function countRecentAssistantAttempts(
+  safeHistory: ChatMessage[],
+  missingIntent: ImpactMissingIntent,
+  lookbackTurns = 10
+): number {
+  const pattern = IMPACT_GATING_ATTEMPT_PATTERNS[missingIntent];
+  if (!pattern) return 0;
+
+  return safeHistory
+    .slice(-lookbackTurns)
+    .filter((msg) => msg.role === "assistant")
+    .map((msg) => msg.content)
+    .filter((text) => pattern.test(text)).length;
+}
 
 export function looksSpecificPopulation(text: string): boolean {
   const gradeOrAgeSpecific = /\b(k\s*[-–]\s*\d+|\d+(?:st|nd|rd|th)\s+grad(?:e|ers?)?|elementary(?:\s+school)?|middle\s+school|high\s+school|grades?\s+\d|\d+(?:[-–]\d+)?[-\s]year[-\s]olds?|ages?\s+\d|early\s+childhood|preschool|kindergarten)\b/i.test(
@@ -64,6 +104,67 @@ export function buildCompiledStatement(population: string, geography: string, lo
   const l = longTermGoal.trim();
   if (!p || !g || !l) return undefined;
   return `${p} in ${g} will ${l}`;
+}
+
+export function inferImpactDraftReadiness(
+  modelSnapshot: LogicModel | undefined,
+  safeHistory: ChatMessage[],
+  latestUserMessage: string
+): ImpactDraftReadiness {
+  const latestMessage = latestUserMessage.trim();
+  const historyUserText = safeHistory
+    .filter((msg) => msg.role === "user")
+    .map((msg) => msg.content)
+    .join("\n");
+
+  const contextText = `${historyUserText}\n${latestMessage}`;
+  const modelPopulation = modelSnapshot?.intended_impact.population ?? "";
+  const modelGeography = modelSnapshot?.intended_impact.geography ?? "";
+  const modelOutcome = `${modelSnapshot?.intended_impact.long_term_goal ?? ""} ${
+    modelSnapshot?.intended_impact.compiled_statement ?? ""
+  }`;
+
+  const populationKnown =
+    (isNonEmpty(modelPopulation) && looksSpecificPopulation(modelPopulation)) ||
+    looksSpecificPopulation(contextText);
+  const geographyKnown =
+    (isNonEmpty(modelGeography) && looksSpecificGeography(modelGeography)) ||
+    looksSpecificGeography(contextText);
+  const concreteOutcomeKnown =
+    hasConcreteImpactMarker(modelOutcome) || hasConcreteImpactMarker(contextText);
+
+  const ready = populationKnown && geographyKnown && concreteOutcomeKnown;
+
+  if (ready) {
+    return { ready, populationKnown, geographyKnown, concreteOutcomeKnown, bypassed: false };
+  }
+
+  const missingIntent: ImpactMissingIntent = !populationKnown
+    ? "population_focus"
+    : !geographyKnown
+      ? "geography"
+      : "impact_specificity";
+
+  const attempts = countRecentAssistantAttempts(safeHistory, missingIntent);
+  if (attempts > 0) {
+    return {
+      ready: true,
+      populationKnown,
+      geographyKnown,
+      concreteOutcomeKnown,
+      missingIntent,
+      bypassed: true,
+    };
+  }
+
+  return {
+    ready,
+    populationKnown,
+    geographyKnown,
+    concreteOutcomeKnown,
+    missingIntent,
+    bypassed: false,
+  };
 }
 
 export function inferNextRequiredIntent(model: LogicModel | undefined): GuardrailIntent | undefined {

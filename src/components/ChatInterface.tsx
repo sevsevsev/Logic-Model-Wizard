@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download } from "lucide-react";
+import { Send, RotateCcw, Loader2, ThumbsUp, ThumbsDown, Download, X } from "lucide-react";
 import { useLogicModelStore, QuickReply, ChatMessage } from "@/store/useLogicModelStore";
 import { LOCAL_CLOUD_USER_KEY } from "@/lib/drafts/types";
 import DocumentBootstrap from "@/components/DocumentBootstrap";
@@ -13,6 +13,13 @@ const FEEDBACK_REASONS = [
   "Not actionable",
   "Unclear wording",
 ];
+
+const SECTION_LABELS: Record<string, string> = {
+  impact: "Intended Impact",
+  resources: "Resources",
+  activities: "Activities & Outputs",
+  outcomes: "Outcomes",
+};
 
 const DEBUG_SNAPSHOT_MESSAGE_LIMIT = 80;
 const DEBUG_SNAPSHOT_CONTENT_CHAR_LIMIT = 4000;
@@ -39,6 +46,8 @@ export default function ChatInterface() {
   const applyModelPatch = useLogicModelStore((s) => s.applyModelPatch);
   const setLoading = useLogicModelStore((s) => s.setLoading);
   const resetModel = useLogicModelStore((s) => s.resetModel);
+  const activeSection = useLogicModelStore((s) => s.activeSection);
+  const setActiveSection = useLogicModelStore((s) => s.setActiveSection);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -74,6 +83,16 @@ export default function ChatInterface() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  // When a section is clicked in LogicMirror, surface the input and scroll
+  useEffect(() => {
+    if (!activeSection) return;
+    setTypeInputVisible(true);
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      inputRef.current?.focus();
+    }, 50);
+  }, [activeSection]);
 
   useEffect(() => {
     if (!isExportModalOpen) return;
@@ -598,6 +617,32 @@ export default function ChatInterface() {
       {/* Input */}
       {showTextInput && (
         <div className="px-4 py-3 border-t border-[#9fc3da] bg-[#edf3f8]">
+          {activeSection && (
+            <div className="flex items-center gap-2 rounded-lg border border-[#9fc3da] bg-[#d0ebf8] px-3 py-2 mb-2">
+              <span className="text-xs text-[#0b315b] font-medium flex-1">
+                ✦ Focus on <strong>{SECTION_LABELS[activeSection] ?? activeSection}</strong>
+              </span>
+              <button
+                onClick={() => {
+                  if (inputRef.current) {
+                    const label = SECTION_LABELS[activeSection] ?? activeSection;
+                    inputRef.current.value = `Let's work on the ${label} section.`;
+                    inputRef.current.focus();
+                  }
+                  setActiveSection(null);
+                }}
+                className="text-[11px] rounded-full bg-[#0b315b] text-white px-2.5 py-0.5 hover:bg-[#082746] shrink-0"
+              >
+                Use →
+              </button>
+              <button
+                onClick={() => setActiveSection(null)}
+                className="text-[#48617c] hover:text-[#0b315b] shrink-0"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
           <div className="flex items-end gap-2 bg-white border border-[#9fc3da] rounded-xl px-3 py-2 focus-within:border-[#47aad8] focus-within:ring-2 focus-within:ring-[#d0ebf8] transition-all">
             <textarea
               ref={inputRef}

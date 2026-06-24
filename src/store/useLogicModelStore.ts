@@ -129,6 +129,8 @@ interface LogicModelState {
   model: LogicModel;
   messages: ChatMessage[];
   isLoading: boolean;
+  activeSection: string | null;
+  reviewMode: boolean;
 
   // Domain-level partial update actions
   updateIntendedImpact: (patch: Partial<IntendedImpact>) => void;
@@ -149,6 +151,8 @@ interface LogicModelState {
   getDraftSnapshot: () => LogicModelDraft;
   restoreDraft: (draft: LogicModelDraft) => void;
   resetModel: () => void;
+  setActiveSection: (section: string | null) => void;
+  setReviewMode: (mode: boolean) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -463,6 +467,8 @@ export const useLogicModelStore = create<LogicModelState>()(
     model: structuredClone(defaultModel),
     messages: getWelcomeMessages(),
     isLoading: false,
+    activeSection: null,
+    reviewMode: false,
 
     // ---- Intended Impact --------------------------------------------------
     updateIntendedImpact: (patch) =>
@@ -666,6 +672,16 @@ export const useLogicModelStore = create<LogicModelState>()(
       set((state) => {
         state.model = structuredClone(defaultModel);
         state.messages = getWelcomeMessages();
+      }),
+
+    setActiveSection: (section) =>
+      set((state) => {
+        state.activeSection = section;
+      }),
+
+    setReviewMode: (mode) =>
+      set((state) => {
+        state.reviewMode = mode;
       }),
   }))
 );

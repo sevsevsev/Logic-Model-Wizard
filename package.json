@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:guardrails": "tsx --test src/lib/chat/guardrails.test.ts"
+    "test:guardrails": "tsx --test src/lib/chat/guardrails.test.ts",
+    "test:chat-route": "tsx --test src/app/api/chat/route.test.ts"
   },
   "dependencies": {
     "immer": "^11.1.4",
