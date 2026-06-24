@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { LogicModel } from "@/store/useLogicModelStore";
+import type { ChatMessage } from "@/store/useLogicModelStore";
 import {
   buildCompiledStatement,
+  inferImpactDraftReadiness,
   inferNextRequiredIntent,
   isExplicitImpactAcceptance,
   looksSpecificPopulation,
@@ -88,5 +90,29 @@ test("phase intent progression follows atomic sequence", () => {
   assert.equal(inferNextRequiredIntent(model), "outcomes_review");
 
   model.outcomes.short_term.push({ statement: "Improved program awareness" });
-  assert.equal(inferNextRequiredIntent(model), "section_refine");
+  assert.equal(inferNextRequiredIntent(model), "causal_review");
+});
+
+test("impact readiness bypasses blocking after one prior specificity attempt", () => {
+  const model = createModel();
+  model.intended_impact.population = "9th graders";
+    model.intended_impact.geography = "citywide";
+
+  const history: ChatMessage[] = [
+    {
+      role: "assistant",
+      content:
+        "Before I draft an impact statement, what exact long-term difference should we be able to point to in 10 years?",
+    },
+    {
+      role: "user",
+      content: "They should have better opportunities.",
+    },
+  ] as const;
+
+  const readiness = inferImpactDraftReadiness(model, history, "Still better opportunities over time.");
+
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.bypassed, true);
+  assert.equal(readiness.missingIntent, "impact_specificity");
 });
