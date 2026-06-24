@@ -9,6 +9,7 @@ export type GuardrailIntent =
   | "outputs_metrics"
   | "quality_evidence"
   | "outcomes_review"
+  | "causal_review"
   | "section_refine";
 
 export function looksSpecificPopulation(text: string): boolean {
@@ -121,5 +122,6 @@ export function inferNextRequiredIntent(model: LogicModel | undefined): Guardrai
     return "outcomes_review";
   }
 
-  return "section_refine";
+  // Trigger holistic review once all sections have data
+  return "causal_review";
 }
